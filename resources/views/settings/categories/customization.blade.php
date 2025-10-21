@@ -33,6 +33,9 @@
                         <option @if(setting('app-editor') === 'wysiwyg') selected @endif value="wysiwyg">WYSIWYG</option>
                         <option @if(setting('app-editor') === 'markdown') selected @endif value="markdown">Markdown</option>
                         <option @if(setting('app-editor') === 'wysiwyg2024') selected @endif value="wysiwyg2024">New WYSIWYG (beta testing)</option>
+                        @if(config('tinymyst.enabled', true))
+                            <option @if(setting('app-editor') === 'tinymyst') selected @endif value="tinymyst">Tinymyst (Typst)</option>
+                        @endif
                     </select>
                 </div>
             </div>

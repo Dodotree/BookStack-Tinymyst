@@ -150,7 +150,10 @@ class PageController extends Controller
         }
 
         $pageContent = (new PageContent($page));
-        $page->html = $pageContent->render();
+        // Skip render() for Tinymyst pages - DOMDocument strips SVG namespaces
+        if ($page->editor !== 'tinymyst') {
+            $page->html = $pageContent->render();
+        }
         $pageNav = $pageContent->getNavigation($page->html);
 
         $sidebarTree = (new BookContents($page->book))->getTree();
@@ -241,7 +244,7 @@ class PageController extends Controller
             return $this->jsonError(trans('errors.guests_cannot_save_drafts'), 500);
         }
 
-        $draft = $this->pageRepo->updatePageDraft($page, $request->only(['name', 'html', 'markdown']));
+        $draft = $this->pageRepo->updatePageDraft($page, $request->only(['name', 'html', 'markdown', 'tinymyst']));
         $warnings = (new PageEditActivity($page))->getWarningMessagesForDraft($draft);
 
         return response()->json([

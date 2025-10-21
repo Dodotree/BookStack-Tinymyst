@@ -158,6 +158,9 @@ class PageRepo
 
         if ($haveInput && $inputEmpty) {
             $pageContent->setNewHTML('', user());
+        } elseif (!empty($input['tinymyst']) && is_string($input['tinymyst'])) {
+            $newEditor = PageEditorType::Tinymyst;
+            $pageContent->setNewTinymyst($input['tinymyst'], user());
         } elseif (!empty($input['markdown']) && is_string($input['markdown'])) {
             $newEditor = PageEditorType::Markdown;
             $pageContent->setNewMarkdown($input['markdown'], user());
@@ -191,10 +194,13 @@ class PageRepo
         $draft = $this->revisionRepo->getNewDraftForCurrentUser($page);
         $draft->fill($input);
 
-        if (!empty($input['markdown'])) {
+        if (!empty($input['tinymyst'])) {
+            $draft->markdown = $input['tinymyst'];
+            $draft->html = '';
+        } elseif (!empty($input['markdown'])) {
             $draft->markdown = $input['markdown'];
             $draft->html = '';
-        } else {
+        } elseif (isset($input['html'])) {
             $draft->html = $input['html'];
             $draft->markdown = '';
         }

@@ -70,6 +70,7 @@ export class PageEditor extends Component {
         };
         window.$events.listen('editor-html-change', onContentChange);
         window.$events.listen('editor-markdown-change', onContentChange);
+        window.$events.listen('editor-tinymyst-change', onContentChange);
 
         // Listen to changes on the title input
         this.titleElem.addEventListener('input', onContentChange);
@@ -240,10 +241,11 @@ export class PageEditor extends Component {
     }
 
     /**
-     * @return {MarkdownEditor|WysiwygEditor|WysiwygEditorTinymce}
+     * @return {TinymystEditor|MarkdownEditor|WysiwygEditor|WysiwygEditorTinymce}
      */
     getEditorComponent() {
-        return window.$components.first('markdown-editor')
+        return window.$components.first('tinymyst-editor')
+            || window.$components.first('markdown-editor')
             || window.$components.first('wysiwyg-editor')
             || window.$components.first('wysiwyg-editor-tinymce');
     }

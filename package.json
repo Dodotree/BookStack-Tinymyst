@@ -16,7 +16,8 @@
     "lint": "eslint \"resources/**/*.js\" \"resources/**/*.mjs\"",
     "fix": "eslint --fix \"resources/**/*.js\" \"resources/**/*.mjs\"",
     "ts:lint": "tsc --noEmit",
-    "test": "jest"
+    "test": "jest",
+    "postinstall": "node dev/build/download-typst.js && node dev/build/download-tinymyst.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.34.0",

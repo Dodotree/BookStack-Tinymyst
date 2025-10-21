@@ -51,8 +51,63 @@ class PageContent
         $this->page->markdown = $markdown;
         $html = (new MarkdownToHtml($markdown))->convert();
         $this->page->html = $this->formatHtml($html);
-        $this->page->text = $this->toPlainText();
     }
+
+    /**
+     * Update the content of the page with new provided Tinymyst (Typst) source.
+     */
+    public function setNewTinymyst(string $source, User $updater): void
+    {
+        $this->page->markdown = $source;  // Store Typst source in markdown column
+
+        // Compile to SVG using TinymystService
+        $tinymyst = app(\BookStack\Entities\Tools\Tinymyst\TinymystService::class);
+        $result = $tinymyst->compileToSvg($source);
+
+        if ($result['success']) {
+            // Wrap SVG in container div
+            $html = '<div class="tinymyst-document">' . $result['svg'] . '</div>';
+            // $this->page->html = $this->formatHtml($html);
+            $this->page->html = $html;
+        } else {
+            // Show compilation errors
+            $errorHtml = '<div class="tinymyst-error">';
+            $errorHtml .= '<h3>Typst Compilation Errors:</h3>';
+            foreach ($result['errors'] as $error) {
+                $errorHtml .= '<p>' . htmlspecialchars($error) . '</p>';
+            }
+            $errorHtml .= '</div>';
+            $this->page->html = $errorHtml;
+        }
+
+        // Extract plain text from Typst source for search indexing
+        $this->page->text = $this->toPlainTextFromTypst($source);
+    }
+
+    /**
+     * Extract plain text from Typst source for search indexing.
+     * Removes Typst markup/commands but preserves content.
+     */
+    protected function toPlainTextFromTypst(string $source): string
+    {
+        // Remove Typst commands (lines starting with #)
+        $text = preg_replace('/^#.*$/m', '', $source);
+
+        // Remove inline math formulas
+        $text = preg_replace('/\$.*?\$/', '', $text);
+
+        // Remove bold/italic markup
+        $text = preg_replace('/\*{1,2}(.*?)\*{1,2}/', '$1', $text);
+
+        // Remove links [text](url) - keep only text
+        $text = preg_replace('/\[(.*?)\]\(.*?\)/', '$1', $text);
+
+        // Clean up extra whitespace
+        $text = html_entity_decode(strip_tags($text));
+
+        return trim($text);
+    }
+
 
     /**
      * Convert all base64 image data to saved images.

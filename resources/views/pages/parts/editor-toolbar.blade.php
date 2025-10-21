@@ -89,6 +89,16 @@
                                 </div>
                             </a>
                         @endif
+                        @if($editor !== \BookStack\Entities\Tools\PageEditorType::Tinymyst && config('tinymyst.enabled', true))
+                            <a href="{{ $model->getUrl($isDraft ? '' : '/edit') }}?editor=tinymyst" refs="page-editor@changeEditor" role="menuitem" class="icon-item">
+                                @icon('swap-horizontal')
+                                <div>
+                                    {{ trans('entities.pages_edit_switch_to_tinymyst') }}
+                                    <br>
+                                    <small>{{ trans('entities.pages_edit_switch_to_tinymyst_desc') }}</small>
+                                </div>
+                            </a>
+                        @endif
                     </li>
                 @endif
             </ul>

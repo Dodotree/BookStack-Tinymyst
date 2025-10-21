@@ -32,6 +32,7 @@ export {ImagePicker} from './image-picker';
 export {ListSortControl} from './list-sort-control';
 export {LoadingButton} from './loading-button';
 export {MarkdownEditor} from './markdown-editor';
+export {TinymystEditor} from './tinymyst-editor';
 export {NewUserPassword} from './new-user-password';
 export {Notification} from './notification';
 export {OptionalInput} from './optional-input';

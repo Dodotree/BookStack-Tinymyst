@@ -9,13 +9,19 @@ enum PageEditorType: string
     case WysiwygTinymce = 'wysiwyg';
     case WysiwygLexical = 'wysiwyg2024';
     case Markdown = 'markdown';
+    case Tinymyst = 'tinymyst';
 
     public function isHtmlBased(): bool
     {
         return match ($this) {
             self::WysiwygTinymce, self::WysiwygLexical => true,
-            self::Markdown => false,
+            self::Markdown, self::Tinymyst => false,
         };
+    }
+
+    public function usesTypstSource(): bool
+    {
+        return $this === self::Tinymyst;
     }
 
     public static function fromRequestValue(string $value): static|null
