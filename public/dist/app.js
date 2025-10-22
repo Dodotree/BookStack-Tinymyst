@@ -24830,7 +24830,7 @@ var TinymystEditor = class extends Component {
     __publicField(this, "preview");
     __publicField(this, "console");
     __publicField(this, "currentSource");
-    __publicField(this, "compileTimer");
+    __publicField(this, "compileTimer", null);
     __publicField(this, "compileDelay");
   }
   setup() {
@@ -24932,11 +24932,20 @@ var TinymystEditor = class extends Component {
       const response = await window.$http.post("/ajax/tinymyst/compile", {
         source
       });
-      if (response.data.success) {
-        this.showSvg(response.data.svg);
-        this.logSuccess(`Compiled successfully (${source.length} chars)`);
+      const respData = response && response.data;
+      if (respData && typeof respData === "object" && "success" in respData) {
+        const data = respData;
+        if (data.success) {
+          this.showSvg(data.svg || "");
+          this.logSuccess(`Compiled successfully (${source.length} chars)`);
+        } else {
+          this.logErrors(data.errors || []);
+        }
+      } else if (typeof respData === "string") {
+        this.logError(respData);
       } else {
-        this.logErrors(response.data.errors);
+        console.error("Unexpected compile response:", response);
+        this.logError("Compilation failed: unexpected server response.");
       }
     } catch (error) {
       console.error("Tinymyst compilation failed:", error);

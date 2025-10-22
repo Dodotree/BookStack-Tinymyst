@@ -8,7 +8,7 @@ export class TinymystEditor extends Component {
     preview!: HTMLElement;
     console!: HTMLElement;
     currentSource: any;
-    compileTimer!: null;
+    compileTimer: ReturnType<typeof setTimeout> | null = null;
     compileDelay!: number;
 
     setup() {
@@ -147,11 +147,24 @@ export class TinymystEditor extends Component {
                 source: source
             });
 
-            if (response.data.success) {
-                this.showSvg(response.data.svg);
-                this.logSuccess(`Compiled successfully (${source.length} chars)`);
+            const respData = response && response.data;
+
+            // Guard the shape of respData before accessing properties to avoid errors
+            if (respData && typeof respData === 'object' && 'success' in respData) {
+                const data = respData as { success: boolean; svg?: string; errors?: string[] };
+                if (data.success) {
+                    this.showSvg(data.svg || '');
+                    this.logSuccess(`Compiled successfully (${source.length} chars)`);
+                } else {
+                    this.logErrors(data.errors || []);
+                }
+            } else if (typeof respData === 'string') {
+                // Server returned a plain string error/message
+                this.logError(respData);
             } else {
-                this.logErrors(response.data.errors);
+                // Unexpected response shape
+                console.error('Unexpected compile response:', response);
+                this.logError('Compilation failed: unexpected server response.');
             }
         } catch (error) {
             console.error('Tinymyst compilation failed:', error);

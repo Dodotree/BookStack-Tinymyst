@@ -23,15 +23,18 @@ Patty should work now.
 
 If you prefer not to modify the server, you can regenerate your key in a modern format:
 
-# On your Windows machine (Git Bash or WSL)
+### On your Windows machine (Git Bash or WSL)
+
 ssh-keygen -t ed25519 -f ~/.ssh/aws-new-key -C "<your-email@example.com>"
 
-# Copy the public key
+### Copy the public key
+
 cat ~/.ssh/aws-new-key.pub
 
 then on the Ubuntu server:
 
-# Add the new public key to authorized_keys
+### Add the new public key to authorized_keys
+
 echo "paste-your-public-key-here" >> ~/.ssh/authorized_keys
 
 Then convert the new private key to .ppk format using PuTTYgen and use that instead
@@ -193,7 +196,7 @@ php artisan key:generate
 php artisan optimize:clear
 php artisan migrate --force
 
-# preseed for testing if you want
+# pre-seed for testing if you want
 php artisan db:seed --class=DummyContentSeeder
 
 php artisan queue:restart
