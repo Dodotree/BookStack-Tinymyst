@@ -152,39 +152,11 @@ DB_SOCKET=/var/run/mysqld/mysqld.sock
 
 ```bash
 git clone https://github.com/Dodotree/BookStack-Tinymyst.git /var/www/bookstack
-git config core.fileMode false
-
 cd /var/www/bookstack/
-# create .env
-composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
-php artisan key:generate
-php artisan optimize:clear
-php artisan migrate --force
-php artisan db:seed --class=DummyContentSeeder
-php artisan queue:restart
-systemctl restart php8.3-fpm.service
-npm ci
-npm run build
+git config core.fileMode false
 ```
 
-## File Permissions
-
-The installation script sets these permissions:
-
-```bash
-# Application files: 644 (rw-r--r--)
-# Directories: 755 (rwxr-xr-x)
-# Storage directories: 775 (rwxrwxr-x)
-# Owner: www-data:www-data
-cd /var/www/bookstack
-chown -R www-data:www-data .
-find . -type f -exec chmod 644 {} \;
-find . -type d -exec chmod 755 {} \;
-chmod -R 775 storage bootstrap/cache public/uploads
-chmod +x artisan
-```
-
-### Nginx configuration for tensorsum.com
+### Nginx configuration for tensorsum.com with free https
 
 Change: EMAIL="admin@tensorsum.com" to your real email in setup-letsencrypt.sh
 
@@ -210,6 +182,52 @@ cd /var/www/bookstack/tinymist-devops
 sudo bash renew-ssl.sh
 # View certificate info
 sudo certbot certificates
+```
+
+### Make builds
+
+```bash
+# create .env
+composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader
+php artisan key:generate
+php artisan optimize:clear
+php artisan migrate --force
+
+# preseed for testing if you want
+php artisan db:seed --class=DummyContentSeeder
+
+php artisan queue:restart
+systemctl restart php8.3-fpm.service
+npm ci
+npm run build
+```
+
+## File Permissions
+
+The installation script sets these permissions:
+
+```bash
+# Application files: 644 (rw-r--r--)
+# Directories: 755 (rwxr-xr-x)
+# Storage directories: 775 (rwxrwxr-x)
+# Owner: www-data:www-data
+cd /var/www/bookstack
+chown -R www-data:www-data .
+find . -type f -exec chmod 644 {} \;
+find . -type d -exec chmod 755 {} \;
+chmod -R 775 storage bootstrap/cache public/uploads
+chmod +x artisan
+```
+
+### Users
+
+``` bash
+php artisan list | grep -iE "(bookstack|user|admin)"
+php artisan bookstack:create-admin --email=admin@local.dev --name="Admin User" --password=password
+# list users
+php artisan tinker --execute="echo 'Users: '; \$users = \BookStack\Users\Models\User::all(['id', 'email', 'name']); foreach(\$users as \$u) { echo \$u->id . ' - ' . \$u->email . ' (' . \$u->name . ')' . PHP_EOL; }"
+# list admins
+ php artisan tinker --execute="echo 'Admin Users:' . PHP_EOL; \$adminRole = \BookStack\Permissions\Models\Role::where('system_name', 'admin')->first(); \$admins = \$adminRole->users; foreach(\$admins as \$admin) { echo '- ' . \$admin->email . ' (' . \$admin->name . ')' . PHP_EOL; }"
 ```
 
 ## Monitoring
@@ -288,4 +306,23 @@ php artisan view:clear
 php artisan config:cache
 php artisan route:cache
 php artisan view:cache
+```
+
+### Merge with bookstack upstream (release branch)
+
+``` bash
+# Make sure you're on your development branch
+git checkout development
+
+# Verify you're merging from release (not development)
+git merge upstream/release --no-commit --no-ff
+
+# Review what will be merged
+git diff --cached
+
+# If it looks good, complete the merge
+git commit -m "Merge upstream BookStack release branch"
+
+# Or abort if something's wrong
+git merge --abort
 ```
