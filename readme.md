@@ -1,8 +1,12 @@
 # BookStack TinyMyst
 
 [![license](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Dodotree/BookStack-Tinymyst/blob/development/LICENSE)
+[![Analyse Status](https://github.com/Dodotree/BookStack-Tinymyst/workflows/analyse-php/badge.svg)](https://github.com/Dodotree/BookStack-Tinymyst/actions)
 [![Build Status](https://github.com/Dodotree/BookStack-Tinymyst/workflows/test-php/badge.svg)](https://github.com/Dodotree/BookStack-Tinymyst/actions)
+[![Build Status](https://github.com/Dodotree/BookStack-Tinymyst/workflows/test-js/badge.svg)](https://github.com/Dodotree/BookStack-Tinymyst/actions)
+[![Migrations Status](https://github.com/Dodotree/BookStack-Tinymyst/workflows/test-migrations/badge.svg)](https://github.com/Dodotree/BookStack-Tinymyst/actions)
 [![Lint Status](https://github.com/Dodotree/BookStack-Tinymyst/workflows/lint-php/badge.svg)](https://github.com/Dodotree/BookStack-Tinymyst/actions)
+[![Lint Status](https://github.com/Dodotree/BookStack-Tinymyst/workflows/lint-js/badge.svg)](https://github.com/Dodotree/BookStack-Tinymyst/actions)
 
 * [Demo Instance](https://demo.bookstackapp.com)
     * [Admin Login](https://demo.bookstackapp.com/login?email=admin@example.com&password=password)
