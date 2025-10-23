@@ -67,7 +67,6 @@ class TinymystService
                 'svg' => $svg,
                 'errors' => [],
             ];
-
         } catch (\Exception $e) {
             Log::error('Typst compilation failed', [
                 'error' => $e->getMessage(),

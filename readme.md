@@ -1,4 +1,4 @@
-# BookStack
+# BookStack TinyMyst
 
 [![license](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Dodotree/BookStack-Tinymyst/blob/development/LICENSE)
 [![Build Status](https://github.com/Dodotree/BookStack-Tinymyst/workflows/test-php/badge.svg)](https://github.com/Dodotree/BookStack-Tinymyst/actions)
