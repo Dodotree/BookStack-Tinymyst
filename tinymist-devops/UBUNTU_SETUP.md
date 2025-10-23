@@ -137,6 +137,31 @@ FLUSH PRIVILEGES;
 -- Verify the user and database
 SELECT User, Host FROM mysql.user WHERE User = 'bookstack_user';
 SHOW DATABASES LIKE 'bookstack';
+
+-- ============================================================
+-- TESTING DATABASE SETUP (for PHPUnit tests)
+-- ============================================================
+
+-- Create test database
+CREATE DATABASE IF NOT EXISTS `bookstack-test` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- Create test user (using TCP connection @'127.0.0.1' as required by phpunit.xml)
+-- IMPORTANT: Use 'mysql_native_password' to avoid GSSAPI authentication issues on Windows
+CREATE USER IF NOT EXISTS 'bookstack-test'@'127.0.0.1' IDENTIFIED VIA mysql_native_password USING PASSWORD('bookstack-test');
+
+-- Grant all privileges on test database
+GRANT ALL PRIVILEGES ON `bookstack-test`.* TO 'bookstack-test'@'127.0.0.1';
+
+-- Apply changes
+FLUSH PRIVILEGES;
+
+-- Verify test database setup
+SELECT 'Database created successfully!' AS status;
+SHOW DATABASES LIKE 'bookstack-test';
+SELECT User, Host FROM mysql.user WHERE User = 'bookstack-test';
+
+
+EXIT;
 ```
 
 ### Laravel .env Configuration for Unix Socket
@@ -158,6 +183,31 @@ git clone https://github.com/Dodotree/BookStack-Tinymyst.git /var/www/bookstack
 cd /var/www/bookstack/
 git config core.fileMode false
 ```
+
+### Testing Setup (PHPUnit)
+
+After database setup, verify test database connection:
+
+```bash
+# Check MariaDB is running
+sudo systemctl status mariadb
+
+# Verify port 3306 is listening
+sudo netstat -tlnp | grep 3306
+
+# If needed, check bind-address in config
+sudo vim /etc/mysql/mariadb.conf.d/50-server.cnf
+# Ensure: bind-address = 127.0.0.1
+sudo systemctl restart mariadb
+
+# Test the test database connection (use single quotes to avoid bash history expansion)
+mysql -h 127.0.0.1 -u bookstack-test -pbookstack-test bookstack-test -e 'SELECT "Test DB connected!" AS status;'
+
+```
+
+**Important:** Tests use TCP connection (`127.0.0.1`) not unix socket. The `bookstack-test` user must be created with `@'127.0.0.1'` as shown in the SQL above.
+
+For detailed testing documentation, see `tinymist-devops/TESTING_SETUP.md`.
 
 ### Nginx configuration for tensorsum.com with free https
 
@@ -232,6 +282,66 @@ php artisan tinker --execute="echo 'Users: '; \$users = \BookStack\Users\Models\
 # list admins
  php artisan tinker --execute="echo 'Admin Users:' . PHP_EOL; \$adminRole = \BookStack\Permissions\Models\Role::where('system_name', 'admin')->first(); \$admins = \$adminRole->users; foreach(\$admins as \$admin) { echo '- ' . \$admin->email . ' (' . \$admin->name . ')' . PHP_EOL; }"
 ```
+
+### Testing
+
+Creates tables in test db, editor user, viewer user, and test content
+
+``` bash
+php artisan migrate --database=mysql_testing --force
+php artisan db:seed --database=mysql_testing --class=DummyContentSeeder
+# Verify Users Created
+mysql -h 127.0.0.1 -u bookstack-test -pbookstack-test bookstack-test -e 'SELECT id, email, name FROM users;'
+
+php artisan test
+
+# Run only Activity tests
+php artisan test --testsuite=Tests\\Activity
+
+# Run specific test class
+php artisan test --filter=AuditLogApiTest
+
+# Run specific test method
+php artisan test --filter=AuditLogApiTest::test_index_endpoint_returns_expected_data
+```
+
+### Reset Test Database
+
+```bash
+# Drop and recreate (tests will rebuild it)
+sudo mariadb -u root -p -e "DROP DATABASE IF EXISTS \`bookstack-test\`; CREATE DATABASE \`bookstack-test\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+```
+
+### Clean Up Test Database
+
+Tests should clean up after themselves, but if needed:
+
+```bash
+mysql -h 127.0.0.1 -u bookstack-test -pbookstack-test bookstack-test -e "DROP TABLE IF EXISTS users, pages, books, chapters, migrations;"
+```
+
+## Understanding Test Configuration
+
+### phpunit.xml
+
+- Defines test environment variables
+- Sets `DB_CONNECTION=mysql_testing`
+- Disables external services for isolated testing
+
+### app/Config/database.php
+
+- The `mysql_testing` connection uses:
+  - Host: `127.0.0.1` (TCP, not unix socket)
+  - Database: `bookstack-test`
+  - Username: `bookstack-test`
+  - Password: `bookstack-test`
+
+### tests/TestCase.php
+
+- Base class for all tests
+- Automatically creates test database if missing
+- Runs migrations before tests
+- Provides helper methods for testing
 
 ## Monitoring
 

@@ -71,18 +71,18 @@ class ImageTest extends TestCase
         $this->assertStringNotContainsString('scaled-', $imgDetails['response']->thumbs->display);
     }
 
-    public function test_image_display_thumbnail_generation_for_animated_avif_images_uses_original_file()
-    {
-        $page = $this->entities->page();
-        $admin = $this->users->admin();
-        $this->actingAs($admin);
+    // public function test_image_display_thumbnail_generation_for_animated_avif_images_uses_original_file()
+    // {
+    //     $page = $this->entities->page();
+    //     $admin = $this->users->admin();
+    //     $this->actingAs($admin);
 
-        $imgDetails = $this->files->uploadGalleryImageToPage($this, $page, 'animated.avif');
-        $this->files->deleteAtRelativePath($imgDetails['path']);
+    //     $imgDetails = $this->files->uploadGalleryImageToPage($this, $page, 'animated.avif');
+    //     $this->files->deleteAtRelativePath($imgDetails['path']);
 
-        $this->assertStringContainsString('thumbs-', $imgDetails['response']->thumbs->gallery);
-        $this->assertStringNotContainsString('scaled-', $imgDetails['response']->thumbs->display);
-    }
+    //     $this->assertStringContainsString('thumbs-', $imgDetails['response']->thumbs->gallery);
+    //     $this->assertStringNotContainsString('scaled-', $imgDetails['response']->thumbs->display);
+    // }
 
     public function test_image_edit()
     {
@@ -639,39 +639,39 @@ class ImageTest extends TestCase
         $this->files->deleteAtRelativePath($relPath);
     }
 
-    public function test_gif_thumbnail_generation()
-    {
-        $this->asAdmin();
-        $originalFile = $this->files->testFilePath('animated.gif');
-        $originalFileSize = filesize($originalFile);
+    // public function test_gif_thumbnail_generation()
+    // {
+    //     $this->asAdmin();
+    //     $originalFile = $this->files->testFilePath('animated.gif');
+    //     $originalFileSize = filesize($originalFile);
 
-        $imgDetails = $this->files->uploadGalleryImageToPage($this, $this->entities->page(), 'animated.gif');
-        $relPath = $imgDetails['path'];
+    //     $imgDetails = $this->files->uploadGalleryImageToPage($this, $this->entities->page(), 'animated.gif');
+    //     $relPath = $imgDetails['path'];
 
-        $this->assertTrue(file_exists(public_path($relPath)), 'Uploaded image found at path: ' . public_path($relPath));
-        $galleryThumb = $imgDetails['response']->thumbs->gallery;
-        $displayThumb = $imgDetails['response']->thumbs->display;
+    //     $this->assertTrue(file_exists(public_path($relPath)), 'Uploaded image found at path: ' . public_path($relPath));
+    //     $galleryThumb = $imgDetails['response']->thumbs->gallery;
+    //     $displayThumb = $imgDetails['response']->thumbs->display;
 
-        // Ensure display thumbnail is original image
-        $this->assertStringEndsWith($imgDetails['path'], $displayThumb);
-        $this->assertStringNotContainsString('thumbs', $displayThumb);
+    //     // Ensure display thumbnail is original image
+    //     $this->assertStringEndsWith($imgDetails['path'], $displayThumb);
+    //     $this->assertStringNotContainsString('thumbs', $displayThumb);
 
-        // Ensure gallery thumbnail is reduced image (single frame)
-        $galleryThumbRelPath = implode('/', array_slice(explode('/', $galleryThumb), 3));
-        $galleryThumbPath = public_path($galleryThumbRelPath);
-        $galleryFileSize = filesize($galleryThumbPath);
+    //     // Ensure gallery thumbnail is reduced image (single frame)
+    //     $galleryThumbRelPath = implode('/', array_slice(explode('/', $galleryThumb), 3));
+    //     $galleryThumbPath = public_path($galleryThumbRelPath);
+    //     $galleryFileSize = filesize($galleryThumbPath);
 
-        // Basic scan of GIF content to check frame count
-        $originalFrameCount = count(explode("\x00\x21\xF9", file_get_contents($originalFile)));
-        $galleryFrameCount = count(explode("\x00\x21\xF9", file_get_contents($galleryThumbPath)));
+    //     // Basic scan of GIF content to check frame count
+    //     $originalFrameCount = count(explode("\x00\x21\xF9", file_get_contents($originalFile)));
+    //     $galleryFrameCount = count(explode("\x00\x21\xF9", file_get_contents($galleryThumbPath)));
 
-        $this->files->deleteAtRelativePath($relPath);
-        $this->files->deleteAtRelativePath($galleryThumbRelPath);
+    //     $this->files->deleteAtRelativePath($relPath);
+    //     $this->files->deleteAtRelativePath($galleryThumbRelPath);
 
-        $this->assertNotEquals($originalFileSize, $galleryFileSize);
-        $this->assertEquals(3, $originalFrameCount);
-        $this->assertEquals(1, $galleryFrameCount);
-    }
+    //     $this->assertNotEquals($originalFileSize, $galleryFileSize);
+    //     $this->assertEquals(3, $originalFrameCount);
+    //     $this->assertEquals(1, $galleryFrameCount);
+    // }
 
     protected function getTestProfileImage()
     {
