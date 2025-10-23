@@ -11,7 +11,7 @@ return [
     | if available in system PATH.
     |
     */
-    'typst_cli_path' => env('TYPST_CLI_PATH', base_path('vendor/bin/typst.exe')),
+    'typst_cli_path' => env('TYPST_CLI_PATH', base_path('vendor/bin/typst' . (DIRECTORY_SEPARATOR === '\\' ? '.exe' : ''))),
 
     /*
     |--------------------------------------------------------------------------
@@ -21,7 +21,7 @@ return [
     | Path to tinymyst CLI executable (for LSP features).
     |
     */
-    'tinymyst_cli_path' => env('TINYMYST_CLI_PATH', base_path('vendor/bin/tinymist.exe')),
+    'tinymyst_cli_path' => env('TINYMYST_CLI_PATH', base_path('vendor/bin/tinymist' . (DIRECTORY_SEPARATOR === '\\' ? '.exe' : ''))),
 
     /*
     |--------------------------------------------------------------------------

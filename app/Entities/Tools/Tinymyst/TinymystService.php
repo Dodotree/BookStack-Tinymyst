@@ -19,7 +19,7 @@ class TinymystService
         // Use typst CLI for compilation (simpler than full Tinymyst LSP)
         // Fall back to base_path if config is not set
         $this->typstPath = config('tinymyst.typst_cli_path')
-            ?? base_path('vendor/bin/typst.exe');
+            ?? base_path('vendor/bin/typst' . (DIRECTORY_SEPARATOR === '\\' ? '.exe' : ''));
         $this->timeout = config('tinymyst.timeout', 30);
         $this->tempDir = sys_get_temp_dir();
     }
