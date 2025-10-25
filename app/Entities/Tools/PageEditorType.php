@@ -9,19 +9,19 @@ enum PageEditorType: string
     case WysiwygTinymce = 'wysiwyg';
     case WysiwygLexical = 'wysiwyg2024';
     case Markdown = 'markdown';
-    case Tinymyst = 'tinymyst';
+    case Tinymist = 'tinymist';
 
     public function isHtmlBased(): bool
     {
         return match ($this) {
             self::WysiwygTinymce, self::WysiwygLexical => true,
-            self::Markdown, self::Tinymyst => false,
+            self::Markdown, self::Tinymist => false,
         };
     }
 
     public function usesTypstSource(): bool
     {
-        return $this === self::Tinymyst;
+        return $this === self::Tinymist;
     }
 
     public static function fromRequestValue(string $value): static|null

@@ -5,7 +5,7 @@
  * This runs automatically after npm install.
  *
  * Downloads pre-built Typst binaries from GitHub releases and places them
- * in vendor/bin/ directory for use by BookStack's Tinymyst editor.
+ * in vendor/bin/ directory for use by BookStack's Tinymist editor.
  *
  * Note: This is a Node.js script file, not browser JavaScript.
  * ESLint is disabled for this file as it uses Node.js APIs.

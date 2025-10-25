@@ -17,7 +17,7 @@
     "fix": "eslint --fix \"resources/**/*.js\" \"resources/**/*.mjs\"",
     "ts:lint": "tsc --noEmit",
     "test": "jest",
-    "postinstall": "node dev/build/download-typst.js && node dev/build/download-tinymyst.js"
+    "postinstall": "node dev/build/download-typst.js && node dev/build/download-tinymist.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.34.0",
@@ -48,6 +48,7 @@
     "@codemirror/lang-xml": "^6.1.0",
     "@codemirror/language": "^6.11.3",
     "@codemirror/legacy-modes": "^6.5.1",
+    "@codemirror/lint": "^6.8.4",
     "@codemirror/state": "^6.5.2",
     "@codemirror/theme-one-dark": "^6.1.3",
     "@codemirror/view": "^6.38.1",

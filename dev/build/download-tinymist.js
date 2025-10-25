@@ -1,20 +1,20 @@
 /* eslint-disable */
 /**
- * Tinymyst Installation Script
+ * Tinymist Installation Script
  *
- * This script automatically downloads and installs the Tinymyst LSP binary
+ * This script automatically downloads and installs the Tinymist LSP binary
  * from GitHub releases. It detects the platform and architecture automatically.
  *
- * Tinymyst is a Language Server Protocol implementation for Typst, providing
+ * Tinymist is a Language Server Protocol implementation for Typst, providing
  * features like autocomplete, diagnostics, and incremental compilation.
  *
- * Usage: node dev/build/download-tinymyst.js
+ * Usage: node dev/build/download-tinymist.js
  *
  * The script will:
  * 1. Detect the current platform (Windows/Linux/macOS) and architecture (x64/ARM64)
- * 2. Download the appropriate Tinymyst binary from GitHub releases
- * 3. Extract the binary to vendor/bin/tinymyst[.exe]
- * 4. Verify the installation by running tinymyst --version
+ * 2. Download the appropriate Tinymist binary from GitHub releases
+ * 3. Extract the binary to vendor/bin/tinymist[.exe]
+ * 4. Verify the installation by running tinymist --version
  */
 
 const https = require('https');
@@ -24,7 +24,7 @@ const { execSync } = require('child_process');
 const os = require('os');
 
 // Configuration
-const TINYMYST_VERSION = '0.13.28'; // Latest stable release
+const TINYMIST_VERSION = '0.13.28'; // Latest stable release
 const GITHUB_REPO = 'Myriad-Dreamin/tinymist';
 const VENDOR_BIN_DIR = path.join(__dirname, '..', '..', 'vendor', 'bin');
 
@@ -35,9 +35,9 @@ function detectPlatform() {
     const platform = os.platform();
     const arch = os.arch();
 
-    console.log(`\n📦 Tinymyst Installation Script`);
+    console.log(`\n📦 Tinymist Installation Script`);
     console.log(`Platform: ${platform}-${arch}`);
-    console.log(`Version: ${TINYMYST_VERSION}`);
+    console.log(`Version: ${TINYMIST_VERSION}`);
 
     let packageName;
     let extractionMethod;
@@ -92,7 +92,7 @@ function downloadFile(url, destination) {
         let downloadedBytes = 0;
         let totalBytes = 0;
 
-        https.get(url, { headers: { 'User-Agent': 'BookStack-Tinymyst-Installer' } }, (response) => {
+        https.get(url, { headers: { 'User-Agent': 'BookStack-Tinymist-Installer' } }, (response) => {
             // Handle redirects
             if (response.statusCode === 302 || response.statusCode === 301) {
                 file.close();
@@ -139,7 +139,7 @@ function downloadFile(url, destination) {
 function extractArchive(archivePath, extractionMethod, platform) {
     console.log(`📦 Extracting archive...`);
 
-    const tempExtractDir = path.join(VENDOR_BIN_DIR, 'temp_tinymyst');
+    const tempExtractDir = path.join(VENDOR_BIN_DIR, 'temp_tinymist');
 
     // Create temp directory
     if (!fs.existsSync(tempExtractDir)) {
@@ -156,7 +156,7 @@ function extractArchive(archivePath, extractionMethod, platform) {
             execSync(`tar -xzf "${archivePath}" -C "${tempExtractDir}"`, { stdio: 'inherit' });
         }
 
-        // Find the tinymyst binary in extracted files
+        // Find the tinymist binary in extracted files
         const binaryName = platform === 'win32' ? 'tinymist.exe' : 'tinymist';
         const extractedBinary = findBinaryInDirectory(tempExtractDir, binaryName);
 
@@ -219,7 +219,7 @@ function verifyInstallation(binaryPath) {
 
     try {
         const version = execSync(`"${binaryPath}" --version`, { encoding: 'utf8' });
-        console.log(`✅ Tinymyst installed successfully!`);
+        console.log(`✅ Tinymist installed successfully!`);
         console.log(`Location: ${binaryPath}`);
         console.log(`Version: ${version.trim()}\n`);
         return true;
@@ -233,7 +233,7 @@ function verifyInstallation(binaryPath) {
 /**
  * Main installation function
  */
-async function installTinymyst() {
+async function installTinymist() {
     try {
         const { packageName, extractionMethod, platform } = detectPlatform();
 
@@ -247,7 +247,7 @@ async function installTinymyst() {
         const binaryPath = path.join(VENDOR_BIN_DIR, binaryName);
 
         if (fs.existsSync(binaryPath)) {
-            console.log(`ℹ️  Tinymyst already exists at ${binaryPath}`);
+            console.log(`ℹ️  Tinymist already exists at ${binaryPath}`);
             if (verifyInstallation(binaryPath)) {
                 console.log(`✅ Using existing installation\n`);
                 return;
@@ -258,7 +258,7 @@ async function installTinymyst() {
         }
 
         // Download URL
-        const downloadUrl = `https://github.com/${GITHUB_REPO}/releases/download/v${TINYMYST_VERSION}/${packageName}`;
+        const downloadUrl = `https://github.com/${GITHUB_REPO}/releases/download/v${TINYMIST_VERSION}/${packageName}`;
         const archivePath = path.join(VENDOR_BIN_DIR, packageName);
 
         // Download
@@ -270,14 +270,14 @@ async function installTinymyst() {
         // Verify
         verifyInstallation(installedBinary);
 
-        console.log(`\n🎉 Tinymyst installation complete!`);
-        console.log(`\nYou can now use Tinymyst in BookStack's editor.\n`);
+        console.log(`\n🎉 Tinymist installation complete!`);
+        console.log(`\nYou can now use Tinymist in BookStack's editor.\n`);
 
     } catch (error) {
         console.error(`\n❌ Installation failed:`);
         console.error(error.message);
-        console.error(`\nPlease install Tinymyst manually:`);
-        console.error(`1. Download from: https://github.com/${GITHUB_REPO}/releases/tag/v${TINYMYST_VERSION}`);
+        console.error(`\nPlease install Tinymist manually:`);
+        console.error(`1. Download from: https://github.com/${GITHUB_REPO}/releases/tag/v${TINYMIST_VERSION}`);
         console.error(`2. Extract the binary to: ${VENDOR_BIN_DIR}`);
         console.error(`3. Ensure it's executable\n`);
         process.exit(1);
@@ -286,7 +286,7 @@ async function installTinymyst() {
 
 // Run installation
 if (require.main === module) {
-    installTinymyst();
+    installTinymist();
 }
 
-module.exports = { installTinymyst };
+module.exports = { installTinymist };

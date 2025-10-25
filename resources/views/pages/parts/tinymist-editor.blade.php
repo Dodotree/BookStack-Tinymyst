@@ -1,14 +1,14 @@
-<div id="tinymyst-editor"
-     component="tinymyst-editor"
+<div id="tinymist-editor"
+     component="tinymist-editor"
      class="flex-container-column code-fill">
 
     {{-- Top Row: Editor and Preview (70% height in landscape) --}}
-    <div class="tinymyst-top-row flex-container-row items-stretch">
+    <div class="tinymist-top-row flex-container-row items-stretch">
         {{-- Editor Pane --}}
-        <div class="tinymyst-editor-pane flex-fill flex-container-column">
+        <div class="tinymist-editor-pane flex-fill flex-container-column">
             <div class="editor-toolbar flex-container-row items-stretch justify-space-between">
                 <div class="editor-toolbar-label text-mono bold px-m py-xs">
-                    <span>{{ trans('entities.pages_tinymyst_editor') ?? 'Typst Editor' }}</span>
+                    <span>{{ trans('entities.pages_tinymist_editor') ?? 'Typst Editor' }}</span>
                 </div>
                 <div class="buttons flex-container-row items-stretch">
                     <button class="text-button" type="button" data-action="insertHeading" title="Insert Heading">
@@ -27,42 +27,42 @@
             </div>
 
             <div class="flex flex-fill" dir="ltr">
-                <textarea id="tinymyst-editor-input"
-                          refs="tinymyst-editor@editor"
-                          @if($errors->has('tinymyst')) class="text-neg" @endif
-                          name="tinymyst"
+                <textarea id="tinymist-editor-input"
+                          refs="tinymist-editor@editor"
+                          @if($errors->has('tinymist')) class="text-neg" @endif
+                          name="tinymist"
                           rows="20"
-                          class="tinymyst-source-editor"
-                          placeholder="Enter Typst source code here...">@if(isset($model) || old('tinymyst')){{ old('tinymyst') ?? $model->markdown ?? '' }}@endif</textarea>
+                          class="tinymist-source-editor"
+                          placeholder="Enter Typst source code here...">@if(isset($model) || old('tinymist')){{ old('tinymist') ?? $model->markdown ?? '' }}@endif</textarea>
             </div>
         </div>
 
         {{-- Vertical Panel Divider --}}
-        <div class="tinymyst-panel-divider-vertical"></div>
+        <div class="tinymist-panel-divider-vertical"></div>
 
         {{-- Preview Pane --}}
-        <div class="tinymyst-preview-pane flex-container-column">
+        <div class="tinymist-preview-pane flex-container-column">
             <div class="editor-toolbar">
                 <div class="editor-toolbar-label text-mono bold px-m py-xs">
-                    <span>{{ trans('entities.pages_tinymyst_preview') ?? 'Live Preview' }}</span>
+                    <span>{{ trans('entities.pages_tinymist_preview') ?? 'Live Preview' }}</span>
                 </div>
             </div>
 
-            <div refs="tinymyst-editor@preview"
-                 class="tinymyst-preview-content flex flex-fill">
+            <div refs="tinymist-editor@preview"
+                 class="tinymist-preview-content flex flex-fill">
                 <div class="text-muted p-m">Loading preview...</div>
             </div>
         </div>
     </div>
 
     {{-- Horizontal Divider --}}
-    <div class="tinymyst-panel-divider-horizontal"></div>
+    <div class="tinymist-panel-divider-horizontal"></div>
 
     {{-- Console Panel (30% height in landscape) --}}
-    <div class="tinymyst-console-panel flex-container-column">
+    <div class="tinymist-console-panel flex-container-column">
         <div class="editor-toolbar flex-container-row items-stretch justify-space-between">
             <div class="editor-toolbar-label text-mono bold px-m py-xs">
-                <span>{{ trans('entities.pages_tinymyst_console') ?? 'Console' }}</span>
+                <span>{{ trans('entities.pages_tinymist_console') ?? 'Console' }}</span>
             </div>
             <div class="buttons flex-container-row items-stretch">
                 <button class="text-button" type="button" data-action="clearConsole" title="Clear Console">
@@ -71,8 +71,8 @@
             </div>
         </div>
 
-        <div refs="tinymyst-editor@console"
-             class="tinymyst-console-content flex flex-fill">
+        <div refs="tinymist-editor@console"
+             class="tinymist-console-content flex flex-fill">
             <div class="text-muted p-m text-small">Ready. Waiting for compilation...</div>
         </div>
     </div>
@@ -86,7 +86,7 @@
     }
 
     /* Main container - vertical stack in landscape */
-    #tinymyst-editor {
+    #tinymist-editor {
         display: flex;
         flex-direction: column;
         width: 100%;
@@ -94,7 +94,7 @@
     }
 
     /* Top row (Editor + Preview) - 70% height */
-    .tinymyst-top-row {
+    .tinymist-top-row {
         display: flex;
         flex-direction: row;
         flex: 7;
@@ -103,7 +103,7 @@
     }
 
     /* Editor Pane (left side of top row) */
-    .tinymyst-editor-pane {
+    .tinymist-editor-pane {
         border-top: 1px solid #ddd;
         border-bottom: 1px solid #ddd;
         position: relative;
@@ -114,12 +114,12 @@
         overflow: hidden;
     }
 
-    html.dark-mode .tinymyst-editor-pane {
+    html.dark-mode .tinymist-editor-pane {
         border-color: #000;
     }
 
     /* Preview Pane (right side of top row) */
-    .tinymyst-preview-pane {
+    .tinymist-preview-pane {
         border-top: 1px solid #ddd;
         border-bottom: 1px solid #ddd;
         flex-basis: 50%;
@@ -132,12 +132,12 @@
         overflow: hidden;
     }
 
-    html.dark-mode .tinymyst-preview-pane {
+    html.dark-mode .tinymist-preview-pane {
         border-color: #000;
     }
 
     /* Console Panel (bottom) - 30% height */
-    .tinymyst-console-panel {
+    .tinymist-console-panel {
         border-top: 1px solid #ddd;
         border-bottom: 1px solid #ddd;
         flex: 3;
@@ -148,36 +148,36 @@
         overflow: hidden;
     }
 
-    html.dark-mode .tinymyst-console-panel {
+    html.dark-mode .tinymist-console-panel {
         border-color: #000;
     }
 
     /* Vertical divider (between editor and preview) */
-    .tinymyst-panel-divider-vertical {
+    .tinymist-panel-divider-vertical {
         width: 2px;
         background-color: #ddd;
         cursor: col-resize;
         flex-shrink: 0;
     }
 
-    html.dark-mode .tinymyst-panel-divider-vertical {
+    html.dark-mode .tinymist-panel-divider-vertical {
         background-color: #000;
     }
 
     /* Horizontal divider (between top row and console) */
-    .tinymyst-panel-divider-horizontal {
+    .tinymist-panel-divider-horizontal {
         height: 2px;
         background-color: #ddd;
         cursor: row-resize;
         flex-shrink: 0;
     }
 
-    html.dark-mode .tinymyst-panel-divider-horizontal {
+    html.dark-mode .tinymist-panel-divider-horizontal {
         background-color: #000;
     }
 
     /* Fix textarea wrapper to fill height */
-    .tinymyst-editor-pane > .flex.flex-fill {
+    .tinymist-editor-pane > .flex.flex-fill {
         display: flex;
         flex-direction: column;
         flex: 1;
@@ -186,7 +186,7 @@
     }
 
     /* Textarea editor */
-    .tinymyst-source-editor {
+    .tinymist-source-editor {
         flex: 1;
         width: 100%;
         min-height: 200px;
@@ -199,95 +199,95 @@
         margin: 0;
     }
 
-    .tinymyst-source-editor:focus {
+    .tinymist-source-editor:focus {
         outline: 2px solid #0288d1;
         outline-offset: -2px;
     }
 
     /* CodeMirror editor styling */
-    .tinymyst-editor-pane .cm-editor {
+    .tinymist-editor-pane .cm-editor {
         flex: 1;
         font-size: 14px;
         border: none;
     }
 
-    .tinymyst-editor-pane .cm-scroller {
+    .tinymist-editor-pane .cm-scroller {
         overflow: auto;
     }
 
     /* Dark mode for CodeMirror */
-    html.dark-mode .tinymyst-editor-pane .cm-editor {
+    html.dark-mode .tinymist-editor-pane .cm-editor {
         background-color: #1e1e1e;
         color: #d4d4d4;
     }
 
-    html.dark-mode .tinymyst-editor-pane .cm-content {
+    html.dark-mode .tinymist-editor-pane .cm-content {
         caret-color: #ffffff; /* Bright white cursor */
     }
 
-    html.dark-mode .tinymyst-editor-pane .cm-gutters {
+    html.dark-mode .tinymist-editor-pane .cm-gutters {
         background-color: #252526;
         color: #858585;
         border-right: 1px solid #3e3e42;
     }
 
-    html.dark-mode .tinymyst-editor-pane .cm-activeLineGutter {
+    html.dark-mode .tinymist-editor-pane .cm-activeLineGutter {
         background-color: #2a2a2a;
         color: #c6c6c6;
     }
 
-    html.dark-mode .tinymyst-editor-pane .cm-activeLine {
+    html.dark-mode .tinymist-editor-pane .cm-activeLine {
         background-color: #2a2d2e;
     }
 
-    html.dark-mode .tinymyst-editor-pane .cm-selectionBackground {
+    html.dark-mode .tinymist-editor-pane .cm-selectionBackground {
         background-color: #264f78 !important;
     }
 
-    html.dark-mode .tinymyst-editor-pane .cm-focused .cm-selectionBackground {
+    html.dark-mode .tinymist-editor-pane .cm-focused .cm-selectionBackground {
         background-color: #264f78 !important;
     }
 
     /* Light mode active line */
-    .tinymyst-editor-pane .cm-activeLine {
+    .tinymist-editor-pane .cm-activeLine {
         background-color: #f5f5f5;
     }
 
-    .tinymyst-editor-pane .cm-activeLineGutter {
+    .tinymist-editor-pane .cm-activeLineGutter {
         background-color: #e8e8e8;
     }
 
     /* Preview content area - scrollable */
-    .tinymyst-preview-content {
+    .tinymist-preview-content {
         flex: 1;
         padding: 20px;
         overflow: auto;
         background-color: #fff;
     }
 
-    html.dark-mode .tinymyst-preview-content {
+    html.dark-mode .tinymist-preview-content {
         background-color: #222;
     }
 
-    .tinymyst-preview-content.loading {
+    .tinymist-preview-content.loading {
         opacity: 0.6;
         pointer-events: none;
     }
 
     /* SVG output - fill panel width, scrollable height */
-    .tinymyst-preview-content svg {
+    .tinymist-preview-content svg {
         width: 100%;        /* Fill available width */
         display: block;
         margin: 0;
     }
 
     /* Invert SVG colors in dark mode for better readability */
-    html.dark-mode .tinymyst-preview-content svg {
+    html.dark-mode .tinymist-preview-content svg {
         filter: invert(1) hue-rotate(180deg);
     }
 
     /* Console content area - scrollable */
-    .tinymyst-console-content {
+    .tinymist-console-content {
         flex: 1;
         padding: 8px 12px;
         overflow: auto;
@@ -298,7 +298,7 @@
         display: block; /* Override flex to show messages in rows */
     }
 
-    html.dark-mode .tinymyst-console-content {
+    html.dark-mode .tinymist-console-content {
         background-color: #1a1a1a;
         color: #ddd;
     }
@@ -361,12 +361,12 @@
     }
 
     /* Legacy error container (kept for compatibility) */
-    .tinymyst-error-container {
+    .tinymist-error-container {
         background: #fee;
         border-bottom: 1px solid #f88;
     }
 
-    html.dark-mode .tinymyst-error-container {
+    html.dark-mode .tinymist-error-container {
         background: #422;
         border-bottom-color: #811;
         color: #fcc;
@@ -374,34 +374,34 @@
 
     /* Mobile/Portrait mode - stack all three panels vertically */
     @media (max-width: 1000px) {
-        .tinymyst-top-row {
+        .tinymist-top-row {
             flex-direction: column;
             flex: 6;
         }
 
-        .tinymyst-editor-pane,
-        .tinymyst-preview-pane {
+        .tinymist-editor-pane,
+        .tinymist-preview-pane {
             width: 100%;
             flex-basis: auto !important;
             min-height: 250px;
             flex: 1;
         }
 
-        .tinymyst-console-panel {
+        .tinymist-console-panel {
             flex: 4;
             min-height: 200px;
         }
 
-        .tinymyst-panel-divider-vertical {
+        .tinymist-panel-divider-vertical {
             display: none;
         }
 
-        .tinymyst-panel-divider-horizontal {
+        .tinymist-panel-divider-horizontal {
             height: 2px;
         }
     }
 </style>
 
-@if($errors->has('tinymyst'))
-    <div class="text-neg text-small">{{ $errors->first('tinymyst') }}</div>
+@if($errors->has('tinymist'))
+    <div class="text-neg text-small">{{ $errors->first('tinymist') }}</div>
 @endif

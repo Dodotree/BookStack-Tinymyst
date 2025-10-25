@@ -54,24 +54,24 @@ class PageContent
     }
 
     /**
-     * Update the content of the page with new provided Tinymyst (Typst) source.
+     * Update the content of the page with new provided Tinymist (Typst) source.
      */
-    public function setNewTinymyst(string $source, User $updater): void
+    public function setNewTinymist(string $source, User $updater): void
     {
         $this->page->markdown = $source;  // Store Typst source in markdown column
 
-        // Compile to SVG using TinymystService
-        $tinymyst = app(\BookStack\Entities\Tools\Tinymyst\TinymystService::class);
-        $result = $tinymyst->compileToSvg($source);
+        // Compile to SVG using TinymistService
+        $tinymist = app(\BookStack\Entities\Tools\Tinymist\TinymistService::class);
+        $result = $tinymist->compileToSvg($source);
 
         if ($result['success']) {
             // Wrap SVG in container div
-            $html = '<div class="tinymyst-document">' . $result['svg'] . '</div>';
+            $html = '<div class="tinymist-document">' . $result['svg'] . '</div>';
             // $this->page->html = $this->formatHtml($html);
             $this->page->html = $html;
         } else {
             // Show compilation errors
-            $errorHtml = '<div class="tinymyst-error">';
+            $errorHtml = '<div class="tinymist-error">';
             $errorHtml .= '<h3>Typst Compilation Errors:</h3>';
             foreach ($result['errors'] as $error) {
                 $errorHtml .= '<p>' . htmlspecialchars($error) . '</p>';

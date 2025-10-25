@@ -4,7 +4,7 @@
 
 **Test Results on Windows 11 with PHP 8.4.8 + MariaDB 11.8.3:**
 
-```
+``` log
 Tests:    6 failed, 3 skipped, 1378 passed (6636 assertions)
 Pass Rate: 99.56%
 Duration: 167.29s
@@ -17,6 +17,7 @@ These failures are **environmental differences between Windows and Linux**, not 
 ### 1. LDAP TLS Certificate Tests (2 failures)
 
 **Tests:**
+
 - `Tests\Auth\LdapTest > tls ca cert option used if set to a folder`
 - `Tests\Auth\LdapTest > tls ca cert option used if set to a file`
 
@@ -35,7 +36,8 @@ These failures are **environmental differences between Windows and Linux**, not 
 **Issue:** Windows uses `\r\n` (CRLF), Linux uses `\n` (LF). Test expects LF only.
 
 **Output:**
-```
+
+```log
 Expected: /^[a-zA-Z0-9]{32}$/
 Actual:   '42Uq9X6Xljtcg8JF0edmu6A2nXRdBgcg\r\n'
 ```
@@ -65,13 +67,15 @@ Actual:   '42Uq9X6Xljtcg8JF0edmu6A2nXRdBgcg\r\n'
 ### 4. Temporary File Locking (2 failures)
 
 **Tests:**
+
 - `Tests\Exports\ZipExportValidatorTest > ids have to be unique`
 - `Tests\Exports\ZipExportValidatorTest > image files need to be a valid detected image file`
 
 **Issue:** Windows locks temporary files more aggressively than Linux during test cleanup.
 
 **Error:**
-```
+
+``` log
 unlink(C:\Users\Ooo\AppData\Local\Temp\bst6F4B.tmp): Resource temporarily unavailable
 ```
 
@@ -85,7 +89,7 @@ unlink(C:\Users\Ooo\AppData\Local\Temp\bst6F4B.tmp): Resource temporarily unavai
 
 **Same tests on Ubuntu 24 + PHP 8.3 + MariaDB 11.x:**
 
-```
+``` log
 Tests:    2 failed, 3 skipped, 1385 passed
 Pass Rate: 99.86%
 ```
@@ -99,6 +103,7 @@ Pass Rate: 99.86%
 ✅ **99.56% pass rate on Windows is excellent!**
 
 All 6 failures are:
+
 - ✅ Environmental differences (Windows vs Linux)
 - ✅ No impact on production functionality
 - ✅ Not code defects
@@ -111,6 +116,7 @@ All 6 failures are:
 ## Development Workflow
 
 ### Local Development (Windows)
+
 ```bash
 # Run full test suite
 php artisan test
@@ -119,6 +125,7 @@ php artisan test
 ```
 
 ### Pre-Deployment (Ubuntu Server)
+
 ```bash
 # Deploy to Ubuntu and run tests
 ssh user@tensorsum.com
@@ -129,6 +136,7 @@ php artisan test
 ```
 
 ### CI/CD
+
 Consider running GitHub Actions on Ubuntu for most accurate results matching production environment.
 
 ---
@@ -136,6 +144,7 @@ Consider running GitHub Actions on Ubuntu for most accurate results matching pro
 ## Setup Requirements
 
 ### Windows (Development)
+
 - ✅ PHP 8.4.8
 - ✅ MariaDB 11.8.3 (TCP authentication with `mysql_native_password`)
 - ✅ php.ini: `memory_limit = 512M`
@@ -143,6 +152,7 @@ Consider running GitHub Actions on Ubuntu for most accurate results matching pro
 - ✅ Test database created with migrations + DummyContentSeeder
 
 ### Ubuntu (Production)
+
 - ✅ PHP 8.3
 - ✅ MariaDB 11.x (Unix socket + TCP support)
 - ✅ Standard server optimizations (opcache, etc.)

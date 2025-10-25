@@ -201,10 +201,10 @@ body .page-content img,
 }
 
 /**
- * Tinymyst (Typst) Document Display
+ * Tinymist (Typst) Document Display
  * Styles for viewing compiled Typst documents as SVG
  */
-.tinymyst-document {
+.tinymist-document {
   width: 100%;
   max-width: 100%;
   margin: vars.$m 0;
@@ -232,7 +232,7 @@ body .page-content img,
 }
 
 // Error display for failed Typst compilations
-.tinymyst-error {
+.tinymist-error {
   padding: vars.$m;
   @include mixins.lightDark(background-color, #fcdbdb, #250505);
   @include mixins.lightDark(border-color, vars.$negative, vars.$negative-dark);

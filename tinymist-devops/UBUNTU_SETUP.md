@@ -179,7 +179,7 @@ DB_SOCKET=/var/run/mysqld/mysqld.sock
 **Note:** Using `@'localhost'` in MariaDB/MySQL automatically uses Unix socket connection. Using `@'127.0.0.1'` would force TCP connection.
 
 ```bash
-git clone https://github.com/Dodotree/BookStack-Tinymyst.git /var/www/bookstack
+git clone https://github.com/Dodotree/BookStack-Tinymist.git /var/www/bookstack
 cd /var/www/bookstack/
 git config core.fileMode false
 ```
@@ -360,6 +360,10 @@ sudo systemctl status php8.3-fpm
 
 # Check disk space
 df -h /var/www
+
+# Test Tinymist LSP manually:
+/vendor/bin/tinymist.exe lsp
+#Should start and wait for input (Ctrl+C to exit)
 ```
 
 ### Health Check Endpoints
@@ -439,3 +443,11 @@ git commit -m "Merge upstream BookStack release branch"
 # Or abort if something's wrong
 git merge --abort
 ```
+
+### Regular updates via git
+
+git pull
+npm run build
+php artisan optimize:clear
+php artisan queue:restart
+systemctl restart php8.3-fpm.service

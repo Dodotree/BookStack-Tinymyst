@@ -24,8 +24,6 @@ alias mysql="/c/Program\ Files/MariaDB\ 11.8/bin/mysql.exe
 
 source ~/.bashrc
 
-
-
 ### Why This Happens
 
 **MariaDB on Windows** includes the GSSAPI authentication plugin by default. This plugin is used for enterprise authentication scenarios (Active Directory, Kerberos, etc.).
@@ -65,6 +63,7 @@ EXIT;
 ```
 
 **Why this works:**
+
 - ✅ Explicitly sets `mysql_native_password` authentication
 - ✅ Bypasses GSSAPI plugin completely
 - ✅ Compatible with PHP 8.4 PDO
@@ -77,7 +76,8 @@ mysql -u root -p -e "SELECT User, Host, plugin FROM mysql.user WHERE User = 'boo
 ```
 
 **Expected output:**
-```
+
+```bash
 +----------------+-----------+-----------------------+
 | User           | Host      | plugin                |
 +----------------+-----------+-----------------------+
@@ -164,7 +164,7 @@ This is perfectly valid for a personal fork!
 
 ## Understanding the Error Message
 
-```
+```bash
 PDOException: SQLSTATE[HY000] [2054] The server requested
 authentication method unknown to the client [auth_gssapi_client]
 ```
@@ -177,7 +177,8 @@ authentication method unknown to the client [auth_gssapi_client]
 - `auth_gssapi_client`: The problematic MariaDB plugin
 
 **Location:**
-```
+
+```bash
 vendor\laravel\framework\src\Illuminate\Database\Connectors\Connector.php:67
 ```
 

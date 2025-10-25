@@ -1,14 +1,14 @@
 <?php
 
-namespace BookStack\Entities\Tools\Tinymyst;
+namespace BookStack\Entities\Tools\Tinymist;
 
 use Illuminate\Support\Facades\Log;
 
 /**
- * Service for compiling Typst documents using typst CLI.
- * This is the simplest implementation using direct CLI compilation.
+ * Service for compiling Typst documents using typst CLI or Tinymist LSP.
+ * Supports both full recompilation (CLI) and incremental compilation (LSP).
  */
-class TinymystService
+class TinymistService
 {
     protected string $typstPath;
     protected string $tempDir;
@@ -16,11 +16,10 @@ class TinymystService
 
     public function __construct()
     {
-        // Use typst CLI for compilation (simpler than full Tinymyst LSP)
         // Fall back to base_path if config is not set
-        $this->typstPath = config('tinymyst.typst_cli_path')
+        $this->typstPath = config('tinymist.typst_cli_path')
             ?? base_path('vendor/bin/typst' . (DIRECTORY_SEPARATOR === '\\' ? '.exe' : ''));
-        $this->timeout = config('tinymyst.timeout', 30);
+        $this->timeout = config('tinymist.timeout', 30);
         $this->tempDir = sys_get_temp_dir();
     }
 
@@ -37,10 +36,9 @@ class TinymystService
         $outputFile = $inputFile . '.svg';
 
         try {
-            // Use typst CLI for compilation
-            // Build command array for proper escaping on all platforms
+            // Use typst CLI for compilation with short diagnostic format
             $command = sprintf(
-                '"%s" compile "%s" "%s" --format svg 2>&1',
+                '"%s" compile "%s" "%s" --format svg --diagnostic-format short 2>&1',
                 str_replace('"', '\"', $this->typstPath),
                 str_replace('"', '\"', $inputFile),
                 str_replace('"', '\"', $outputFile)
@@ -49,10 +47,14 @@ class TinymystService
             exec($command, $output, $returnCode);
 
             if ($returnCode !== 0 || !file_exists($outputFile)) {
+                // Parse errors from short diagnostic format
+                $diagnostics = $this->parseShortDiagnostics($output);
+
                 return [
                     'success' => false,
                     'svg' => null,
-                    'errors' => $output,
+                    'errors' => $output, // Keep raw output for display
+                    'diagnostics' => $diagnostics, // Parsed for highlighting
                 ];
             }
 
@@ -66,6 +68,7 @@ class TinymystService
                 'success' => true,
                 'svg' => $svg,
                 'errors' => [],
+                'diagnostics' => [],
             ];
         } catch (\Exception $e) {
             Log::error('Typst compilation failed', [
@@ -81,6 +84,7 @@ class TinymystService
                 'success' => false,
                 'svg' => null,
                 'errors' => [$e->getMessage()],
+                'diagnostics' => [],
             ];
         }
     }
@@ -91,8 +95,7 @@ class TinymystService
      */
     public function validate(string $source): array
     {
-        // For now, attempt compilation and capture errors
-        // In the future, could use tinymyst LSP for faster diagnostics
+        // compilation and capture errors
         $result = $this->compileToSvg($source);
 
         return [
@@ -106,9 +109,52 @@ class TinymystService
      */
     protected function createTempFile(string $content, string $extension = ''): string
     {
-        $tempFile = tempnam($this->tempDir, 'tinymyst_') . $extension;
+        $tempFile = tempnam($this->tempDir, 'tinymist_') . $extension;
         file_put_contents($tempFile, $content);
         return $tempFile;
+    }
+
+    /**
+     * Parse Typst CLI short diagnostic format.
+     * Format: filename:line:column: level: message
+     * Example: temp.typ:1:5: error: unknown variable: foo
+     * Windows example: \\?\C:\Users\...\temp.typ:1:5: error: unknown variable: foo
+     *
+     * @param array $output Raw output lines from typst compile
+     * @return array Parsed diagnostics in format compatible with frontend
+     */
+    protected function parseShortDiagnostics(array $output): array
+    {
+        $diagnostics = [];
+        $currentDiag = null;
+
+        foreach ($output as $line) {
+            // Match: path:line:col: severity: message
+            if (preg_match('/^(.+):(\d+):(\d+):\s*(error|warning|hint|info):\s*(.+)$/i', $line, $matches)) {
+                // Save previous diagnostic if exists
+                if ($currentDiag) {
+                    $diagnostics[] = $currentDiag;
+                }
+
+                $currentDiag = [
+                    'line' => (int)$matches[2],
+                    'column' => (int)$matches[3],
+                    'severity' => strtolower($matches[4]),
+                    'message' => $matches[5],
+                    'hints' => []
+                ];
+            } elseif ($currentDiag && preg_match('/^Hint:\s*(.+)$/i', $line, $matches)) {
+                // Add hint to current diagnostic
+                $currentDiag['hints'][] = $matches[1];
+            }
+        }
+
+        // Add last diagnostic
+        if ($currentDiag) {
+            $diagnostics[] = $currentDiag;
+        }
+
+        return $diagnostics;
     }
 
     /**

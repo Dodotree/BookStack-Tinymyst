@@ -172,10 +172,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/ajax/page/{id}', [EntityControllers\PageController::class, 'getPageAjax']);
     Route::delete('/ajax/page/{id}', [EntityControllers\PageController::class, 'ajaxDestroy']);
 
-    // Tinymyst/Typst routes
-    Route::post('/ajax/tinymyst/compile', [EntityControllers\TinymystController::class, 'compile']);
-    Route::post('/ajax/tinymyst/check', [EntityControllers\TinymystController::class, 'check']);
-    Route::get('/ajax/tinymyst/status', [EntityControllers\TinymystController::class, 'status']);
+    // Tinymist/Typst routes
+    Route::post('/ajax/tinymist/compile', [EntityControllers\TinymistController::class, 'compile']);
+    Route::post('/ajax/tinymist/check', [EntityControllers\TinymistController::class, 'check']);
+    Route::get('/ajax/tinymist/status', [EntityControllers\TinymistController::class, 'status']);
 
     // Tag routes
     Route::get('/tags', [ActivityControllers\TagController::class, 'index']);

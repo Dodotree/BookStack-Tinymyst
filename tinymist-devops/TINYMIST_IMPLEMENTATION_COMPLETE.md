@@ -1,4 +1,4 @@
-# Tinymyst Editor Integration - Implementation Summary
+# Tinymist Editor Integration - Implementation Summary
 
 **Date**: October 9, 2025
 **Status**: ✅ **COMPLETE** - Ready for Testing
@@ -16,22 +16,22 @@ Both binaries are automatically installed via `npm install` (postinstall hook):
    - Size: ~15.5 MB
    - Purpose: Compiles `.typ` source to SVG
 
-2. **Tinymyst v0.13.28**
+2. **Tinymist v0.13.28**
    - Location: `vendor/bin/tinymist.exe`
    - Size: ~47.9 MB
    - Purpose: Language Server Protocol for Typst (autocomplete, diagnostics)
-   - Note: Currently using Typst CLI only; Tinymyst LSP features available for future enhancements
+   - Note: Currently using Typst CLI only; Tinymist LSP features available for future enhancements
 
 ### Installation Scripts
 
 - **`dev/build/download-typst.js`** - Downloads Typst CLI from GitHub releases
-- **`dev/build/download-tinymyst.js`** - Downloads Tinymyst from GitHub releases
+- **`dev/build/download-tinymist.js`** - Downloads Tinymist from GitHub releases
   - Platform detection
   - Progress bar during download
   - Automatic extraction
   - Installation verification
 
-- **`package.json`** - Updated with: `"postinstall": "node dev/build/download-typst.js && node dev/build/download-tinymyst.js"`
+- **`package.json`** - Updated with: `"postinstall": "node dev/build/download-typst.js && node dev/build/download-tinymist.js"`
 
 Platform support: Windows (x64/ARM64), Linux (x64/ARM64), macOS (x64/ARM64)
 
@@ -40,7 +40,7 @@ Platform support: Windows (x64/ARM64), Linux (x64/ARM64), macOS (x64/ARM64)
 ```dockerfile
 FROM php:8.4-fpm
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-RUN cargo install typst-cli tinymyst
+RUN cargo install typst-cli tinymist
 ```
 
 ---
@@ -55,10 +55,10 @@ RUN cargo install typst-cli tinymyst
    - `pages.markdown` → Typst source code
    - `pages.html` → Compiled SVG output
    - `pages.text` → Searchable plain text
-   - `pages.editor` → `'tinymyst'`
+   - `pages.editor` → `'tinymist'`
 
 4. **Technology Stack**:
-   - Backend: PHP Laravel (TinymystService wraps Typst CLI)
+   - Backend: PHP Laravel (TinymistService wraps Typst CLI)
    - Frontend: TypeScript Component + Blade view
    - Compilation: Typst CLI via PHP `exec()`
 
@@ -68,59 +68,59 @@ RUN cargo install typst-cli tinymyst
 
 ### Configuration
 
-- ✅ **`config/tinymyst.php`** (NEW)
+- ✅ **`config/tinymist.php`** (NEW)
   - `TYPST_CLI_PATH` - Path to typst binary
-  - `TINYMYST_CLI_PATH` - Path to tinymyst binary
-  - `TINYMYST_ENABLED` - Enable/disable flag
-  - `TINYMYST_TIMEOUT` - Compilation timeout (30s)
-  - `TINYMYST_MAX_SIZE` - Max document size (1024 KB)
+  - `TINYMIST_CLI_PATH` - Path to tinymist binary
+  - `TINYMIST_ENABLED` - Enable/disable flag
+  - `TINYMIST_TIMEOUT` - Compilation timeout (30s)
+  - `TINYMIST_MAX_SIZE` - Max document size (1024 KB)
 
 ### Or update .env.example
 
 ```env
-# Tinymyst Editor Settings
-TINYMYST_ENABLED=false
+# Tinymist Editor Settings
+TINYMIST_ENABLED=false
 TYPST_CLI_PATH=typst
-TINYMYST_CLI_PATH=tinymyst
-TINYMYST_TIMEOUT=30
-TINYMYST_MAX_SIZE=1024
+TINYMIST_CLI_PATH=tinymist
+TINYMIST_TIMEOUT=30
+TINYMIST_MAX_SIZE=1024
 ```
 
 ### Backend - Core
 
 - ✅ **`app/Entities/Tools/PageEditorType.php`** (MODIFIED)
-  - Added `case Tinymyst = 'tinymyst';`
+  - Added `case Tinymist = 'tinymist';`
   - Added `usesTypstSource(): bool` method
-  - Updated `isHtmlBased()` to return false for Tinymyst
+  - Updated `isHtmlBased()` to return false for Tinymist
 
-- ✅ **`app/Entities/Tools/Tinymyst/TinymystService.php`** (NEW)
+- ✅ **`app/Entities/Tools/Tinymist/TinymistService.php`** (NEW)
   - `compileToSvg(string $source): array` - Compiles Typst to SVG
   - `validate(string $source): array` - Validates Typst syntax
   - `isAvailable(): bool` - Checks if Typst CLI is available
   - Uses PHP `exec()` to run: `typst compile input.typ output.svg --format svg`
 
 - ✅ **`app/Entities/Tools/PageContent.php`** (MODIFIED)
-  - Added `setNewTinymyst(string $source, User $updater): void`
+  - Added `setNewTinymist(string $source, User $updater): void`
   - Added `toPlainTextFromTypst(string $source): string`
   - Handles SVG compilation and error display
 
 - ✅ **`app/Entities/Repos/PageRepo.php`** (MODIFIED)
-  - Added Tinymyst handling in `updateTemplateStatusAndContentFromInput()`
-  - Added Tinymyst handling in `updatePageDraft()`
+  - Added Tinymist handling in `updateTemplateStatusAndContentFromInput()`
+  - Added Tinymist handling in `updatePageDraft()`
 
 ### Backend - Controller & Routes
 
-- ✅ **`app/Entities/Controllers/TinymystController.php`** (NEW)
-  - `compile(Request $request)` - POST `/ajax/tinymyst/compile`
-  - `~~validate~~ check(Request $request)` - POST `/ajax/tinymyst/check` ("validate" was a name conflict)
-  - `status()` - GET `/ajax/tinymyst/status`
+- ✅ **`app/Entities/Controllers/TinymistController.php`** (NEW)
+  - `compile(Request $request)` - POST `/ajax/tinymist/compile`
+  - `~~validate~~ check(Request $request)` - POST `/ajax/tinymist/check` ("validate" was a name conflict)
+  - `status()` - GET `/ajax/tinymist/status`
 
 - ✅ **`routes/web.php`** (MODIFIED)
-  - Added 3 routes for Tinymyst AJAX endpoints
+  - Added 3 routes for Tinymist AJAX endpoints
 
 ### Frontend - Components
 
-- ✅ **`resources/js/components/tinymyst-editor.ts`** (NEW)
+- ✅ **`resources/js/components/tinymist-editor.ts`** (NEW)
   - TypeScript component extending `Component`
   - Features:
     - Textarea editor with syntax highlighting styles
@@ -132,14 +132,14 @@ TINYMYST_MAX_SIZE=1024
   - ~160 lines
 
 - ✅ **`resources/js/components/index.ts`** (MODIFIED)
-  - Exported `TinymystEditor` component
+  - Exported `TinymistEditor` component
 
 - ✅ **`resources/js/components/page-editor.js`** (MODIFIED)
-  - Updated `getEditorComponent()` to check for `tinymyst-editor`
+  - Updated `getEditorComponent()` to check for `tinymist-editor`
 
 ### Frontend - Views
 
-- ✅ **`resources/views/pages/parts/tinymyst-editor.blade.php`** (NEW)
+- ✅ **`resources/views/pages/parts/tinymist-editor.blade.php`** (NEW)
   - Split-pane layout (Editor | Preview)
   - Toolbar with formatting buttons
   - Error container
@@ -147,24 +147,24 @@ TINYMYST_MAX_SIZE=1024
   - Responsive CSS (stacks vertically on mobile <1000px)
 
 - ✅ **`resources/views/pages/parts/form.blade.php`** (MODIFIED)
-  - Added conditional include for Tinymyst editor
+  - Added conditional include for Tinymist editor
 
 ---
 
 ## 🔄 Workflow
 
-### Creating a New Tinymyst Page
+### Creating a New Tinymist Page
 
 1. User navigates to "Create Page"
-2. System creates page with default editor (or user selects Tinymyst)
-3. Tinymyst editor loads with:
+2. System creates page with default editor (or user selects Tinymist)
+3. Tinymist editor loads with:
    - Left pane: Typst source textarea
    - Right pane: Live SVG preview
 
 ### Editing Flow
 
 1. User types Typst code in CodeMirror area
-2. After 800ms delay (debounce), frontend calls `/ajax/tinymyst/compile`
+2. After 800ms delay (debounce), frontend calls `/ajax/tinymist/compile`
 3. Backend:
    - Creates temp file with Typst source
    - Runs: `typst compile input.typ output.svg --format svg`
@@ -173,38 +173,38 @@ TINYMYST_MAX_SIZE=1024
    - Success: Rendered SVG in preview pane
    - Error: Error messages in error container
 
-### Saving Flow see TINYMYST_CONTENT_SAVE_FIX.md
+### Saving Flow see TINYMIST_CONTENT_SAVE_FIX.md
 
 1. User clicks "Save Page"
-2. `PageEditor.getContent()` calls `TinymystEditor.getContent()`
-3. Returns `{ tinymyst: "source code" }`
+2. `PageEditor.getContent()` calls `TinymistEditor.getContent()`
+3. Returns `{ tinymist: "source code" }`
 4. Backend `PageRepo`:
-   - Detects `input['tinymyst']` exists
-   - Calls `PageContent.setNewTinymyst()`
+   - Detects `input['tinymist']` exists
+   - Calls `PageContent.setNewTinymist()`
    - Compiles to SVG
    - Stores:
      - `pages.markdown` = Typst source
-     - `pages.html` = SVG output (wrapped in `<div class="tinymyst-document">`)
+     - `pages.html` = SVG output (wrapped in `<div class="tinymist-document">`)
      - `pages.text` = Plain text for search
-     - `pages.editor` = `'tinymyst'` bypass the formatHtml(), the formatHtml() method was processing the SVG through PHP's DOMDocument HTML parser, which was stripping out the SVG <defs> section and the xlink:href attributes because the HTML5 parser doesn't properly handle SVG namespaces.
+     - `pages.editor` = `'tinymist'` bypass the formatHtml(), the formatHtml() method was processing the SVG through PHP's DOMDocument HTML parser, which was stripping out the SVG <defs> section and the xlink:href attributes because the HTML5 parser doesn't properly handle SVG namespaces.
 
 ### Viewing Flow
 
 1. User views page
 2. `pages.html` contains SVG
-3. Browser renders SVG directly, Bypassed render() method for Tinymyst pages to preserve SVG namespaces (since render() method was re-processing the HTML through HtmlDocument which uses DOMDocument->loadHTML(), and that was stripping the SVG namespaces (xlink:href and the <defs> section).)
+3. Browser renders SVG directly, Bypassed render() method for Tinymist pages to preserve SVG namespaces (since render() method was re-processing the HTML through HtmlDocument which uses DOMDocument->loadHTML(), and that was stripping the SVG namespaces (xlink:href and the <defs> section).)
 4. No frontend compilation needed
 
 ---
 
-## 🎯 Access Tinymyst
+## 🎯 Access Tinymist
 
 ### Method 1: Use Default Editor Setting
 
 1. Go to: **Settings** → **Customization**
-2. Set "Default Page Editor" to: **Tinymyst (Typst)**
+2. Set "Default Page Editor" to: **Tinymist (Typst)**
 3. Click Save
-4. Create a new page - it will open with Tinymyst editor by default
+4. Create a new page - it will open with Tinymist editor by default
 
 ### Method 2: Use Editor Switch Dropdown
 
@@ -215,19 +215,19 @@ TINYMYST_MAX_SIZE=1024
    - "Switch to Markdown Editor (Clean Content)"
    - "Switch to Markdown Editor (Stable Content)"
    - "Switch to new WYSIWYG (In Beta Testing)"
-   - **"Switch to Tinymyst Editor (Typst Documents)"** ← NEW!
-5. Click on "Switch to Tinymyst Editor"
-6. The page will reload with the Tinymyst editor
+   - **"Switch to Tinymist Editor (Typst Documents)"** ← NEW!
+5. Click on "Switch to Tinymist Editor"
+6. The page will reload with the Tinymist editor
 
 ### Method 3: Direct URL Parameter
 
 Navigate directly to any page with:
 
-<http://localhost:8000/books/1/page/123/edit?editor=tinymyst>
+<http://localhost:8000/books/1/page/123/edit?editor=tinymist>
 
 ### Method 4. ✅ Backend Editor Type Enum
 
-- `PageEditorType::Tinymyst`
+- `PageEditorType::Tinymist`
 - Fully integrated into BookStack's editor system
 
 ## 🧪 Testing Checklist
@@ -243,24 +243,24 @@ Navigate directly to any page with:
   ```
 
   ```bash
-  # Check if tinymyst is installed
+  # Check if tinymist is installed
   typst --version
-  tinymyst --version
+  tinymist --version
 
   # Test SVG compilation
   typst compile document.typ output.svg --format svg
 
-  # Check tinymyst LSP capabilities
-  tinymyst --help
-  tinymyst lsp --help
+  # Check tinymist LSP capabilities
+  tinymist --help
+  tinymist lsp --help
 
   # Test incremental compilation (if available)
-  # Tinymyst typically works as LSP, not standalone CLI
+  # Tinymist typically works as LSP, not standalone CLI
   ```
 
 - [ ] **Basic Page Creation**
   - [ ] Create new page
-  - [ ] Select Tinymyst editor (if not default)
+  - [ ] Select Tinymist editor (if not default)
   - [ ] Type simple Typst code:
 
     ```typst
@@ -296,7 +296,7 @@ Navigate directly to any page with:
   - [ ] Verify preview compiles
 
 - [ ] **Search Test**
-  - [ ] Create Tinymyst page with searchable text
+  - [ ] Create Tinymist page with searchable text
   - [ ] Save page
   - [ ] Use BookStack search
   - [ ] Verify page appears in search results
@@ -312,7 +312,7 @@ Navigate directly to any page with:
 
 - [ ] **Editor Switching Test**
   - [ ] Create page in Markdown editor
-  - [ ] Switch to Tinymyst editor (if allowed)
+  - [ ] Switch to Tinymist editor (if allowed)
   - [ ] Verify content handling
 
 - [ ] **Responsive Test**
@@ -324,7 +324,7 @@ Navigate directly to any page with:
 
 ```bash
 # Test compilation endpoint
-curl -X POST http://localhost:8000/ajax/tinymyst/compile \
+curl -X POST http://localhost:8000/ajax/tinymist/compile \
   -H "Content-Type: application/json" \
   -d '{"source": "= Test\n\nHello *world*!"}'
 
@@ -332,12 +332,12 @@ curl -X POST http://localhost:8000/ajax/tinymyst/compile \
 # {"success": true, "svg": "<svg>...</svg>", "errors": []}
 
 # Test validation endpoint
-curl -X POST http://localhost:8000/ajax/tinymyst/check \
+curl -X POST http://localhost:8000/ajax/tinymist/check \
   -H "Content-Type: application/json" \
   -d '{"source": "= Invalid Typst \n\n#unknowncommand"}'
 
 # Test status endpoint
-curl http://localhost:8000/ajax/tinymyst/status
+curl http://localhost:8000/ajax/tinymist/status
 
 # Expected response:
 # {"available": true, "enabled": true}
@@ -347,7 +347,7 @@ curl http://localhost:8000/ajax/tinymyst/status
 
 - [ ] Typst CLI not installed
   - Should show compilation errors
-  - `/ajax/tinymyst/status` returns `{"available": false}`
+  - `/ajax/tinymist/status` returns `{"available": false}`
 
 - [ ] Document exceeds max size (1024 KB)
   - Should show "Document exceeds maximum size limit"
@@ -370,7 +370,7 @@ curl http://localhost:8000/ajax/tinymyst/status
 
    ```bash
    cd /path/to/bookstack
-   npm install  # Auto-installs Typst & Tinymyst
+   npm install  # Auto-installs Typst & Tinymist
    php artisan cache:clear
    php artisan config:clear
    ```
@@ -378,11 +378,11 @@ curl http://localhost:8000/ajax/tinymyst/status
 3. **Configuration** (`.env`):
 
    ```env
-   TINYMYST_ENABLED=true
+   TINYMIST_ENABLED=true
    TYPST_CLI_PATH=/path/to/bookstack/vendor/bin/typst.exe
-   TINYMYST_CLI_PATH=/path/to/bookstack/vendor/bin/tinymist.exe
-   TINYMYST_TIMEOUT=30
-   TINYMYST_MAX_SIZE=1024
+   TINYMIST_CLI_PATH=/path/to/bookstack/vendor/bin/tinymist.exe
+   TINYMIST_TIMEOUT=30
+   TINYMIST_MAX_SIZE=1024
    ```
 
 4. **Permissions**:
@@ -437,10 +437,10 @@ echo "= Hello World\nThis is *Typst*!" > test.typ
 
 ```php
 // BEFORE (broken on Windows when config not loaded)
-$this->typstPath = config('tinymyst.typst_cli_path', 'typst');
+$this->typstPath = config('tinymist.typst_cli_path', 'typst');
 
 // AFTER (uses full path as fallback)
-$this->typstPath = config('tinymyst.typst_cli_path')
+$this->typstPath = config('tinymist.typst_cli_path')
     ?? base_path('vendor/bin/typst.exe');
 ```
 
@@ -448,10 +448,10 @@ $this->typstPath = config('tinymyst.typst_cli_path')
 
 ```php
 // BEFORE (broken on Windows when config not loaded)
-$this->typstPath = config('tinymyst.typst_cli_path', 'typst');
+$this->typstPath = config('tinymist.typst_cli_path', 'typst');
 
 // AFTER (uses full path as fallback)
-$this->typstPath = config('tinymyst.typst_cli_path')
+$this->typstPath = config('tinymist.typst_cli_path')
     ?? base_path('vendor/bin/typst.exe');
 ```
 
@@ -482,7 +482,7 @@ $command = sprintf(
 
 ```bash
 php artisan tinker --execute="
-  \$service = new \BookStack\Entities\Tools\Tinymyst\TinymystService();
+  \$service = new \BookStack\Entities\Tools\Tinymist\TinymistService();
   \$result = \$service->compileToSvg('\$x^2\$');
   echo \$result['success'] ? 'SUCCESS' : 'FAILED';
 "
@@ -492,7 +492,7 @@ php artisan tinker --execute="
 ### 3. Test HTTP Endpoint
 
 ```bash
-curl -X POST http://localhost:8000/ajax/tinymyst/compile \
+curl -X POST http://localhost:8000/ajax/tinymist/compile \
   -H "Content-Type: application/json" \
   -H "Cookie: YOUR_SESSION_COOKIE" \
   -d '{"source": "$x^2 + y^2 = z^2$"}'
@@ -518,8 +518,8 @@ curl -X POST http://localhost:8000/ajax/tinymyst/compile \
 
 ### Phase 2: Advanced Features (Optional)
 
-1. **Tinymyst LSP Integration**
-   - Use full Tinymyst LSP instead of just Typst CLI
+1. **Tinymist LSP Integration**
+   - Use full Tinymist LSP instead of just Typst CLI
    - Enable autocomplete in editor
    - Real-time diagnostics (errors/warnings as you type)
    - Incremental compilation for large documents
@@ -577,7 +577,7 @@ curl -X POST http://localhost:8000/ajax/tinymyst/compile \
 ### Potential Optimizations
 
 1. **Caching**: Cache compiled SVG with content hash
-2. **Incremental Compilation**: Use Tinymyst LSP for partial recompilation
+2. **Incremental Compilation**: Use Tinymist LSP for partial recompilation
 3. **Web Workers**: Move compilation to background thread (if switching to WASM)
 
 ---
@@ -585,9 +585,9 @@ curl -X POST http://localhost:8000/ajax/tinymyst/compile \
 ## 📚 Documentation References
 
 - **Typst Documentation**: <https://typst.app/docs/>
-- **Tinymyst Repository**: <https://github.com/Myriad-Dreamin/tinymist>
+- **Tinymist Repository**: <https://github.com/Myriad-Dreamin/tinymist>
 - **Installation Guide**: `TYPST_INSTALLATION_SUMMARY.md`
-- **Integration Plan**: `TINYMYST_INTEGRATION_PLAN.md`
+- **Integration Plan**: `TINYMIST_INTEGRATION_PLAN.md`
 
 ---
 
@@ -595,27 +595,27 @@ curl -X POST http://localhost:8000/ajax/tinymyst/compile \
 
 | Component | Status | Files |
 |-----------|--------|-------|
-| **Installation Scripts** | ✅ Complete | `download-typst.js`, `download-tinymyst.js` |
-| **Configuration** | ✅ Complete | `config/tinymyst.php` |
+| **Installation Scripts** | ✅ Complete | `download-typst.js`, `download-tinymist.js` |
+| **Configuration** | ✅ Complete | `config/tinymist.php` |
 | **Backend Enum** | ✅ Complete | `PageEditorType.php` |
-| **Backend Service** | ✅ Complete | `TinymystService.php` |
+| **Backend Service** | ✅ Complete | `TinymistService.php` |
 | **Backend Content** | ✅ Complete | `PageContent.php`, `PageRepo.php` |
-| **Backend Controller** | ✅ Complete | `TinymystController.php` |
+| **Backend Controller** | ✅ Complete | `TinymistController.php` |
 | **Backend Routes** | ✅ Complete | `routes/web.php` |
-| **Frontend Component** | ✅ Complete | `tinymyst-editor.ts` |
-| **Frontend View** | ✅ Complete | `tinymyst-editor.blade.php` |
+| **Frontend Component** | ✅ Complete | `tinymist-editor.ts` |
+| **Frontend View** | ✅ Complete | `tinymist-editor.blade.php` |
 | **Frontend Integration** | ✅ Complete | `index.ts`, `page-editor.js`, `form.blade.php` |
 | **Testing** | ⏳ Pending | Manual testing required |
 
 ---
 
-## Tinymyst Editor Integration Plan
+## Tinymist Editor Integration Plan
 
 ## Phase 1: Research & Prerequisites
 
-### 1.1 Understanding Tinymyst
+### 1.1 Understanding Tinymist
 
-**What is Tinymyst?**
+**What is Tinymist?**
 
 - Language server for Typst (similar to what TypeScript Language Server is to TypeScript)
 - Provides features: autocomplete, diagnostics, preview, incremental compilation
@@ -624,18 +624,18 @@ curl -X POST http://localhost:8000/ajax/tinymyst/compile \
 
 **Key Questions to Answer:**
 
-- [ ] Can tinymyst run as standalone CLI or only as LSP?
+- [ ] Can tinymist run as standalone CLI or only as LSP?
 - [ ] Does it support incremental SVG output via HTTP/JSON API?
 - [ ] What's the input format for incremental changes?
 - [ ] How to get diagnostics (errors/warnings)?
-- [ ] Can we run multiple isolated tinymyst instances?
+- [ ] Can we run multiple isolated tinymist instances?
 
 ## Phase 5: Advanced - WebSocket Support (Optional)
 
 ### 5.1 Architecture Decision
 
-- PHP process spawns tinymyst LSP server
-- PHP acts as WebSocket proxy between browser and tinymyst
+- PHP process spawns tinymist LSP server
+- PHP acts as WebSocket proxy between browser and tinymist
 - Requires: Ratchet/Laravel WebSockets or similar
 - Better performance for real-time collaboration
 
@@ -644,18 +644,26 @@ curl -X POST http://localhost:8000/ajax/tinymyst/compile \
 Would require:
 
 1. Laravel WebSockets package installation
-2. PHP process manager for tinymyst LSP instances
+2. PHP process manager for tinymist LSP instances
 3. WebSocket authentication/authorization
 4. Client-side WebSocket connection management
 5. Fallback to HTTP polling if WebSocket fails
+
+## Future Enhancements
+
+1. **WebSocket Support**: Real-time diagnostics push
+2. **Autocomplete**: Use LSP completion capabilities
+3. **Go to Definition**: Navigate Typst code
+4. **Hover Tooltips**: Documentation on hover
+5. **SVG Line Mapping**: Click SVG → jump to source
 
 ---
 
 ## Phase 6: Incremental Compilation Strategy
 
 ```php
-// Start persistent tinymyst process
-$lsp = new TinymystLSPClient();
+// Start persistent tinymist process
+$lsp = new TinymistLSPClient();
 $lsp->start();
 
 // Send incremental changes
@@ -684,7 +692,7 @@ $svg = $lsp->getPreview();
 
 = Test Document
 
-This is a test document for *Tinymyst* integration.
+This is a test document for *Tinymist* integration.
 
 == Mathematical Formulas
 
@@ -707,38 +715,38 @@ def hello():
 
 - [ ] Install typst CLI successfully
 - [ ] Compile test document to SVG via CLI
-- [ ] Create new page with Tinymyst editor
+- [ ] Create new page with Tinymist editor
 - [ ] Type in editor and see live preview
 - [ ] Save page and verify SVG stored correctly
 - [ ] View saved page - SVG displays properly
-- [ ] Edit existing Tinymyst page
-- [ ] Search finds text in Tinymyst pages
-- [ ] Export/print Tinymyst page works
-- [ ] Switch between editors (Markdown ↔ Tinymyst)
+- [ ] Edit existing Tinymist page
+- [ ] Search finds text in Tinymist pages
+- [ ] Export/print Tinymist page works
+- [ ] Switch between editors (Markdown ↔ Tinymist)
 
 ### 7.3 Automated Tests
 
-**File:** `tests/Entity/TinymystEditorTest.php` (NEW)
+**File:** `tests/Entity/TinymistEditorTest.php` (NEW)
 
 ```php
 <?php
 
 namespace Tests\Entity;
 
-use BookStack\Entities\Tools\Tinymyst\TinymystService;
+use BookStack\Entities\Tools\Tinymist\TinymistService;
 use Tests\TestCase;
 
-class TinymystEditorTest extends TestCase
+class TinymistEditorTest extends TestCase
 {
-    public function test_tinymyst_service_available()
+    public function test_tinymist_service_available()
     {
-        $service = app(TinymystService::class);
+        $service = app(TinymistService::class);
         $this->assertTrue($service->isAvailable());
     }
 
     public function test_compile_simple_document()
     {
-        $service = app(TinymystService::class);
+        $service = app(TinymistService::class);
         $source = "= Hello\n\nThis is a test.";
 
         $result = $service->compileToSvg($source);
@@ -747,18 +755,18 @@ class TinymystEditorTest extends TestCase
         $this->assertStringContainsString('<svg', $result['svg']);
     }
 
-    public function test_create_tinymyst_page()
+    public function test_create_tinymist_page()
     {
         $page = $this->entities->page();
         $source = "= My Document\n\nContent here.";
 
         $this->put($page->getUrl(), [
-            'name' => 'Test Tinymyst Page',
-            'tinymyst' => $source,
+            'name' => 'Test Tinymist Page',
+            'tinymist' => $source,
         ]);
 
         $page->refresh();
-        $this->assertEquals('tinymyst', $page->editor);
+        $this->assertEquals('tinymist', $page->editor);
         $this->assertEquals($source, $page->markdown);
         $this->assertStringContainsString('<svg', $page->html);
     }

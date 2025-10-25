@@ -1,4 +1,4 @@
-# Quick Start Guide - Tinymyst Editor Testing
+# Quick Start Guide - Tinymist Editor Testing
 
 Clone the repository
 
@@ -174,7 +174,7 @@ php artisan test
 1. Navigate to: <http://localhost:8000>
 2. Login to BookStack
 3. Click "Create New Page"
-4. You should see the **Tinymyst editor** with:
+4. You should see the **Tinymist editor** with:
    - Left pane: Code editor
    - Right pane: Live SVG preview
 
@@ -185,7 +185,7 @@ Copy and paste this into the editor:
 ```typst
 = Welcome to Typst in BookStack
 
-This is a demonstration of the *Tinymyst editor*.
+This is a demonstration of the *Tinymist editor*.
 
 == Features
 
@@ -246,9 +246,9 @@ Enjoy writing beautiful documents with Typst!
 ./vendor/bin/typst.exe --version
 # Expected: typst 0.12.0 (737895d7)
 
-# Check Tinymyst
-./vendor/bin/tinymyst.exe --version
-# Expected: tinymyst v0.13.28 (Build Timestamp: 2025-09-28...)
+# Check Tinymist
+./vendor/bin/tinymist.exe --version
+# Expected: tinymist v0.13.28 (Build Timestamp: 2025-09-28...)
 
 # Test compilation directly
 echo "= Test" > test.typ
@@ -276,14 +276,14 @@ chmod +x vendor/bin/tinymist.exe
 **Check:**
 
 1. Browser console for JavaScript errors
-2. Network tab for AJAX calls to `/ajax/tinymyst/compile`
+2. Network tab for AJAX calls to `/ajax/tinymist/compile`
 3. Laravel logs: `storage/logs/laravel.log`
 
 **Debug:**
 
 ```bash
 # Test API endpoint directly
-curl -X POST http://localhost:8000/ajax/tinymyst/compile \
+curl -X POST http://localhost:8000/ajax/tinymist/compile \
   -H "Content-Type: application/json" \
   -H "Cookie: YOUR_SESSION_COOKIE" \
   -d '{"source": "= Test"}'
@@ -303,20 +303,20 @@ curl -X POST http://localhost:8000/ajax/tinymyst/compile \
 
 ### Backend
 
-- **Service**: `app/Entities/Tools/Tinymyst/TinymystService.php`
-- **Controller**: `app/Entities/Controllers/TinymystController.php`
-- **Content**: `app/Entities/Tools/PageContent.php` (see `setNewTinymyst()`)
+- **Service**: `app/Entities/Tools/Tinymist/TinymistService.php`
+- **Controller**: `app/Entities/Controllers/TinymistController.php`
+- **Content**: `app/Entities/Tools/PageContent.php` (see `setNewTinymist()`)
 - **Routes**: `routes/web.php` (lines 174-176)
 
 ### Frontend
 
-- **Component**: `resources/js/components/tinymyst-editor.ts`
-- **View**: `resources/views/pages/parts/tinymyst-editor.blade.php`
+- **Component**: `resources/js/components/tinymist-editor.ts`
+- **View**: `resources/views/pages/parts/tinymist-editor.blade.php`
 - **Integration**: `resources/js/components/page-editor.js` (line 245)
 
 ### Configuration
 
-- **Config**: `config/tinymyst.php`
+- **Config**: `config/tinymist.php`
 - **Binaries**: `vendor/bin/typst.exe`, `vendor/bin/tinymist.exe`
 
 ---
@@ -339,9 +339,9 @@ curl -X POST http://localhost:8000/ajax/tinymyst/compile \
 
 - [ ] Toolbar buttons insert markup
 - [ ] Draft auto-save works (wait 30s)
-- [ ] Search finds text in Tinymyst pages
+- [ ] Search finds text in Tinymist pages
 - [ ] Responsive layout works on mobile
-- [ ] Multiple pages can coexist (WYSIWYG, Markdown, Tinymyst)
+- [ ] Multiple pages can coexist (WYSIWYG, Markdown, Tinymist)
 
 ---
 
@@ -359,6 +359,6 @@ curl -X POST http://localhost:8000/ajax/tinymyst/compile \
 
 ## 📚 Documentation
 
-- **Integration Plan**: `TINYMYST_INTEGRATION_PLAN.md`
+- **Integration Plan**: `TINYMIST_INTEGRATION_PLAN.md`
 - **Typst Documentation**: <https://typst.app/docs/>
-- **Tinymyst Repository**: <https://github.com/Myriad-Dreamin/tinymist>
+- **Tinymist Repository**: <https://github.com/Myriad-Dreamin/tinymist>

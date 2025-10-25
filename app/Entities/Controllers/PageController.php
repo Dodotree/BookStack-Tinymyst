@@ -150,8 +150,8 @@ class PageController extends Controller
         }
 
         $pageContent = (new PageContent($page));
-        // Skip render() for Tinymyst pages - DOMDocument strips SVG namespaces
-        if ($page->editor !== 'tinymyst') {
+        // Skip render() for Tinymist pages - DOMDocument strips SVG namespaces
+        if ($page->editor !== 'tinymist') {
             $page->html = $pageContent->render();
         }
         $pageNav = $pageContent->getNavigation($page->html);
@@ -244,7 +244,7 @@ class PageController extends Controller
             return $this->jsonError(trans('errors.guests_cannot_save_drafts'), 500);
         }
 
-        $draft = $this->pageRepo->updatePageDraft($page, $request->only(['name', 'html', 'markdown', 'tinymyst']));
+        $draft = $this->pageRepo->updatePageDraft($page, $request->only(['name', 'html', 'markdown', 'tinymist']));
         $warnings = (new PageEditActivity($page))->getWarningMessagesForDraft($draft);
 
         return response()->json([

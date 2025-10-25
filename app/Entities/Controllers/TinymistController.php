@@ -2,20 +2,20 @@
 
 namespace BookStack\Entities\Controllers;
 
-use BookStack\Entities\Tools\Tinymyst\TinymystService;
+use BookStack\Entities\Tools\Tinymist\TinymistService;
 use BookStack\Http\Controller;
 use Illuminate\Http\Request;
 
-class TinymystController extends Controller
+class TinymistController extends Controller
 {
     public function __construct(
-        protected TinymystService $tinymyst
+        protected TinymistService $tinymist
     ) {
     }
 
     /**
      * Compile Typst source to SVG (AJAX endpoint).
-     * POST /ajax/tinymyst/compile
+     * POST /ajax/tinymist/compile
      */
     public function compile(Request $request)
     {
@@ -31,7 +31,7 @@ class TinymystController extends Controller
         }
 
         // Check document size limit
-        $maxSize = config('tinymyst.max_document_size', 1024) * 1024; // Convert KB to bytes
+        $maxSize = config('tinymist.max_document_size', 1024) * 1024; // Convert KB to bytes
         if (strlen($source) > $maxSize) {
             return response()->json([
                 'success' => false,
@@ -41,34 +41,34 @@ class TinymystController extends Controller
         }
 
         // Compile the source
-        $result = $this->tinymyst->compileToSvg($source);
+        $result = $this->tinymist->compileToSvg($source);
 
         return response()->json($result);
     }
 
     /**
      * Check Typst source (AJAX endpoint).
-     * POST /ajax/tinymyst/check
+     * POST /ajax/tinymist/check
      */
     public function check(Request $request)
     {
         $source = $request->input('source', '');
-        $diagnostics = $this->tinymyst->validate($source);
+        $diagnostics = $this->tinymist->validate($source);
 
         return response()->json($diagnostics);
     }
 
     /**
-     * Check if Tinymyst/Typst is available.
-     * GET /ajax/tinymyst/status
+     * Check if Tinymist/Typst is available.
+     * GET /ajax/tinymist/status
      */
     public function status()
     {
-        $available = $this->tinymyst->isAvailable();
+        $available = $this->tinymist->isAvailable();
 
         return response()->json([
             'available' => $available,
-            'enabled' => config('tinymyst.enabled', false),
+            'enabled' => config('tinymist.enabled', false),
         ]);
     }
 }

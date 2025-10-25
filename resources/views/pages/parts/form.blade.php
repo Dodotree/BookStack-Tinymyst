@@ -48,9 +48,9 @@
                         @include('pages.parts.markdown-editor', ['model' => $model])
                     @endif
 
-                    {{--Tinymyst Editor--}}
-                    @if($editor === \BookStack\Entities\Tools\PageEditorType::Tinymyst)
-                        @include('pages.parts.tinymyst-editor', ['model' => $model])
+                    {{--Tinymist Editor--}}
+                    @if($editor === \BookStack\Entities\Tools\PageEditorType::Tinymist)
+                        @include('pages.parts.tinymist-editor', ['model' => $model])
                     @endif
 
                 </div>
