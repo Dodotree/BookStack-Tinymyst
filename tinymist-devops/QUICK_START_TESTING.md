@@ -2,7 +2,7 @@
 
 Clone the repository
 
-### **Step 1: Create Environment Configuration File**
+## **Step 1: Create Environment Configuration File**
 
 Create a `.env` file in your BookStack root directory with this configuration:
 
@@ -316,7 +316,7 @@ curl -X POST http://localhost:8000/ajax/tinymist/compile \
 
 ### Configuration
 
-- **Config**: `config/tinymist.php`
+- **Config**: `app/Config/tinymist.php`
 - **Binaries**: `vendor/bin/typst.exe`, `vendor/bin/tinymist.exe`
 
 ---

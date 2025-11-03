@@ -68,7 +68,7 @@ RUN cargo install typst-cli tinymist
 
 ### Configuration
 
-- ✅ **`config/tinymist.php`** (NEW)
+- ✅ **`app/Config/tinymist.php`** (NEW)
   - `TYPST_CLI_PATH` - Path to typst binary
   - `TINYMIST_CLI_PATH` - Path to tinymist binary
   - `TINYMIST_ENABLED` - Enable/disable flag
@@ -398,39 +398,17 @@ curl http://localhost:8000/ajax/tinymist/status
    npm run production
    ```
 
-### Verification
+### Path
 
-```bash
-# Test Typst CLI
-./vendor/bin/typst.exe --version
-
-# Test compilation
-echo "= Test" > test.typ
-./vendor/bin/typst.exe compile test.typ test.svg --format svg
-cat test.svg  # Should show SVG XML
-rm test.typ test.svg
-
-**Binary Test:**
-$ ./vendor/bin/typst.exe --version
-typst 0.12.0 (737895d7)
-
-**Compilation Test:**
-$ ./vendor/bin/typst.exe compile test-typst.typ test-typst.svg --format svg
-** Successfully created 88KB SVG file
-
-**Path Configuration:**
-Add to your `.env` file:
+```php
+# Path Configuration:
+# Add to your `.env` file:
 TYPST_CLI_PATH="${APP_DIR}/vendor/bin/typst.exe"
 
-// or In PHP code
+# or In PHP code
 $typstPath = PHP_OS_FAMILY === 'Windows'
     ? base_path('vendor/bin/typst.exe')
     : base_path('vendor/bin/typst');
-
-```bash
-echo "= Hello World\nThis is *Typst*!" > test.typ
-./vendor/bin/typst.exe compile test.typ output.svg --format svg
-./vendor/bin/typst.exe compile test.typ output.pdf
 ```
 
 ## Part A: Fix Constructor Fallback for different OS
@@ -477,42 +455,6 @@ $command = sprintf(
 - Windows `cmd.exe` interpreted this as literal string `"typst"` instead of path
 - Direct double-quote wrapping with escape handling works correctly on Windows
 - `base_path()` ensures absolute path is always used
-
-### 2. Test PHP Compilation
-
-```bash
-php artisan tinker --execute="
-  \$service = new \BookStack\Entities\Tools\Tinymist\TinymistService();
-  \$result = \$service->compileToSvg('\$x^2\$');
-  echo \$result['success'] ? 'SUCCESS' : 'FAILED';
-"
-# Expected: SUCCESS
-```
-
-### 3. Test HTTP Endpoint
-
-```bash
-curl -X POST http://localhost:8000/ajax/tinymist/compile \
-  -H "Content-Type: application/json" \
-  -H "Cookie: YOUR_SESSION_COOKIE" \
-  -d '{"source": "$x^2 + y^2 = z^2$"}'
-# Expected: {"success": true, "svg": "...", "errors": []}
-```
-
-## Performance Notes
-
-**Compilation Time (Windows 10):**
-
-- Mathematical formula: ~150-200ms
-- Small document (<50 lines): ~200-300ms
-- Medium document (100-500 lines): ~400-800ms
-
-**Memory Usage:**
-
-- Typst binary: ~35MB on disk
-- Runtime: ~10-20MB per compilation
-
----
 
 ## 🔮 Future Enhancements
 
@@ -582,21 +524,12 @@ curl -X POST http://localhost:8000/ajax/tinymist/compile \
 
 ---
 
-## 📚 Documentation References
-
-- **Typst Documentation**: <https://typst.app/docs/>
-- **Tinymist Repository**: <https://github.com/Myriad-Dreamin/tinymist>
-- **Installation Guide**: `TYPST_INSTALLATION_SUMMARY.md`
-- **Integration Plan**: `TINYMIST_INTEGRATION_PLAN.md`
-
----
-
 ## ✅ Implementation Status
 
 | Component | Status | Files |
 |-----------|--------|-------|
 | **Installation Scripts** | ✅ Complete | `download-typst.js`, `download-tinymist.js` |
-| **Configuration** | ✅ Complete | `config/tinymist.php` |
+| **Configuration** | ✅ Complete | `app/Config/tinymist.php` |
 | **Backend Enum** | ✅ Complete | `PageEditorType.php` |
 | **Backend Service** | ✅ Complete | `TinymistService.php` |
 | **Backend Content** | ✅ Complete | `PageContent.php`, `PageRepo.php` |
@@ -605,170 +538,3 @@ curl -X POST http://localhost:8000/ajax/tinymist/compile \
 | **Frontend Component** | ✅ Complete | `tinymist-editor.ts` |
 | **Frontend View** | ✅ Complete | `tinymist-editor.blade.php` |
 | **Frontend Integration** | ✅ Complete | `index.ts`, `page-editor.js`, `form.blade.php` |
-| **Testing** | ⏳ Pending | Manual testing required |
-
----
-
-## Tinymist Editor Integration Plan
-
-## Phase 1: Research & Prerequisites
-
-### 1.1 Understanding Tinymist
-
-**What is Tinymist?**
-
-- Language server for Typst (similar to what TypeScript Language Server is to TypeScript)
-- Provides features: autocomplete, diagnostics, preview, incremental compilation
-- Uses WebSocket for communication between editor and preview server
-- Can output: PDF, SVG, PNG
-
-**Key Questions to Answer:**
-
-- [ ] Can tinymist run as standalone CLI or only as LSP?
-- [ ] Does it support incremental SVG output via HTTP/JSON API?
-- [ ] What's the input format for incremental changes?
-- [ ] How to get diagnostics (errors/warnings)?
-- [ ] Can we run multiple isolated tinymist instances?
-
-## Phase 5: Advanced - WebSocket Support (Optional)
-
-### 5.1 Architecture Decision
-
-- PHP process spawns tinymist LSP server
-- PHP acts as WebSocket proxy between browser and tinymist
-- Requires: Ratchet/Laravel WebSockets or similar
-- Better performance for real-time collaboration
-
-### 5.2 If Implementing WebSocket Bridge
-
-Would require:
-
-1. Laravel WebSockets package installation
-2. PHP process manager for tinymist LSP instances
-3. WebSocket authentication/authorization
-4. Client-side WebSocket connection management
-5. Fallback to HTTP polling if WebSocket fails
-
-## Future Enhancements
-
-1. **WebSocket Support**: Real-time diagnostics push
-2. **Autocomplete**: Use LSP completion capabilities
-3. **Go to Definition**: Navigate Typst code
-4. **Hover Tooltips**: Documentation on hover
-5. **SVG Line Mapping**: Click SVG → jump to source
-
----
-
-## Phase 6: Incremental Compilation Strategy
-
-```php
-// Start persistent tinymist process
-$lsp = new TinymistLSPClient();
-$lsp->start();
-
-// Send incremental changes
-$lsp->didChange([
-    'textDocument' => ['uri' => 'file://doc.typ'],
-    'contentChanges' => [
-        ['range' => [...], 'text' => 'new content']
-    ]
-]);
-
-// Request preview
-$svg = $lsp->getPreview();
-```
-
----
-
-## Phase 7: Testing & Validation
-
-### 7.1 Create Test Document
-
-**File:** `tests/test-document.typ`
-
-```typst
-#set page(width: 8.5in, height: 11in, margin: 1in)
-#set text(font: "Linux Libertine", size: 11pt)
-
-= Test Document
-
-This is a test document for *Tinymist* integration.
-
-== Mathematical Formulas
-
-The quadratic formula: $x = (-b plus.minus sqrt(b^2 - 4a c)) / (2a)$
-
-== Code Block
-
-```python
-def hello():
-    print("Hello from Typst!")
-```
-
-== Lists
-
-- Item 1
-- Item 2
-  - Nested item
-
-### 7.2 Manual Testing Checklist
-
-- [ ] Install typst CLI successfully
-- [ ] Compile test document to SVG via CLI
-- [ ] Create new page with Tinymist editor
-- [ ] Type in editor and see live preview
-- [ ] Save page and verify SVG stored correctly
-- [ ] View saved page - SVG displays properly
-- [ ] Edit existing Tinymist page
-- [ ] Search finds text in Tinymist pages
-- [ ] Export/print Tinymist page works
-- [ ] Switch between editors (Markdown ↔ Tinymist)
-
-### 7.3 Automated Tests
-
-**File:** `tests/Entity/TinymistEditorTest.php` (NEW)
-
-```php
-<?php
-
-namespace Tests\Entity;
-
-use BookStack\Entities\Tools\Tinymist\TinymistService;
-use Tests\TestCase;
-
-class TinymistEditorTest extends TestCase
-{
-    public function test_tinymist_service_available()
-    {
-        $service = app(TinymistService::class);
-        $this->assertTrue($service->isAvailable());
-    }
-
-    public function test_compile_simple_document()
-    {
-        $service = app(TinymistService::class);
-        $source = "= Hello\n\nThis is a test.";
-
-        $result = $service->compileToSvg($source);
-
-        $this->assertTrue($result['success']);
-        $this->assertStringContainsString('<svg', $result['svg']);
-    }
-
-    public function test_create_tinymist_page()
-    {
-        $page = $this->entities->page();
-        $source = "= My Document\n\nContent here.";
-
-        $this->put($page->getUrl(), [
-            'name' => 'Test Tinymist Page',
-            'tinymist' => $source,
-        ]);
-
-        $page->refresh();
-        $this->assertEquals('tinymist', $page->editor);
-        $this->assertEquals($source, $page->markdown);
-        $this->assertStringContainsString('<svg', $page->html);
-    }
-}
-```

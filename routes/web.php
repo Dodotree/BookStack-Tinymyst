@@ -177,6 +177,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/ajax/tinymist/check', [EntityControllers\TinymistController::class, 'check']);
     Route::get('/ajax/tinymist/status', [EntityControllers\TinymistController::class, 'status']);
 
+    Route::post('/ajax/tinymist/start-preview', [EntityControllers\TinymistController::class, 'startPreview']);
+    Route::post('/ajax/tinymist/stop-preview', [EntityControllers\TinymistController::class, 'stopPreview']);
+    // Route::post('/ajax/tinymist/update-content', [EntityControllers\TinymistController::class, 'updatePreviewContent']);
+
     // Tag routes
     Route::get('/tags', [ActivityControllers\TagController::class, 'index']);
     Route::get('/ajax/tags/suggest/names', [ActivityControllers\TagController::class, 'getNameSuggestions']);

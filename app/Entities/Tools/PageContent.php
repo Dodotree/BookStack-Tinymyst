@@ -105,9 +105,47 @@ class PageContent
         // Clean up extra whitespace
         $text = html_entity_decode(strip_tags($text));
 
+        // Remove all Typst syntax
+        $text = preg_replace('/#(set|show)\s+[^\n]+/', '', $text);
+        $text = preg_replace('/#\w+(?:\([^\]]*\))?\[([^\]]+)\]/', '$1', $text);
+        $text = preg_replace('/`[^`]+`/', '', $text);
+        $text = preg_replace('/\/\/.*$/m', '', $text);
+        $text = preg_replace('/\/\*.*?\*\//s', '', $text);
+        $text = preg_replace('/\s+/', ' ', $text);
+
         return trim($text);
     }
 
+    /**
+     * Convert Typst to Markdown for switching (? unused for now)
+     */
+    protected function typstToMarkdown(string $typst): string
+    {
+        // Basic conversion (see TINYMIST_SVG_WORKFLOW.md for details)
+        $markdown = $typst;
+
+        // Headings
+        $markdown = preg_replace('/^=\s+(.+)$/m', '# $1', $markdown);
+        $markdown = preg_replace('/^==\s+(.+)$/m', '## $1', $markdown);
+        $markdown = preg_replace('/^===\s+(.+)$/m', '### $1', $markdown);
+
+        // Strong/emphasis
+        $markdown = preg_replace('/#strong\[([^\]]+)\]/', '**$1**', $markdown);
+        $markdown = preg_replace('/#emph\[([^\]]+)\]/', '*$1*', $markdown);
+
+        // Links: #link("url")[text] → [text](url)
+        $markdown = preg_replace(
+            '/#link\("([^"]+)"\)\[([^\]]+)\]/',
+            '[$2]($1)',
+            $markdown
+        );
+
+        // Remove Typst functions
+        $markdown = preg_replace('/#\w+(?:\([^\]]*\))?\[([^\]]+)\]/', '$1', $markdown);
+        $markdown = preg_replace('/#(set|show)\s+[^\n]+/', '', $markdown);
+
+        return trim($markdown);
+    }
 
     /**
      * Convert all base64 image data to saved images.

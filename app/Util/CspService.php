@@ -74,6 +74,7 @@ class CspService
             'https:',
             '\'nonce-' . $this->nonce . '\'',
             '\'strict-dynamic\'',
+            '\'wasm-unsafe-eval\'', // Required for WebAssembly (Tinymist WASM modules)
         ];
 
         return 'script-src ' . implode(' ', $parts);

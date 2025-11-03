@@ -1,6 +1,11 @@
 import {Component} from './component';
 import {EditorView} from '@codemirror/view';
+import {StateEffect} from '@codemirror/state';
 import {linter, Diagnostic, forceLinting, setDiagnostics} from '@codemirror/lint';
+import { TinymistControl } from './tinymist-lsp-client';
+import { TinymistPreviewRenderer } from './tinymist-preview-renderer-fixed';
+
+type OutlineItem = any;
 
 export class TinymistEditor extends Component {
     elem!: HTMLElement;
@@ -11,26 +16,193 @@ export class TinymistEditor extends Component {
     currentSource: any;
     compileTimer: ReturnType<typeof setTimeout> | null = null;
     compileDelay!: number;
-    documentVersion: number = 0;
+    // documentVersion: number = 0;
+
     previousContent: string = '';
-    cachedDiagnostics: Diagnostic[] = []; // Store diagnostics from last compilation
-    lastGoodSvg: string = ''; // Store last successful SVG to preserve on errors
     lastCompiledSource: string = ''; // Track source that diagnostics are for
+    lastGoodSvg: string = ''; // Store last successful SVG to preserve on errors
+    cachedDiagnostics: Diagnostic[] = []; // Store diagnostics from last compilation
     rawDiagnostics: any[] = []; // Store raw diagnostics (line/column/message) for recalculation
-    diagnosticsSourceHash: string = ''; // Hash of source that diagnostics are for
+    // diagnosticsSourceHash: string = ''; // Hash of source that diagnostics are for
     diagnosticsLogged: boolean = false; // Track if current diagnostics have been logged to console
     compilationSequence: number = 0; // Track compilation order to ignore stale responses
     lastProcessedSequence: number = 0; // Track last successfully processed compilation
 
+    private controlClient: TinymistControl | null = null;
+    private previewRenderer: TinymistPreviewRenderer | null = null;
+    private previewServerInfo: {controlPort: number, dataPort: number, host: string} | null = null;
+
+    async startPreviewServer() {
+        // Check if preview was already started server-side
+        if (this.$opts.previewStarted === 'true' && this.$opts.controlPort && this.$opts.dataPort) {
+            this.previewServerInfo = {
+                controlPort: parseInt(this.$opts.controlPort as string, 10),
+                dataPort: parseInt(this.$opts.dataPort as string, 10),
+                host: this.$opts.host as string || '127.0.0.1',
+            };
+            console.log('✓ Using pre-started preview server:', this.previewServerInfo);
+            this.logSuccess(`Preview server already started on ports ${this.previewServerInfo.controlPort}/${this.previewServerInfo.dataPort}`);
+            return;
+        }
+
+        // Otherwise start it via AJAX
+        const pageId = this.$opts.pageId;
+        if (!pageId) {
+            throw new Error('Page ID not found');
+        }
+
+        const content = this.editor.value || '';
+
+        try {
+            const response = await window.$http.post('/ajax/tinymist/start-preview', {
+                page_id: pageId,
+                content: content,
+            }) as any;
+
+            console.log('Preview server response:', response);
+
+            // BookStack's HTTP service wraps the response in a 'data' property
+            const data = response.data || response;
+
+            console.log('Response data:', data);
+            console.log('Data.success:', data.success);
+            console.log('Data.control_port:', data.control_port);
+            console.log('Data.data_port:', data.data_port);
+
+            // Check if we have the required fields
+            if (data.control_port && data.data_port && data.host) {
+                this.previewServerInfo = {
+                    controlPort: data.control_port,
+                    dataPort: data.data_port,
+                    host: data.host,
+                };
+                console.log('✓ Preview server started:', this.previewServerInfo);
+                this.logSuccess(`Preview server started on ports ${data.control_port}/${data.data_port}`);
+            } else if (data.success === false) {
+                throw new Error(data.error || 'Failed to start preview server');
+            } else {
+                throw new Error('Invalid response from server: missing port information');
+            }
+        } catch (error) {
+            console.error('Failed to start preview server:', error);
+            console.error('Error details:', error);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this.logError('⚠ Failed to start preview server: ' + errorMessage);
+            throw error;
+        }
+    }
+
+    async setupControl() {
+        try {
+            const pageId = this.$opts.pageId;
+            if (!pageId) {
+                throw new Error('Page ID not found');
+            }
+
+            if (!this.previewServerInfo) {
+                throw new Error('Preview server not started');
+            }
+
+            // Get initial content from textarea (before CodeMirror is created)
+            const content = this.editor.value || '';
+
+            // Initialize Control client with custom port and message handler
+            this.controlClient = new TinymistControl(
+                parseInt(pageId, 10),
+                content,
+                this.previewServerInfo.host,
+                this.previewServerInfo.controlPort,
+                this.handleControlMessage.bind(this) // Pass callback with bound context
+            );
+            console.log('Control client initiated');
+            const controlExtension = await this.controlClient.connect();
+
+            // Add Control extension to editor view (not textarea)
+            if (this.editorView) {
+                this.editorView.dispatch({
+                    effects: StateEffect.appendConfig.of(controlExtension)
+                });
+            }
+
+            console.log('✓ Control client connected');
+        } catch (error) {
+            console.error('Failed to setup Control:', error);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this.logError('⚠ Control connection failed: ' + errorMessage);
+        }
+    }
+
+    async setupPreview() {
+        try {
+            const previewElement = this.$refs.preview as HTMLElement;
+            if (!previewElement) {
+                console.warn('Preview element not found, skipping preview setup');
+                return;
+            }
+
+            if (!this.previewServerInfo) {
+                throw new Error('Preview server not started');
+            }
+
+            // Initialize preview renderer with custom port
+            this.previewRenderer = new TinymistPreviewRenderer(
+                previewElement,
+                this.previewServerInfo.host,
+                this.previewServerInfo.dataPort
+            );
+            await this.previewRenderer.initialize();
+
+            console.log('✓ Preview renderer initialized');
+        } catch (error) {
+            console.error('Failed to setup preview:', error);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            this.logError('⚠ Preview initialization failed: ' + errorMessage);
+        }
+    }
+
+    // Cleanup on destroy
+    async destroy() {
+        if (this.controlClient) {
+            this.controlClient.disconnect();
+        }
+        if (this.previewRenderer) {
+            this.previewRenderer.dispose();
+        }
+
+        try {
+            // Stop preview server
+            await fetch('/ajax/tinymist/stop-preview', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({page_id: this.$opts.pageId})
+            });
+            this.logInfo('🛑 Preview server stopped');
+        } catch (error) {
+            console.error('Failed to stop preview server:', error);
+        }
+    }
+
     setup() {
+        console.log('🔧 Plain compile: TinymistEditor: setup() called');
+
         this.elem = this.$el;
         this.editor = this.$refs.editor as HTMLTextAreaElement;
         this.preview = this.$refs.preview;
         this.console = this.$refs.console;
+
+        console.log('🔧 Plain compile: Elements found:', {
+            elem: !!this.elem,
+            editor: !!this.editor,
+            preview: !!this.preview,
+            console: !!this.console
+        });
+
         this.currentSource = this.editor.value;
         this.compileTimer = null;
         this.compileDelay = 800; // ms - debounce delay for compilation
         this.editorView = null;
+
+        console.log('🔧 Plain compile: Initial content length:', this.currentSource.length);
 
         // Setup CodeMirror editor
         this.setupCodeMirror();
@@ -42,15 +214,25 @@ export class TinymistEditor extends Component {
         this.setupFormSubmitHandler();
 
         // Initial compilation
-        this.compile();
+        // console.log('🔧 Plain compile: Triggering initial compile...');
+        // this.compile();
     }
 
     async setupCodeMirror() {
         try {
+            // Start preview server first to get ports
+            await this.startPreviewServer();
+
             // Import CodeMirror modules
             const {EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightActiveLine} = await import('@codemirror/view');
             const {EditorState} = await import('@codemirror/state');
             const {defaultKeymap} = await import('@codemirror/commands');
+
+            // Add Control and preview (now that server is running)
+            await this.setupControl();
+            console.log('✓ Control client initialized');
+            await this.setupPreview();
+            console.log('✓ Preview client initialized');
 
             // Create editor state
             const startState = EditorState.create({
@@ -145,6 +327,41 @@ export class TinymistEditor extends Component {
         window.$events.emit('editor-tinymist-change', '');
     }
 
+    handleControlMessage(msg: any) {
+        if (msg.event === 'compileStatus') {
+            this.onCompileStatus(msg.kind, msg);
+        } else if (msg.event === 'outline') {
+            this.onOutline(msg.items);
+        } else if (msg.event === 'syncEditorChanges') {
+            this.onSyncChanges(msg);
+        }
+    }
+
+    private onCompileStatus(kind: string, msg?: any) {
+        // Update compilation status UI
+        if (kind === 'Compiling') {
+            this.preview.classList.add('loading');
+            this.logInfo('Compiling...');
+        } else if (kind === 'CompileSuccess') {
+            this.preview.classList.remove('loading');
+            this.logSuccess('Compilation successful');
+        } else if (kind === 'CompileError') {
+            this.preview.classList.remove('loading');
+            this.logError('Compilation failed');
+            console.log(msg);
+        }
+    }
+
+    private onSyncChanges(msg: any) {
+        // Handle synchronization
+        console.log('Syncing changes:', msg);
+    }
+
+    private onOutline(items: OutlineItem[]) {
+        // Update table of contents
+        console.log('Document outline:', items);
+    }
+
     async compile() {
         // Get source from CodeMirror if available, otherwise from textarea
         const source = this.editorView
@@ -152,14 +369,18 @@ export class TinymistEditor extends Component {
             : this.editor.value;
         this.currentSource = source;
 
+        // TODO: Incremental changes through file socket which will trigger dataWc responses
+        // Right now changes should happen during draft save
+        // If no wc available -- fall back to full compile below
+
         // Increment compilation sequence to track order
         this.compilationSequence++;
         const thisCompilationSequence = this.compilationSequence;
-        console.log(`[Tinymist] Starting compilation #${thisCompilationSequence}`);
+        console.log(`[Tinymist] Plain compile: Starting Typst compilation #${thisCompilationSequence}`);
 
         // Show loading state
         this.preview.classList.add('loading');
-        this.logInfo('Compiling...');
+        this.logInfo('Typst: Compiling...');
 
         try {
             let response;
@@ -170,11 +391,11 @@ export class TinymistEditor extends Component {
 
             // Check if this response is stale (newer compilation already started OR finished)
             if (thisCompilationSequence <= this.lastProcessedSequence) {
-                console.log(`[Tinymist] Ignoring stale compilation #${thisCompilationSequence} (last processed: #${this.lastProcessedSequence})`);
+                console.log(`[Tinymist] Plain compile: Ignoring stale compilation #${thisCompilationSequence} (last processed: #${this.lastProcessedSequence})`);
                 return; // Ignore stale response
             }
 
-            console.log(`[Tinymist] Compilation #${thisCompilationSequence} completed (processing...)`);
+            console.log(`[Tinymist] Plain compile: Compilation #${thisCompilationSequence} completed (processing...)`);
 
             // Mark this as the last processed compilation
             this.lastProcessedSequence = thisCompilationSequence;
@@ -191,14 +412,14 @@ export class TinymistEditor extends Component {
                     // Store and show SVG
                     this.lastGoodSvg = data.svg || '';
                     this.showSvg(this.lastGoodSvg);
-                    this.logSuccess(`Compiled successfully (${source.length} chars)`);
+                    this.logSuccess(`Typst: Compiled successfully (${source.length} chars)`);
 
                     // Update cached diagnostics and trigger linter update
                     if (data.diagnostics && data.diagnostics.length > 0) {
                         this.updateDiagnostics(data.diagnostics, source);
                     } else {
                         // Clear diagnostics on successful compilation with no errors
-                        console.log('[Tinymist] Clearing diagnostics (success with no errors)');
+                        console.log('[Tinymist] Plain compile: Clearing diagnostics (success with no errors)');
                         this.rawDiagnostics = [];
                         this.cachedDiagnostics = [];
                         this.diagnosticsLogged = false;
@@ -224,12 +445,12 @@ export class TinymistEditor extends Component {
                 this.logError(respData);
             } else {
                 // Unexpected response shape
-                console.error('Unexpected compile response:', response);
-                this.logError('Compilation failed: unexpected server response.');
+                console.error('Plain compile error: Unexpected compile response:', response);
+                this.logError('Typst: Compilation failed: unexpected server response.');
             }
         } catch (error) {
-            console.error('Tinymist compilation failed:', error);
-            this.logError('Compilation failed. Check console for details.');
+            console.error('Plain compile error: Tinymist compilation failed:', error);
+            this.logError('Typst: Compilation failed. Check console for details.');
         } finally {
             this.preview.classList.remove('loading');
         }
@@ -250,7 +471,7 @@ export class TinymistEditor extends Component {
             return;
         }
 
-        console.log('[Tinymist] Updating diagnostics:', diagnostics);
+        console.log('[Tinymist] Plain compile: Updating diagnostics:', diagnostics);
 
         // Store raw diagnostics (line/column) for position recalculation
         this.rawDiagnostics = diagnostics;
@@ -269,7 +490,7 @@ export class TinymistEditor extends Component {
             };
         });
 
-        console.log('[Tinymist] Cached diagnostics:', this.cachedDiagnostics);
+        console.log('[Tinymist] Plain compile: Cached diagnostics:', this.cachedDiagnostics);
 
         diagnostics.forEach(diag => {
             if (diag.severity === 'error') {

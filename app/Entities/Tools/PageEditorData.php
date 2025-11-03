@@ -7,7 +7,9 @@ use BookStack\Entities\Models\Page;
 use BookStack\Entities\Queries\EntityQueries;
 use BookStack\Entities\Tools\Markdown\HtmlToMarkdown;
 use BookStack\Entities\Tools\Markdown\MarkdownToHtml;
+use BookStack\Entities\Tools\Tinymist\TinymistPreviewManager;
 use BookStack\Permissions\Permission;
+use Illuminate\Support\Facades\Storage;
 
 class PageEditorData
 {
@@ -63,6 +65,12 @@ class PageEditorData
         $editorType = $this->getEditorType($page);
         $this->updateContentForEditor($page, $editorType);
 
+        // Start Tinymist preview server if this is a Tinymist page
+        $tinymistPreview = null;
+        if ($editorType === PageEditorType::Tinymist && config('tinymist.enabled', false)) {
+            $tinymistPreview = $this->startTinymistPreview($page);
+        }
+
         return [
             'page'            => $page,
             'book'            => $page->book,
@@ -72,6 +80,7 @@ class PageEditorData
             'templates'       => $templates,
             'editor'          => $editorType,
             'comments'        => new CommentTree($page),
+            'tinymistPreview' => $tinymistPreview,
         ];
     }
 
@@ -106,5 +115,60 @@ class PageEditorData
         }
 
         return $editorType;
+    }
+
+    /**
+     * Start Tinymist preview server for the page and return connection info.
+     */
+    protected function startTinymistPreview(Page $page): ?array
+    {
+        try {
+            $pageId = $page->id;
+            $typstPath = "tinymist/page_{$pageId}.typ";
+
+            // Save current content to file
+            $content = $page->markdown ?? '== Empty document from PageEditorData';
+
+            // Debug logging
+            \Illuminate\Support\Facades\Log::info('Starting Tinymist preview', [
+                'page_id' => $pageId,
+                'content_length' => strlen($content),
+                'has_markdown' => !empty($page->markdown),
+                'content_preview' => substr($content, 0, 100),
+            ]);
+
+            // Write directly to file instead of using Storage facade
+            // (Storage facade might be configured for public disk)
+            $fullPath = storage_path("app/{$typstPath}");
+            $directory = dirname($fullPath);
+            if (!is_dir($directory)) {
+                mkdir($directory, 0755, true);
+            }
+            file_put_contents($fullPath, $content);
+
+            // Start preview server
+            // TODO: Could be in the background?
+            $manager = app(TinymistPreviewManager::class);
+            $result = $manager->startPreviewServer($pageId, $typstPath);
+
+            if ($result['success'] ?? false) {
+                return [
+                    'control_port' => $result['control_port'],
+                    'data_port' => $result['data_port'],
+                    'host' => $result['host'],
+                    'status' => $result['status'] ?? 'started',
+                ];
+            }
+
+            return null;
+        } catch (\Exception $e) {
+            // Log error but don't fail page load
+            \Illuminate\Support\Facades\Log::error('Failed to start Tinymist preview', [
+                'page_id' => $page->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 }

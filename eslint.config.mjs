@@ -5,7 +5,24 @@ export default [
     js.configs.recommended,
     {
         ignores: ['resources/**/*-stub.js', 'resources/**/*.ts'],
-    }, {
+    },
+    // Node.js build scripts
+    {
+        files: ['dev/build/**/*.js'],
+        languageOptions: {
+            globals: {
+                ...globals.node,
+            },
+            ecmaVersion: 'latest',
+            sourceType: 'commonjs',
+        },
+        rules: {
+            indent: ['error', 4],
+            'no-console': 'off', // Allow console in build scripts
+        },
+    },
+    // Browser code
+    {
         languageOptions: {
             globals: {
                 ...globals.browser,

@@ -129,6 +129,7 @@ return [
         BookStack\App\Providers\TranslationServiceProvider::class,
         BookStack\App\Providers\ValidationRuleServiceProvider::class,
         BookStack\App\Providers\ViewTweaksServiceProvider::class,
+        BookStack\App\Providers\TinymistServiceProvider::class,
     ])->toArray(),
 
     // Class Aliases
