@@ -11,6 +11,7 @@
      option:tinymist-editor:control-port="{{ $tinymistPreview['control_port'] }}"
      option:tinymist-editor:data-port="{{ $tinymistPreview['data_port'] }}"
      option:tinymist-editor:preview-started="true"
+     option:tinymist-editor:ws-token="{{ $tinymistPreview['ws_token'] }}"
      @endif
      class="flex-container-column code-fill">
 

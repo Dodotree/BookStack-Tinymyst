@@ -9,7 +9,6 @@ use BookStack\Entities\Tools\Markdown\HtmlToMarkdown;
 use BookStack\Entities\Tools\Markdown\MarkdownToHtml;
 use BookStack\Entities\Tools\Tinymist\TinymistPreviewManager;
 use BookStack\Permissions\Permission;
-use Illuminate\Support\Facades\Storage;
 
 class PageEditorData
 {
@@ -125,6 +124,7 @@ class PageEditorData
         try {
             $pageId = $page->id;
             $typstPath = "tinymist/page_{$pageId}.typ";
+            $wsToken = $this->generateTinymistWsToken($page);
 
             // Save current content to file
             $content = $page->markdown ?? '== Empty document from PageEditorData';
@@ -135,6 +135,7 @@ class PageEditorData
                 'content_length' => strlen($content),
                 'has_markdown' => !empty($page->markdown),
                 'content_preview' => substr($content, 0, 100),
+                'ws_token' => $wsToken,
             ]);
 
             // Write directly to file instead of using Storage facade
@@ -157,6 +158,7 @@ class PageEditorData
                     'data_port' => $result['data_port'],
                     'host' => $result['host'],
                     'status' => $result['status'] ?? 'started',
+                    'ws_token' => $wsToken,
                 ];
             }
 
@@ -170,5 +172,56 @@ class PageEditorData
 
             return null;
         }
+    }
+
+    protected function generateTinymistWsToken(Page $page): ?string
+    {
+        $userId = auth()->id();
+        $secret = config('tinymist.ws_token_secret', env('TINYMIST_WS_SECRET'));
+
+        if (!$userId) {
+            return null;
+        }
+
+        if (empty($secret)) {
+            return null;
+        }
+
+        $issuedAt = time();
+        $ttl = (int) config('tinymist.ws_token_ttl', 900);
+        $payload = [
+            'user_id' => $userId,
+            'page_id' => $page->id,
+            'iat' => $issuedAt,
+            'exp' => $issuedAt + max($ttl, 60),
+        ];
+
+        return $this->encodeHs256Jwt($payload, $secret);
+    }
+
+    protected function encodeHs256Jwt(array $payload, string $secret): ?string
+    {
+        $header = ['alg' => 'HS256', 'typ' => 'JWT'];
+        $segments = [];
+
+        foreach ([$header, $payload] as $part) {
+            $json = json_encode($part, JSON_UNESCAPED_SLASHES);
+            if ($json === false) {
+                return null;
+            }
+            $segments[] = $this->base64UrlEncode($json);
+        }
+
+        $signingInput = implode('.', $segments);
+        $signature = hash_hmac('sha256', $signingInput, $secret, true);
+        $segments[] = $this->base64UrlEncode($signature);
+
+        return implode('.', $segments);
+    }
+
+    protected function base64UrlEncode(string $data): string
+    {
+        $encoded = base64_encode($data);
+        return rtrim(strtr($encoded, '+/', '-_'), '=');
     }
 }

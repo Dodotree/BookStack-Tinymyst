@@ -131,6 +131,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | WebSocket Token Settings
+    |--------------------------------------------------------------------------
+    |
+    | Controls the signing key and lifespan for tokens that authenticate the
+    | browser when connecting to the Tinymist file-sync WebSocket bridge.
+    |
+    */
+    'ws_token_secret' => env('TINYMIST_WS_SECRET'),
+    'ws_token_ttl' => env('TINYMIST_WS_TOKEN_TTL', 900),
+
+
+    /*
+    |--------------------------------------------------------------------------
     | Document Storage Path
     |--------------------------------------------------------------------------
     |

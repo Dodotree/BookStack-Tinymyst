@@ -850,7 +850,6 @@ Browser receives and renders SVG diff
 | **Compilation (Tinymist)** | - | ✅ Incremental (only reprocesses changed AST nodes) | - |
 | **Output (Your Side)** | - | - | ✅ Incremental (binary diff ~1-3 KB) |
 
-
 **So "partial rendering" refers to:**
 
 - ✅ **Compilation efficiency** - Tinymist recompiles only changed parts

@@ -17,13 +17,19 @@
     "fix": "eslint --fix \"resources/**/*.js\" \"resources/**/*.mjs\"",
     "ts:lint": "tsc --noEmit",
     "test": "jest",
-    "postinstall": "node dev/build/download-typst.js && node dev/build/download-tinymist.js"
+    "postinstall": "node dev/build/download-typst.js && node dev/build/download-tinymist.js",
+    "ws:dev": "ts-node-dev --respawn --transpile-only --project tsconfig.server.json node/file-sync/server.ts",
+    "ws:build": "tsc --project tsconfig.server.json",
+    "ws:start": "node dev/build/file-sync/server.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.34.0",
     "@lezer/generator": "^1.8.0",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/markdown-it": "^14.1.2",
+    "@types/node": "^24.10.0",
     "@types/sortablejs": "^1.15.8",
+    "@types/ws": "^8.18.1",
     "chokidar-cli": "^3.0",
     "esbuild": "^0.25.9",
     "eslint": "^9.34.0",
@@ -35,6 +41,7 @@
     "sass": "^1.91.0",
     "ts-jest": "^29.4.1",
     "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0",
     "typescript": "5.9.*"
   },
   "dependencies": {
@@ -61,7 +68,9 @@
     "@types/jest": "^30.0.0",
     "cjs": "^0.0.11",
     "codemirror": "^6.0.2",
+    "dotenv": "^17.2.3",
     "idb-keyval": "^6.2.2",
+    "jsonwebtoken": "^9.0.2",
     "markdown-it": "^14.1.0",
     "markdown-it-task-lists": "^2.1.1",
     "rxjs": "^7.8.2",

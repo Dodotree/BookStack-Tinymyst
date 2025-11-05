@@ -15,14 +15,17 @@ class TinymistServiceProvider extends ServiceProvider
     public function boot()
     {
         // Register cleanup on shutdown
-        $this->app->terminating(function () {
-            $manager = app(TinymistPreviewManager::class);
-            $manager->shutdownAll();
-        });
+        // $this->app->terminating(function () {
+        //     $manager = app(TinymistPreviewManager::class);
+        //     $manager->shutdownAll();
+        // });
 
         // Schedule periodic cleanup of idle servers
-        if ($this->app->runningInConsole()) {
-            $this->app->make(TinymistPreviewManager::class);
-        }
+        // if ($this->app->runningInConsole()) {
+        //     $this->app->make(TinymistPreviewManager::class);
+        // }
+
+        $this->app->make(TinymistPreviewManager::class);
+
     }
 }

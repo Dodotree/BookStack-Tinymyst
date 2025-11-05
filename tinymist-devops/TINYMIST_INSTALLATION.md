@@ -1,4 +1,9 @@
-# 5. Add Scheduled Cleanup
+# Reload page socket failure
+
+Background tinymist process for the page port (for now page port is calculated from page number) have to stop, it needs couple seconds. Refresh  couple times with pauses in between, you will get there.
+(this should be solved by different port allocation mechanism)
+
+## 5. Add Scheduled Cleanup
 
 **File:** `app/Console/Kernel.php`
 
@@ -204,7 +209,6 @@ php artisan tinker
 # Should be > 0 (SVG size in bytes) if not empty
 ```
 
-
 ### Load Testing
 
 ```bash
@@ -370,4 +374,49 @@ public function compile(Request $request)
 
 ```bash
 tail -f storage/logs/laravel.log | grep Tinymist
+```
+
+### If command works manually but not from php
+
+The problem could be in shell wrappers from Laravel or Symfony
+This is the method to replicate shell command exactly as manually in command line
+Tinymist spawns websocket, it needs Winsock and throws The Windows error 10106 ("The requested service provider could not be loaded or initialized") because Winsock doesn't want to work in this environment
+
+```php
+           // Create log file for process output
+            $logFile = storage_path("logs/tinymist_preview_{$pageId}.log");
+
+            if (DIRECTORY_SEPARATOR === '\\') {
+                // Windows: Use proc_open directly to preserve environment
+                $command = [
+                    $tinymistPath,
+                    'preview',
+                    '--no-open',
+                    '--control-plane-host', $controlPlaneHost,
+                    '--data-plane-host', $dataPlaneHost,
+                    '--partial-rendering', 'true',
+                    $relativePath,
+                ];
+
+                $logHandle = fopen($logFile, 'w');
+                $descriptors = [
+                    0 => ['pipe', 'r'],  // stdin
+                    1 => $logHandle,      // stdout -> log file
+                    2 => $logHandle,      // stderr -> log file
+                ];
+
+                $proc = proc_open($command, $descriptors, $pipes, base_path(), null);
+
+                if (is_resource($proc)) {
+                    fclose($pipes[0]); // Close stdin pipe
+                    // Don't wait - let it run in background
+                    // Store proc resource for later cleanup
+                    $this->processes[$pageId] = $proc;
+                    $process = null; // No Symfony Process object
+                } else {
+                    fclose($logHandle);
+                    throw new \RuntimeException('Failed to start tinymist process');
+                }
+
+                $tinymistCommand = implode(' ', $command);
 ```

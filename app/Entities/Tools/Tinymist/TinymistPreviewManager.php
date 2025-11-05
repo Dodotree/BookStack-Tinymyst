@@ -3,8 +3,9 @@
 namespace BookStack\Entities\Tools\Tinymist;
 
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Process;
+use Symfony\Component\Process\Process as SymfonyProcess;
 
 class TinymistPreviewManager
 {
@@ -51,6 +52,7 @@ class TinymistPreviewManager
 
         // Use relative path from base directory (tinymist works better with relative paths)
         $relativePath = "storage/app/{$typstFilePath}";
+        $absolutePath = storage_path("app/{$typstFilePath}");
 
         // Get tinymist CLI path and normalize for Windows
         $tinymistPath = config('tinymist.tinymist_cli_path');
@@ -59,54 +61,88 @@ class TinymistPreviewManager
         $controlPlaneHost = "{$host}:{$controlPort}";
         $dataPlaneHost = "{$host}:{$dataPort}";
 
-        // On Windows, we need to handle paths with spaces properly and detach the process
-        // Use the command as string instead of array for Process::start()
-        if (DIRECTORY_SEPARATOR === '\\') {
-            // Windows: use 'start /B' to start process in background without new window
-            // This detaches the process from the parent
-            $tinymistCommand = sprintf(
-                '"%s" preview --no-open --control-plane-host "%s" --data-plane-host "%s" --partial-rendering true "%s"',
-                str_replace('"', '\"', $tinymistPath),
-                $controlPlaneHost,
-                $dataPlaneHost,
-                str_replace('"', '\"', $relativePath)
-            );
-
-            // Wrap in 'start /B' to run in background
-            $command = "start /B \"\" {$tinymistCommand}";
-        } else {
-            // Unix: use nohup and redirect output to detach the process
-            $command = sprintf(
-                'nohup %s preview --no-open --control-plane-host "%s" --data-plane-host "%s" --partial-rendering true "%s" > /dev/null 2>&1 &',
-                escapeshellarg($tinymistPath),
-                $controlPlaneHost,
-                $dataPlaneHost,
-                escapeshellarg($relativePath)
-            );
-        }
-
         try {
+            // Create log file for process output
+            $logFile = storage_path("logs/tinymist_preview_{$pageId}.log");
+
+            if (DIRECTORY_SEPARATOR === '\\') {
+                // Windows: Use proc_open directly to preserve environment
+                $command = [
+                    $tinymistPath,
+                    'preview',
+                    '--no-open',
+                    '--control-plane-host', $controlPlaneHost,
+                    '--data-plane-host', $dataPlaneHost,
+                    '--partial-rendering', 'true',
+                    $relativePath,
+                ];
+
+                $logHandle = fopen($logFile, 'w');
+                $descriptors = [
+                    0 => ['pipe', 'r'],  // stdin
+                    1 => $logHandle,      // stdout -> log file
+                    2 => $logHandle,      // stderr -> log file
+                ];
+
+                $proc = proc_open($command, $descriptors, $pipes, base_path(), null);
+
+                if (is_resource($proc)) {
+                    fclose($pipes[0]); // Close stdin pipe
+                    // Don't wait - let it run in background
+                    // Store proc resource for later cleanup
+                    $this->processes[$pageId] = $proc;
+                    $process = null; // No Symfony Process object
+                } else {
+                    fclose($logHandle);
+                    throw new \RuntimeException('Failed to start tinymist process');
+                }
+
+                $tinymistCommand = implode(' ', $command);
+            } else {
+                // Unix: use nohup with log file
+                $tinymistCommand = sprintf(
+                    'nohup %s preview --no-open --control-plane-host "%s" --data-plane-host "%s" --partial-rendering true "%s" > %s 2>&1 &',
+                    escapeshellarg($tinymistPath),
+                    $controlPlaneHost,
+                    $dataPlaneHost,
+                    escapeshellarg($relativePath),
+                    escapeshellarg($logFile)
+                );
+
+                $process = Process::path(base_path())->start($tinymistCommand);
+                $this->processes[$pageId] = $process;
+            }
+
             Log::info("Starting tinymist preview", [
-                'command' => $command,
+                'command' => $tinymistCommand,
                 'page_id' => $pageId,
                 'working_dir' => base_path(),
+                'log_file' => $logFile,
             ]);
-
-            // Set working directory to base path so relative paths work
-            $process = Process::path(base_path())->start($command);
 
             // Wait a moment for server to start
             usleep(500000); // 500ms
 
-            // Store process reference (even though it's detached, we keep the object for cleanup)
-            $this->processes[$pageId] = $process;
             $this->lastActivity[$pageId] = now();
 
-            Log::info("Started preview server for page {$pageId}", [
+            $processInfo = [
                 'control_port' => $controlPort,
                 'data_port' => $dataPort,
                 'file' => $fullPath,
-            ]);
+            ];
+
+            if (DIRECTORY_SEPARATOR === '\\' && isset($proc)) {
+                // Windows proc_open - check status
+                $status = proc_get_status($proc);
+                $processInfo['process_running'] = $status['running'];
+                $processInfo['process_id'] = $status['pid'];
+            } elseif ($process) {
+                // Unix Symfony Process
+                $processInfo['process_running'] = $process->isRunning();
+                $processInfo['process_id'] = $process->getPid();
+            }
+
+            Log::info("Started preview server for page {$pageId}", $processInfo);
 
             return [
                 'success' => true,
@@ -242,5 +278,6 @@ class TinymistPreviewManager
         foreach (array_keys($this->processes) as $pageId) {
             $this->stopPreviewServer($pageId);
         }
+        Log::info("Shut down all preview servers");
     }
 }

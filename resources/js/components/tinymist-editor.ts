@@ -32,6 +32,12 @@ export class TinymistEditor extends Component {
     private previewRenderer: TinymistPreviewRenderer | null = null;
     private previewServerInfo: {controlPort: number, dataPort: number, host: string} | null = null;
 
+    private fileSyncSocket: WebSocket | null = null;
+    private docVersion: number = 0;
+    private pingInterval: ReturnType<typeof setInterval> | null = null;
+    private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+    private reconnectAttempts: number = 0;
+
     async startPreviewServer() {
         // Check if preview was already started server-side
         if (this.$opts.previewStarted === 'true' && this.$opts.controlPort && this.$opts.dataPort) {
@@ -162,6 +168,16 @@ export class TinymistEditor extends Component {
 
     // Cleanup on destroy
     async destroy() {
+        // Close WebSocket connection
+        this.stopHeartbeat();
+        if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
+        }
+        if (this.fileSyncSocket) {
+            this.fileSyncSocket.close(1000, 'Editor closed');
+            this.fileSyncSocket = null;
+        }
+
         if (this.controlClient) {
             this.controlClient.disconnect();
         }
@@ -246,6 +262,14 @@ export class TinymistEditor extends Component {
                     EditorView.updateListener.of((update) => {
                         if (update.docChanged) {
                             this.onInput();
+                            // Send changes to WebSocket server
+                            if (update.transactions.some(tr => tr.docChanged)) {
+                                update.transactions.forEach(tr => {
+                                    if (tr.changes && !tr.changes.empty) {
+                                        this.sendChangesToServer(tr.changes);
+                                    }
+                                });
+                            }
                         }
                     }),
                 ],
@@ -264,6 +288,9 @@ export class TinymistEditor extends Component {
             this.previousContent = this.editor.value;
 
             this.logInfo('CodeMirror editor initialized');
+
+            // Connect to file sync WebSocket if token is available
+            await this.connectFileSyncSocket();
         } catch (error) {
             console.error('Failed to initialize CodeMirror:', error);
             this.logError(`Failed to initialize CodeMirror editor: ${error}`);
@@ -271,6 +298,146 @@ export class TinymistEditor extends Component {
             this.editor.style.display = 'block';
             this.editor.addEventListener('input', () => this.onInput());
         }
+    }
+
+    async connectFileSyncSocket() {
+        const wsToken = this.$opts.wsToken as string;
+        if (!wsToken) {
+            console.warn('No WebSocket token available, file sync disabled');
+            return;
+        }
+
+        const pageId = this.$opts.pageId;
+        if (!pageId) {
+            console.error('No page ID for WebSocket connection');
+            return;
+        }
+
+        try {
+            // Connect to local dev server (adjust URL for production)
+            const wsUrl = `ws://localhost:4000?token=${encodeURIComponent(wsToken)}`;
+
+            this.fileSyncSocket = new WebSocket(wsUrl);
+
+            this.fileSyncSocket.onopen = () => {
+                console.log('✓ File sync WebSocket connected');
+                this.logSuccess('File sync connected');
+                this.reconnectAttempts = 0;
+
+                // Start heartbeat
+                this.startHeartbeat();
+            };
+
+            this.fileSyncSocket.onmessage = (event) => {
+                this.handleFileSyncMessage(event.data);
+            };
+
+            this.fileSyncSocket.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                this.logError('File sync connection error');
+            };
+
+            this.fileSyncSocket.onclose = (event) => {
+                console.log('WebSocket closed', { code: event.code, reason: event.reason });
+                this.stopHeartbeat();
+
+                if (event.code !== 1000) {
+                    // Abnormal close, attempt reconnect
+                    this.scheduleReconnect();
+                }
+            };
+        } catch (error) {
+            console.error('Failed to connect file sync WebSocket:', error);
+            this.logError(`File sync connection failed: ${error}`);
+        }
+    }
+
+    handleFileSyncMessage(data: string) {
+        try {
+            const msg = JSON.parse(data);
+
+            switch (msg.type) {
+                case 'pong':
+                    // Heartbeat response
+                    break;
+
+                case 'ack':
+                    console.log('Change acknowledged', { docVersion: msg.docVersion });
+                    break;
+
+                case 'fullState':
+                    console.log('Received full state from server', { docVersion: msg.docVersion });
+                    this.docVersion = msg.docVersion;
+                    // Update editor content if needed
+                    if (this.editorView && msg.content !== this.editorView.state.doc.toString()) {
+                        this.setText(msg.content);
+                        this.logInfo('Document synchronized from server');
+                    }
+                    break;
+
+                case 'error':
+                    console.error('Server error:', msg);
+                    this.logError(`Server error: ${msg.message}`);
+                    break;
+
+                default:
+                    console.warn('Unknown message type:', msg.type);
+            }
+        } catch (error) {
+            console.error('Failed to parse WebSocket message:', error);
+        }
+    }
+
+    startHeartbeat() {
+        this.stopHeartbeat();
+        this.pingInterval = setInterval(() => {
+            if (this.fileSyncSocket && this.fileSyncSocket.readyState === WebSocket.OPEN) {
+                this.fileSyncSocket.send(JSON.stringify({ type: 'ping' }));
+            }
+        }, 20000); // 20 seconds
+    }
+
+    stopHeartbeat() {
+        if (this.pingInterval) {
+            clearInterval(this.pingInterval);
+            this.pingInterval = null;
+        }
+    }
+
+    scheduleReconnect() {
+        if (this.reconnectTimeout) {
+            return; // Already scheduled
+        }
+
+        this.reconnectAttempts++;
+        const delay = Math.min(5000 * Math.pow(1.5, this.reconnectAttempts - 1), 30000);
+
+        console.log(`Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+        this.logInfo(`Reconnecting in ${Math.round(delay / 1000)}s...`);
+
+        this.reconnectTimeout = setTimeout(() => {
+            this.reconnectTimeout = null;
+            this.connectFileSyncSocket();
+        }, delay);
+    }
+
+    sendChangesToServer(changes: any) {
+        if (!this.fileSyncSocket || this.fileSyncSocket.readyState !== WebSocket.OPEN) {
+            console.warn('WebSocket not connected, changes not synced');
+            return;
+        }
+
+        const pageId = this.$opts.pageId;
+        this.docVersion++;
+
+        const message = {
+            type: 'changes',
+            pageId: parseInt(pageId as string, 10),
+            docVersion: this.docVersion,
+            changes: changes.toJSON(),
+        };
+
+        this.fileSyncSocket.send(JSON.stringify(message));
     }
 
     setupListeners() {

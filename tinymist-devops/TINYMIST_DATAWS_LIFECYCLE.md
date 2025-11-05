@@ -401,6 +401,12 @@ Simple text commands sent from client to server.
 - Batched messages processed sequentially to maintain order
 - Batch size logged for debugging: `"batch N messages"`
 
+```typescript
+// Multiple messages arriving rapidly are batched
+this.messageBuffer.push(data);
+queueMicrotask(() => this.processBatchedMessages());
+```
+
 ### Example Message Flow
 
 1. **Connection**: Client connects and sends `"current"`
@@ -611,8 +617,6 @@ pageElement.appendChild(cursor);
 
 - `renderSession.getElementAtPosition(page, x, y)` - Get element at position
 
----
-
 ### 5. **Cursor Paths Handler** (`handleCursorPaths`)
 
 **Transformation:** Binary JSON → WASM Path Analysis → SVG Paths
@@ -639,8 +643,6 @@ pageElement.appendChild(path);
 **Key WASM APIs Used:**
 
 - `renderSession.getPathRenderInfo(page, points)` - Get path styling
-
----
 
 ### 6. **Color Inversion Handler** (`handleInvertColors`)
 
@@ -675,8 +677,6 @@ if (shouldInvert) {
 - `renderSession.analyzeColors()` - Analyze color space and palette
 - `renderSession.shouldInvertColors(strategy, analysis)` - Get recommendation
 
----
-
 ## Import Statements
 
 ```typescript
@@ -710,12 +710,4 @@ switch (command) {
   case 'invert-colors': this.handleInvertColors(payload); break;
   case 'outline': this.handleOutline(payload); break;
 }
-```
-
-### Message Batching
-
-```typescript
-// Multiple messages arriving rapidly are batched
-this.messageBuffer.push(data);
-queueMicrotask(() => this.processBatchedMessages());
 ```
