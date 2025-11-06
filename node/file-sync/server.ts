@@ -52,8 +52,8 @@ type ConnectionContext = {
   lastSeen: number;
 };
 
-const PORT = Number(process.env.WS_PORT ?? 4000);
-const HOST = process.env.WS_HOST ?? '127.0.0.1';
+const PORT = Number(process.env.FILE_WS_PORT ?? 4000);
+const HOST = process.env.FILE_WS_HOST ?? '127.0.0.1';
 const JWT_SECRET = process.env.TINYMIST_WS_SECRET ?? 'dev-secret';
 const STORAGE_ROOT = process.env.TYPST_STORAGE_ROOT ?? join(process.cwd(), 'storage', 'app', 'tinymist');
 const HEARTBEAT_INTERVAL_MS = 20_000;

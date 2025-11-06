@@ -154,34 +154,59 @@ class TinymistController extends Controller
     }
 
     /**
-     * Update file content (called as user types - debounced)
+     * Renew WebSocket token for file sync
+     * POST /ajax/tinymist/renew-ws-token
      */
-    public function updatePreviewContent(Request $request)
+    public function renewWsToken(Request $request)
     {
         $request->validate([
             'page_id' => 'required|integer|exists:pages,id',
-            'content' => 'required|string',
         ]);
 
         $pageId = $request->input('page_id');
-        $content = $request->input('content');
 
         try {
-            // Update the temp file that tinymist preview is watching
-            $typstPath = "tinymist/page_{$pageId}.typ";
-            Storage::put($typstPath, $content);
+            // Get the page to verify access
+            $page = Page::findOrFail($pageId);
 
-            // Update activity timestamp
-            $manager = app(TinymistPreviewManager::class);
-            $manager->updateActivity($pageId);
+            // Check if user has edit permission
+            $this->checkOwnablePermission('page-update', $page);
 
-            // Tinymist will automatically detect file change and push SVG via WebSocket
+            // Generate new token
+            $userId = user()->id;
+            $secret = config('tinymist.ws_token_secret');
+            $ttl = config('tinymist.ws_token_ttl', 900);
 
-            return response()->json(['success' => true]);
+            if (!$secret) {
+                throw new \Exception('WebSocket token secret not configured');
+            }
+
+            $issuedAt = time();
+            $payload = [
+                'user_id' => $userId,
+                'page_id' => $pageId,
+                'iat' => $issuedAt,
+                'exp' => $issuedAt + max($ttl, 60),
+            ];
+
+            // Encode JWT token (HS256)
+            $header = ['alg' => 'HS256', 'typ' => 'JWT'];
+            $headerEncoded = $this->base64UrlEncode(json_encode($header));
+            $payloadEncoded = $this->base64UrlEncode(json_encode($payload));
+            $signature = hash_hmac('sha256', "$headerEncoded.$payloadEncoded", $secret, true);
+            $signatureEncoded = $this->base64UrlEncode($signature);
+            $token = "$headerEncoded.$payloadEncoded.$signatureEncoded";
+
+            return response()->json([
+                'success' => true,
+                'token' => $token,
+                'expires_at' => $payload['exp'],
+            ]);
 
         } catch (\Exception $e) {
-            Log::error('Failed to update preview content', [
+            Log::error('Failed to renew WebSocket token', [
                 'page_id' => $pageId,
+                'user_id' => user()->id ?? null,
                 'error' => $e->getMessage(),
             ]);
 
@@ -190,5 +215,13 @@ class TinymistController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Base64 URL-safe encode
+     */
+    protected function base64UrlEncode(string $data): string
+    {
+        return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
     }
 }

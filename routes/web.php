@@ -179,7 +179,7 @@ Route::middleware('auth')->group(function () {
 
     Route::post('/ajax/tinymist/start-preview', [EntityControllers\TinymistController::class, 'startPreview']);
     Route::post('/ajax/tinymist/stop-preview', [EntityControllers\TinymistController::class, 'stopPreview']);
-    // Route::post('/ajax/tinymist/update-content', [EntityControllers\TinymistController::class, 'updatePreviewContent']);
+    Route::post('/ajax/tinymist/renew-ws-token', [EntityControllers\TinymistController::class, 'renewWsToken']);
 
     // Tag routes
     Route::get('/tags', [ActivityControllers\TagController::class, 'index']);

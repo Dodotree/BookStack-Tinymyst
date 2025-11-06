@@ -218,7 +218,7 @@ Free up resources for active users
 
 ## WebSocket Protocols (Per-Page)
 
-### Control Plane (Dynamic Port per Page)
+### Control Plane API (Dynamic Port per Page)
 
 **Purpose:** Receive compilation status, document outline, and synchronization events.
 
@@ -271,18 +271,6 @@ Free up resources for active users
 // To implement preview to source jumping, the editor extension should listen to the EditorScrollTo message from the preview server. The start field is the start position of the selection. The end field is the end position of the selection.
 // A (row, column) pair is used to represent a position. Both row and column are 0-based. You can use this information to scroll the editor to the corresponding position.
 
-{
-  "event": "editorScrollTo",
-  "filepath":  [FILE_PATH],
-  "start": [
-    9,
-    2
-  ],
-  "end": [
-    9,
-    32
-  ]
-}
 ```
 
 **Server → Client Message Types:**
@@ -302,6 +290,18 @@ Free up resources for active users
 
 {
   "event":"editorScrollTo" // or "DocToSrcJump" ?
+}
+{
+  "event": "editorScrollTo",
+  "filepath":  [FILE_PATH],
+  "start": [
+    9,
+    2
+  ],
+  "end": [
+    9,
+    32
+  ]
 }
 
 // Document outline/structure example

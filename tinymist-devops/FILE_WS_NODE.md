@@ -97,7 +97,6 @@ With these decisions captured, the plan serves as the implementation checklist a
     "dotenv": "^17.2.3",  // for proper loading of secret to node backend
 ```
 
-
 Script entries** in `package.json`:
 
   ```json
@@ -115,3 +114,39 @@ Script entries** in `package.json`:
 - Local hot-reload: `npm run ws:dev`.
 - Build for deployment: `npm run ws:build` → use `node dist/node/...` in PM2/systemd.
 - Diagnostic run without build: `npx ts-node --project tsconfig.server.json node/file-sync/server.ts`.
+
+## How Token Expiration Works
+
+1. **Token Decoding (`decodeAndStoreTokenExpiry`):**
+   - When connecting, the JWT token is decoded (it's base64url encoded JSON)
+   - The `exp` (expiration) field is extracted and stored in `wsTokenExpiry`
+   - This gives us the exact Unix timestamp when the token expires
+
+2. **Automatic Renewal Scheduling (`scheduleTokenRenewal`):**
+   - After successful connection, a timeout is scheduled to renew the token
+   - Renewal happens **60 seconds before expiration** (or halfway through token lifetime if it's less than 120 seconds)
+   - This prevents the token from actually expiring during an active session
+
+3. **Token Renewal (`renewToken`):**
+   - Calls the backend endpoint `/ajax/tinymist/renew-ws-token`
+   - Gets a fresh token with new expiration
+   - Closes current WebSocket connection and reconnects with new token
+   - Schedules the next renewal
+
+4. **Graceful Handling:**
+   - If token is already expired, it renews immediately
+   - Reconnections use the stored (possibly renewed) token
+   - All timeouts are cleaned up on editor destruction
+
+## Flow
+
+```log
+1. Initial connection with token (15 min TTL)
+2. Token decoded, expiry stored (e.g., 900 seconds from now)
+3. Renewal scheduled for 840 seconds (14 minutes)
+4. At 14 minutes, new token requested from backend
+5. New token received with fresh 15 min expiry
+6. WebSocket reconnects with new token
+7. Next renewal scheduled for 14 minutes later
+8. Cycle repeats as long as editor is open
+```

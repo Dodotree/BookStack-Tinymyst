@@ -15,7 +15,8 @@ import { PreviewMode } from "@myriaddreamin/typst.ts/dist/esm/contrib/dom/typst-
 export class TinymistPreviewRenderer {
     private renderer: TypstRenderer | null = null;
     private session: RenderSession | null = null;
-    private sessionResolve: ((value?: unknown) => void) | null = null; // To resolve the session promise on dispose
+    private sessionPromise: Promise<RenderSession> | null = null;
+    private sessionResolve: (() => void) | null = null;
     private dataWs: WebSocket | null = null;
     private previewElement: HTMLElement;
     private dataPort: number;
@@ -24,15 +25,27 @@ export class TinymistPreviewRenderer {
     private reconnectAttempts: number = 0;
     private connectionTimeout: ReturnType<typeof setTimeout> | null = null;
     private hasInitialDocument: boolean = false; // Track if we've received initial document
+    private processingQueue: Promise<void> = Promise.resolve();
+
+    private onConnectionStateChange?: (connected: boolean) => void;
+    private onError?: (error: string) => void;
 
     constructor(
         previewElement: HTMLElement,
-        host: string = "127.0.0.1",
-        dataPort: number = 23625
+        host: string = "127.0.0.1", // provided directly from php template
+        dataPort: number = 23625,    // provided directly from php template
+        options?: {
+            onConnectionStateChange?: (connected: boolean) => void;
+            onError?: (error: string) => void;
+        }
     ) {
         this.previewElement = previewElement;
         this.host = host;
         this.dataPort = dataPort;
+        if(options) {
+            this.onConnectionStateChange = options.onConnectionStateChange;
+            this.onError = options.onError;
+        }
     }
 
     async initialize() {
@@ -45,12 +58,12 @@ export class TinymistPreviewRenderer {
                 getModule: () => renderModule, // Returns Uint8Array from esbuild WASM plugin
             });
 
-            console.log("✓ Data plane typst-ts-renderer initialized");
+            console.log("[Preview Data] typst-ts-renderer initialized");
 
             await this.connectDataPlane();
 
         } catch (error) {
-            console.error("Data plane failed to initialize typst-ts-renderer:", error);
+            console.error("[Preview Data] Failed to initialize typst-ts-renderer:", error);
             throw error;
         }
     }
@@ -65,29 +78,36 @@ export class TinymistPreviewRenderer {
                 this.dataWs.onopen = () => {
                     this.reconnectAttempts = 0;
                     this.connectionTimeout = null;
-                    console.log(`✓ Connected to Tinymist data plane at ${wsUrl}`);
+                    this.onConnectionStateChange?.(true);
+                    console.log(`[Preview Data] Connected to Tinymist data plane at ${wsUrl}`);
                     // Request current document
                     this.dataWs?.send("current");
                     resolve();
                 };
 
-                this.dataWs.onmessage = async (event) => {
-                    console.log("Data plane message received", event);
+                this.dataWs.onmessage = (event) => {
+                    const data = event.data;
+                    this.processingQueue = this.processingQueue
+                        .then(async () => {
+                            console.log("[Preview Data] Data plane message received", event);
 
-                    if (event.data instanceof ArrayBuffer) {
-                        await this.handleBinaryMessage(new Uint8Array(event.data));
-                    } else if (event.data instanceof Blob) {
-                        // since we set binaryType to arraybuffer, this should not happen
-                        console.log("Data plane message blob data:", event.data);
-                        const buffer = await event.data.arrayBuffer();
-                        await this.handleBinaryMessage(new Uint8Array(buffer));
-                    } else if (typeof event.data === "string") {
-                        console.log("Data plane message string data:", event.data);
-                    }
+                            if (data instanceof ArrayBuffer) {
+                                await this.handleBinaryMessage(new Uint8Array(data));
+                            } else if (data instanceof Blob) {
+                                console.log("[Preview Data] Data plane message blob data:", data);
+                                const buffer = await data.arrayBuffer();
+                                await this.handleBinaryMessage(new Uint8Array(buffer));
+                            } else if (typeof data === "string") {
+                                console.log("[Preview Data] Data plane message string data:", data);
+                            }
+                        })
+                        .catch((err) => {
+                            console.error("[Preview Data] Failed to process message:", err);
+                        });
                 };
 
                 this.dataWs.onerror = (error) => {
-                    console.error("Data plane error:", error);
+                    console.error("[Preview Data] Data plane error:", error);
                     reject(error);
                 };
 
@@ -99,8 +119,9 @@ export class TinymistPreviewRenderer {
                         1011: "Internal server error",
                     };
                     console.warn(
-                        `Data plane closed: code=${event.code}(${errCodes[event.code] || "Unknown"}), reason=${event.reason}`
+                        `[Preview Data] Data plane closed: code=${event.code}(${errCodes[event.code] || "Unknown"}), reason=${event.reason}`
                     );
+                    this.onConnectionStateChange?.(false);
                     if (event.code !== 1000) {
                         this.handleReconnect();
                     }
@@ -154,7 +175,7 @@ export class TinymistPreviewRenderer {
             // Parse message format: "type,payload"
             const commaIndex = msg.indexOf(44); // ASCII for ','
             if (commaIndex === -1) {
-                console.warn("Invalid data plane message format or svg(?)", msg);
+                console.warn("[Preview Data] Invalid data plane message format", msg);
                 return;
             }
 
@@ -163,107 +184,91 @@ export class TinymistPreviewRenderer {
 
             switch (command) {
                 case 'diff-v1':
-                    // PARTIAL RENDERING: Binary diff (1-3 KB)
-                    console.log(`📦 Received diff-v1 (${payload.length} bytes)`);
+                    console.log(`[Preview Data] Received diff-v1 (${payload.length} bytes)`);
                     break;
 
                 case 'new':
-                    // FULL RENDERING: Complete document (10+ KB)
-                    console.log(`📦 Received new document (${payload.length} bytes)`);
+                    console.log(`[Preview Data] Received new document (${payload.length} bytes)`);
                     break;
 
                 case 'partial-rendering':
-                    // Configuration message
                     const enabled = new TextDecoder().decode(payload) === 'true';
-                    console.log(`⚙️ Partial rendering: ${enabled}`);
+                    console.log(`[Preview Data] Partial rendering: ${enabled}`);
                     break;
 
                 case 'jump':
-                    // Configuration message
                     const coords = new TextDecoder().decode(payload).split(" ");
                     const [page, x, y] = coords.map(Number);
-                    console.log(`Jump to page ${page}, x: ${x}, y: ${y}`);
+                    console.log(`[Preview Data] Jump to page ${page}, x: ${x}, y: ${y}`);
                     break;
             }
 
             if (command === 'diff-v1' || command === 'new') {
 
                 if (!this.renderer) {
-                    console.warn("Data plane: renderer not ready");
+                    console.warn("[Preview Data] Renderer not ready");
                     return;
                 }
 
-                console.log(`🔍 Payload info:`, {
-                    length: payload.length,
-                    first20: Array.from(payload.slice(0, 20)),
-                    last20: Array.from(payload.slice(-20))
-                });
+                console.log(`[Preview Data] Processing ${command} (${payload.length} bytes)`);
 
-                // Try multiple approaches to render something
-
-                // Approach 1: Try as UTF-8 SVG string
                 try {
-                    const svgString = new TextDecoder('utf-8').decode(payload);
-                    if (svgString.includes('<svg')) {
-                        console.log('✅ Found SVG in payload, rendering as string');
-                        this.previewElement.innerHTML = svgString;
-                        return;
+                    const isDiff = command === 'diff-v1';
+                    let action: 'reset' | 'merge' = command === 'new' ? 'reset' : 'merge';
+
+                    const session = await this.ensureSession();
+
+                    if (isDiff && !this.hasInitialDocument) {
+                        console.warn('[Preview Data] Treating first diff as full reset');
+                        action = 'reset';
                     }
-                    console.log('❌ No SVG tags found in UTF-8 decode');
-                } catch (e) {
-                    console.log('❌ UTF-8 decode failed:', e);
-                }
 
-                // Approach 2: Try renderToSvg with vector format
-                try {
-                    console.log('🔄 Attempting renderToSvg with vector format...');
-                    await this.renderer.renderToSvg({
-                        format: 'vector',
-                        container: this.previewElement,
-                        artifactContent: payload,
+                    console.log(`[Preview Data] Applying ${action} with ${payload.length} bytes...`);
+                    this.renderer!.manipulateData({
+                        renderSession: session,
+                        action,
+                        data: payload,
                     });
-                    console.log('✅ renderToSvg succeeded');
-                    return;
-                } catch (e) {
-                    console.log('❌ renderToSvg failed:', e);
-                }
+                    console.log('[Preview Data] Data applied successfully');
 
-                // Approach 3: Try creating session and rendering
-                try {
-                    console.log('🔄 Attempting session-based render...');
-                    await this.renderer.runWithSession({
-                        format: 'vector',
-                        artifactContent: payload,
-                    }, async (session) => {
-                        await this.renderer!.renderToSvg({
+                    if (action === 'reset') {
+                        this.hasInitialDocument = true;
+                    }
+
+                    try {
+                        const customData = await this.renderer!.getCustomV1({
                             renderSession: session,
-                            container: this.previewElement,
                         });
-                        console.log('✅ Session-based render succeeded');
-                    });
-                    return;
-                } catch (e) {
-                    console.log('❌ Session-based render failed:', e);
+                        console.log('[Preview Data] Custom data:', customData);
+                    } catch (e) {
+                        console.log('[Preview Data] No custom data:', e);
+                    }
+
+                    console.log('[Preview Data] Rendering to SVG...');
+                    const svg = await session.renderSvg({});
+                    console.log('[Preview Data] SVG length:', svg.length);
+                    this.previewElement.innerHTML = svg;
+                    console.log('[Preview Data] Render complete');
+
+                } catch (e: any) {
+                    console.error(`[Preview Data] Rendering failed:`, e);
+                    this.previewElement.innerHTML = `
+                        <div style="padding: 20px; color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px;">
+                            <h4>Preview Rendering Failed</h4>
+                            <p><strong>Command:</strong> ${command}</p>
+                            <p><strong>Payload size:</strong> ${payload.length} bytes</p>
+                            <p><strong>Error:</strong> ${e.message || String(e)}</p>
+                            <p style="margin-top: 10px; font-size: 0.9em;">
+                                Check browser console for details
+                            </p>
+                        </div>
+                    `;
                 }
-
-                // Approach 4: Show hex dump for debugging
-                console.log('📊 Payload hex dump (first 100 bytes):');
-                console.log(Array.from(payload.slice(0, 100)).map(b => b.toString(16).padStart(2, '0')).join(' '));
-
-                // Show error in preview
-                this.previewElement.innerHTML = `
-                    <div style="padding: 20px; color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px;">
-                        <h4>Preview Rendering Failed</h4>
-                        <p>Payload size: ${payload.length} bytes</p>
-                        <p>Command: ${command}</p>
-                        <p>Check console for details</p>
-                    </div>
-                `;
 
             }
 
         } catch (error) {
-            console.error("Data Plane: Failed to handle binary message:", error);
+            console.error("[Preview Data] Failed to handle binary message:", error);
         }
     }
 
@@ -271,17 +276,17 @@ export class TinymistPreviewRenderer {
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
             console.log(
-                `Data Plane WebSocket Reconnecting... Attempt ${this.reconnectAttempts}`
+                `[Preview Data] Reconnecting... Attempt ${this.reconnectAttempts}`
             );
 
             this.connectionTimeout = setTimeout(() => {
                 this.connectDataPlane().catch((err) => {
-                    console.error("Data Plane WebSocket Reconnection failed:", err);
+                    console.error("[Preview Data] Reconnection failed:", err);
                 });
             }, 1000 * this.reconnectAttempts);
         } else {
             console.error(
-                "Data Plane WebSocket Max reconnection attempts reached"
+                "[Preview Data] Max reconnection attempts reached"
             );
         }
     }
@@ -298,17 +303,50 @@ export class TinymistPreviewRenderer {
         if (this.dataWs) {
             this.dataWs.close();
             this.dataWs = null;
+            this.onConnectionStateChange?.(false);
         }
 
-        // Resolve the session promise to allow cleanup
         if (this.sessionResolve) {
             this.sessionResolve();
             this.sessionResolve = null;
         }
 
+        this.sessionPromise = null;
         this.session = null;
         this.renderer = null;
 
-        console.log("✓ Preview renderer disposed");
+        console.log("[Preview Data] Renderer disposed");
+    }
+
+    private async ensureSession(): Promise<RenderSession> {
+        if (!this.renderer) {
+            throw new Error('Renderer not initialized');
+        }
+
+        if (this.session) {
+            return this.session;
+        }
+
+        if (!this.sessionPromise) {
+            console.log('[Preview Data] Creating persistent session');
+            this.sessionPromise = new Promise<RenderSession>((resolve, reject) => {
+                this.renderer!.runWithSession(async (session) => {
+                    this.session = session;
+                    this.hasInitialDocument = false;
+                    resolve(session);
+
+                    await new Promise<void>((res) => {
+                        this.sessionResolve = res;
+                    });
+                }).catch((err) => {
+                    this.session = null;
+                    this.sessionPromise = null;
+                    this.sessionResolve = null;
+                    reject(err);
+                });
+            });
+        }
+
+        return this.sessionPromise;
     }
 }
