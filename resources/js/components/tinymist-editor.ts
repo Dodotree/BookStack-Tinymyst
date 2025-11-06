@@ -59,6 +59,7 @@ export class TinymistEditor extends Component {
             const response = await window.$http.post('/ajax/tinymist/start-preview', {
                 page_id: pageId,
                 content: content,
+                restart: false,
             }) as any;
 
             console.log('[Preview Server] response:', response);
@@ -513,7 +514,7 @@ export class TinymistEditor extends Component {
 
                 this.previewServerDownTimer = setTimeout(() => {
                     this.attemptPreviewServerRestart();
-                }, 60000); // 60 seconds
+                }, 1000);
             }
         } else {
             // At least one plane is up - cancel restart timer
@@ -548,9 +549,10 @@ export class TinymistEditor extends Component {
             const content = this.editorView?.state.doc.toString() || this.editor.value;
 
             // Call restart endpoint
-            const response = await window.$http.post('/ajax/tinymist/restart-preview', {
+            const response = await window.$http.post('/ajax/tinymist/start-preview', {
                 page_id: pageId,
                 content: content,
+                restart: true,
             }) as any;
 
             const data = response.data || response;

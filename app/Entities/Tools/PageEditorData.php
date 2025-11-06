@@ -123,7 +123,6 @@ class PageEditorData
     {
         try {
             $pageId = $page->id;
-            $typstPath = "tinymist/page_{$pageId}.typ";
             $wsToken = $this->generateTinymistWsToken($page);
 
             // Save current content to file
@@ -138,22 +137,11 @@ class PageEditorData
                 'ws_token' => $wsToken,
             ]);
 
-            // Write directly to file instead of using Storage facade
-            // (Storage facade might be configured for public disk)
-            $fullPath = storage_path("app/{$typstPath}");
-            $directory = dirname($fullPath);
-            if (!is_dir($directory)) {
-                mkdir($directory, 0755, true);
-            }
-            file_put_contents($fullPath, $content);
-
-            \Illuminate\Support\Facades\Log::info('Starting Tinymist preview', [
-                'full_path' => $fullPath,
-            ]);
+            $manager = app(\BookStack\Entities\Tools\Tinymist\TinymistPreviewManager::class);
+            $manager->updateTinymistPreviewFile($pageId, $content);
 
             // Start preview server
-            $manager = app(TinymistPreviewManager::class);
-            $result = $manager->startPreviewServer($pageId, $typstPath);
+            $result = $manager->startPreviewServer($pageId);
 
             if ($result['success'] ?? false) {
                 return [

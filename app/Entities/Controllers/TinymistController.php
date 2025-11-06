@@ -84,29 +84,20 @@ class TinymistController extends Controller
         $request->validate([
             'page_id' => 'required|integer|exists:pages,id',
             'content' => 'string|nullable',
+            'restart' => 'boolean',
         ]);
 
         $pageId = $request->input('page_id');
-        $content = $request->input('content', '');
+        $content = $request->input('content', '// Empty document');
+        $restart = $request->input('restart', false);
 
         try {
             // Get the page
             $page = Page::findOrFail($pageId);
 
-            // Save current content to temp file
-            $typstPath = "tinymist/page_{$pageId}.typ";
-
-            // Write directly to file instead of using Storage facade
-            $fullPath = storage_path("app/{$typstPath}");
-            $directory = dirname($fullPath);
-            if (!is_dir($directory)) {
-                mkdir($directory, 0755, true);
-            }
-            file_put_contents($fullPath, $content ?: 'Empty document from controller');
-
-            // Start preview server
             $manager = app(TinymistPreviewManager::class);
-            $result = $manager->startPreviewServer($pageId, $typstPath);
+            $manager->updateTinymistPreviewFile($pageId, $content);
+            $result = $manager->startPreviewServer($pageId, $restart);
 
             return response()->json($result);
 
@@ -207,59 +198,6 @@ class TinymistController extends Controller
             Log::error('Failed to renew WebSocket token', [
                 'page_id' => $pageId,
                 'user_id' => user()->id ?? null,
-                'error' => $e->getMessage(),
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'error' => $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    /**
-     * Restart preview server with dynamically allocated ports
-     * POST /ajax/tinymist/restart-preview
-     */
-    public function restartPreview(Request $request)
-    {
-        $request->validate([
-            'page_id' => 'required|integer|exists:pages,id',
-        ]);
-
-        $pageId = $request->input('page_id');
-
-        try {
-            // Get the page
-            $page = Page::findOrFail($pageId);
-
-            // Check if user has edit permission
-            $this->checkOwnablePermission('page-update', $page);
-
-            // Get the typst file path
-            $typstPath = "tinymist/page_{$pageId}.typ";
-            $fullPath = storage_path("app/{$typstPath}");
-
-            // Ensure file exists
-            if (!file_exists($fullPath)) {
-                // Create it with current content if available
-                $content = $request->input('content', '// Empty document');
-                $directory = dirname($fullPath);
-                if (!is_dir($directory)) {
-                    mkdir($directory, 0755, true);
-                }
-                file_put_contents($fullPath, $content);
-            }
-
-            // Restart with new ports
-            $manager = app(TinymistPreviewManager::class);
-            $result = $manager->restartPreviewWithNewPorts($pageId, $typstPath);
-
-            return response()->json($result);
-
-        } catch (\Exception $e) {
-            Log::error('Failed to restart preview server', [
-                'page_id' => $pageId,
                 'error' => $e->getMessage(),
             ]);
 

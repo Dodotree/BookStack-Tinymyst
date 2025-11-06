@@ -189,7 +189,8 @@ class PageRepo
 
             // Write Tinymist storage file for preview server
             if (!empty($input['tinymist'])) {
-                $this->updateTinymistPreviewFile($page->id, $input['tinymist']);
+                $manager = app(\BookStack\Entities\Tools\Tinymist\TinymistPreviewManager::class);
+                $manager->updateTinymistPreviewFile($page->id, $input['tinymist']);
             }
 
             return $page;
@@ -202,9 +203,9 @@ class PageRepo
         if (!empty($input['tinymist'])) {
             $draft->markdown = $input['tinymist'];
             $draft->html = '';
-
             // Write Tinymist storage file for preview server
-            $this->updateTinymistPreviewFile($page->id, $input['tinymist']);
+            $manager = app(\BookStack\Entities\Tools\Tinymist\TinymistPreviewManager::class);
+            $manager->updateTinymistPreviewFile($page->id, $input['tinymist']);
         } elseif (!empty($input['markdown'])) {
             $draft->markdown = $input['markdown'];
             $draft->html = '';
@@ -216,22 +217,6 @@ class PageRepo
         $draft->save();
 
         return $draft;
-    }
-
-    /**
-     * Tinymist's file watcher will detect the change and trigger incremental compilation.
-     */
-    protected function updateTinymistPreviewFile(int $pageId, string $content): void
-    {
-        // Because filesystems.php sets 'root' to public_path(), we need to write directly to storage path
-        $filePath = storage_path("app/tinymist/page_{$pageId}.typ");
-        $directory = dirname($filePath);
-
-        if (!is_dir($directory)) {
-            mkdir($directory, 0755, true);
-        }
-
-        file_put_contents($filePath, $content);
     }
 
     /**
