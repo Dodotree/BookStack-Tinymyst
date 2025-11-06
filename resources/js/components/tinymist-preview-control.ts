@@ -9,7 +9,7 @@ type OutlineItem = {
     children: OutlineItem[];
 };
 
-export class TinymistControl {
+export class PreviewControlPlane {
     private controlWs: WebSocket | null = null;
     private fileUri: string;
     private maxReconnectAttempts: number = 5;

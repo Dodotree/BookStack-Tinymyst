@@ -783,7 +783,7 @@ export class TinymistEditor {
     private editor: EditorView;
     private controlWs: WebSocket | null = null;
     private dataWs: WebSocket | null = null;
-    private renderer: TinymistPreviewRenderer;
+    private renderer: PreviewDataPlane;
     private controlPort: number | null = null;
     private dataPort: number | null = null;
     private previewServerStarted: boolean = false;
@@ -803,7 +803,7 @@ export class TinymistEditor {
         });
 
         // Initialize preview renderer
-        this.renderer = new TinymistPreviewRenderer(
+        this.renderer = new PreviewDataPlane(
             this.elem.querySelector('.preview-pane')
         );
 

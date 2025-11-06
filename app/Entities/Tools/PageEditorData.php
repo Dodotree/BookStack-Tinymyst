@@ -147,8 +147,11 @@ class PageEditorData
             }
             file_put_contents($fullPath, $content);
 
+            \Illuminate\Support\Facades\Log::info('Starting Tinymist preview', [
+                'full_path' => $fullPath,
+            ]);
+
             // Start preview server
-            // TODO: Could be in the background?
             $manager = app(TinymistPreviewManager::class);
             $result = $manager->startPreviewServer($pageId, $typstPath);
 

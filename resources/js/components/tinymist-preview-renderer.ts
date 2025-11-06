@@ -12,7 +12,7 @@ import { TypstDomDocument as TypstDocument } from '@myriaddreamin/typst.ts/dist/
 import { PreviewMode } from "@myriaddreamin/typst.ts/dist/esm/contrib/dom/typst-doc.mjs";
 
 
-export class TinymistPreviewRenderer {
+export class PreviewDataPlane {
     private renderer: TypstRenderer | null = null;
     private session: RenderSession | null = null;
     private sessionPromise: Promise<RenderSession> | null = null;

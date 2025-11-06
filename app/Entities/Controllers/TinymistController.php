@@ -218,6 +218,59 @@ class TinymistController extends Controller
     }
 
     /**
+     * Restart preview server with dynamically allocated ports
+     * POST /ajax/tinymist/restart-preview
+     */
+    public function restartPreview(Request $request)
+    {
+        $request->validate([
+            'page_id' => 'required|integer|exists:pages,id',
+        ]);
+
+        $pageId = $request->input('page_id');
+
+        try {
+            // Get the page
+            $page = Page::findOrFail($pageId);
+
+            // Check if user has edit permission
+            $this->checkOwnablePermission('page-update', $page);
+
+            // Get the typst file path
+            $typstPath = "tinymist/page_{$pageId}.typ";
+            $fullPath = storage_path("app/{$typstPath}");
+
+            // Ensure file exists
+            if (!file_exists($fullPath)) {
+                // Create it with current content if available
+                $content = $request->input('content', '// Empty document');
+                $directory = dirname($fullPath);
+                if (!is_dir($directory)) {
+                    mkdir($directory, 0755, true);
+                }
+                file_put_contents($fullPath, $content);
+            }
+
+            // Restart with new ports
+            $manager = app(TinymistPreviewManager::class);
+            $result = $manager->restartPreviewWithNewPorts($pageId, $typstPath);
+
+            return response()->json($result);
+
+        } catch (\Exception $e) {
+            Log::error('Failed to restart preview server', [
+                'page_id' => $pageId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Base64 URL-safe encode
      */
     protected function base64UrlEncode(string $data): string

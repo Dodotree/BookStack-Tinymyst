@@ -15,6 +15,7 @@ yarn-error.log
 /public/bower
 /public/build/
 /public/favicon.ico
+/public/tinymist/
 /storage/images
 _ide_helper.php
 /storage/debugbar

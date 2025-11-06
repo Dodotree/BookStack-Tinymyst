@@ -223,8 +223,15 @@ class PageRepo
      */
     protected function updateTinymistPreviewFile(int $pageId, string $content): void
     {
-        $filePath = "tinymist/page_{$pageId}.typ";
-        \Storage::put($filePath, $content);
+        // Because filesystems.php sets 'root' to public_path(), we need to write directly to storage path
+        $filePath = storage_path("app/tinymist/page_{$pageId}.typ");
+        $directory = dirname($filePath);
+
+        if (!is_dir($directory)) {
+            mkdir($directory, 0755, true);
+        }
+
+        file_put_contents($filePath, $content);
     }
 
     /**

@@ -38,21 +38,15 @@ class TinymistPreviewManager
 
         // Ensure directory exists (file should be created by caller with actual content)
         $fullPath = storage_path("app/{$typstFilePath}");
-        $directory = dirname($fullPath);
 
-        if (!is_dir($directory)) {
-            mkdir($directory, 0755, true);
-        }
+        // Use relative path from base directory (tinymist works better with relative paths)
+        $relativePath = "storage/app/{$typstFilePath}";
 
         // File should already exist with content from PageEditorData
         // If it doesn't exist, that's an error condition
         if (!file_exists($fullPath)) {
             throw new \RuntimeException("Typst file not found: {$fullPath}. File should be created before starting preview server.");
         }
-
-        // Use relative path from base directory (tinymist works better with relative paths)
-        $relativePath = "storage/app/{$typstFilePath}";
-        $absolutePath = storage_path("app/{$typstFilePath}");
 
         // Get tinymist CLI path and normalize for Windows
         $tinymistPath = config('tinymist.tinymist_cli_path');
@@ -268,6 +262,166 @@ class TinymistPreviewManager
             'host' => config('tinymist.preview_host'),
             'last_activity' => $this->lastActivity[$pageId] ?? null,
         ];
+    }
+
+    /**
+     * Find available ports (not bound by page ID calculation)
+     * Returns a pair of consecutive ports where dataPort = controlPort + 1
+     */
+    public function findAvailablePorts(int $startPort = 20000, int $maxAttempts = 100): ?array
+    {
+        $host = config('tinymist.preview_host', '127.0.0.1');
+
+        for ($i = 0; $i < $maxAttempts; $i++) {
+            $controlPort = $startPort + ($i * 2);
+            $dataPort = $controlPort + 1;
+
+            // Check if both ports are available
+            if ($this->isPortAvailable($host, $controlPort) && $this->isPortAvailable($host, $dataPort)) {
+                Log::info("Found available ports: control={$controlPort}, data={$dataPort}");
+                return [
+                    'control_port' => $controlPort,
+                    'data_port' => $dataPort,
+                ];
+            }
+        }
+
+        Log::warning("Could not find available ports after {$maxAttempts} attempts");
+        return null;
+    }
+
+    /**
+     * Check if a port is available
+     */
+    protected function isPortAvailable(string $host, int $port): bool
+    {
+        $connection = @fsockopen($host, $port, $errno, $errstr, 1);
+        if (is_resource($connection)) {
+            fclose($connection);
+            return false; // Port is in use
+        }
+        return true; // Port is available
+    }
+
+    /**
+     * Restart preview server with new dynamically-allocated ports
+     * Useful when calculated ports are stuck/unavailable
+     */
+    public function restartPreviewWithNewPorts(int $pageId, string $typstFilePath): array
+    {
+        Log::info("Attempting to restart preview server for page {$pageId} with new ports");
+
+        // Stop existing process if any
+        $this->stopPreviewServer($pageId);
+
+        // Wait for port release
+        usleep(500000); // 500ms
+
+        // Find available ports
+        $ports = $this->findAvailablePorts();
+
+        if (!$ports) {
+            return [
+                'success' => false,
+                'error' => 'Could not find available ports for preview server',
+            ];
+        }
+
+        $controlPort = $ports['control_port'];
+        $dataPort = $ports['data_port'];
+        $host = config('tinymist.preview_host', '127.0.0.1');
+
+        // Ensure file exists
+        $fullPath = storage_path("app/{$typstFilePath}");
+        if (!file_exists($fullPath)) {
+            return [
+                'success' => false,
+                'error' => "Typst file not found: {$fullPath}",
+            ];
+        }
+
+        // Start server with new ports
+        $relativePath = "storage/app/{$typstFilePath}";
+        $tinymistPath = config('tinymist.tinymist_cli_path');
+        $controlPlaneHost = "{$host}:{$controlPort}";
+        $dataPlaneHost = "{$host}:{$dataPort}";
+
+        try {
+            $logFile = storage_path("logs/tinymist_preview_{$pageId}_restart.log");
+
+            if (DIRECTORY_SEPARATOR === '\\') {
+                // Windows
+                $command = [
+                    $tinymistPath,
+                    'preview',
+                    '--no-open',
+                    '--control-plane-host', $controlPlaneHost,
+                    '--data-plane-host', $dataPlaneHost,
+                    '--partial-rendering', 'true',
+                    $relativePath,
+                ];
+
+                $logHandle = fopen($logFile, 'w');
+                $descriptors = [
+                    0 => ['pipe', 'r'],
+                    1 => $logHandle,
+                    2 => $logHandle,
+                ];
+
+                $proc = proc_open($command, $descriptors, $pipes, base_path(), null);
+
+                if (is_resource($proc)) {
+                    fclose($pipes[0]);
+                    $this->processes[$pageId] = $proc;
+                } else {
+                    fclose($logHandle);
+                    throw new \RuntimeException('Failed to start tinymist process');
+                }
+            } else {
+                // Unix
+                $tinymistCommand = sprintf(
+                    'nohup %s preview --no-open --control-plane-host "%s" --data-plane-host "%s" --partial-rendering true "%s" > %s 2>&1 &',
+                    escapeshellarg($tinymistPath),
+                    $controlPlaneHost,
+                    $dataPlaneHost,
+                    escapeshellarg($relativePath),
+                    escapeshellarg($logFile)
+                );
+
+                $process = Process::path(base_path())->start($tinymistCommand);
+                $this->processes[$pageId] = $process;
+            }
+
+            Log::info("Restarted preview server with new ports", [
+                'page_id' => $pageId,
+                'control_port' => $controlPort,
+                'data_port' => $dataPort,
+            ]);
+
+            // Wait for server to start
+            usleep(500000); // 500ms
+
+            $this->lastActivity[$pageId] = now();
+
+            return [
+                'success' => true,
+                'control_port' => $controlPort,
+                'data_port' => $dataPort,
+                'host' => $host,
+                'status' => 'restarted',
+            ];
+
+        } catch (\Exception $e) {
+            Log::error("Failed to restart preview server with new ports", [
+                'page_id' => $pageId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'error' => $e->getMessage(),
+            ];
+        }
     }
 
     /**
