@@ -23,6 +23,7 @@ export class PreviewDataPlane {
     private host: string;
     private maxReconnectAttempts: number = 5;
     private reconnectAttempts: number = 0;
+    private reconnectAllowed: boolean = true;
     private connectionTimeout: ReturnType<typeof setTimeout> | null = null;
     private hasInitialDocument: boolean = false; // Track if we've received initial document
     private processingQueue: Promise<void> = Promise.resolve();
@@ -70,6 +71,9 @@ export class PreviewDataPlane {
 
     connectDataPlane(): Promise<void> {
         return new Promise((resolve, reject) => {
+            if (!this.reconnectAllowed) {
+                reject("[Preview Data] Reconnection not allowed");
+            }
             try {
                 const wsUrl = `ws://${this.host}:${this.dataPort}`;
                 this.dataWs = new WebSocket(wsUrl);
@@ -77,7 +81,10 @@ export class PreviewDataPlane {
 
                 this.dataWs.onopen = () => {
                     this.reconnectAttempts = 0;
-                    this.connectionTimeout = null;
+                    if (this.connectionTimeout) {
+                        clearTimeout(this.connectionTimeout);
+                        this.connectionTimeout = null;
+                    }
                     this.onConnectionStateChange?.(true);
                     console.log(`[Preview Data] Connected to Tinymist data plane at ${wsUrl}`);
                     // Request current document
@@ -276,6 +283,9 @@ export class PreviewDataPlane {
     }
 
     private handleReconnect() {
+        if (!this.reconnectAllowed) {
+            return;
+        }
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
             console.log(
@@ -296,7 +306,7 @@ export class PreviewDataPlane {
 
     dispose() {
         // Prevent reconnect attempts
-        this.maxReconnectAttempts = 0;
+        this.reconnectAllowed = false;
 
         if (this.connectionTimeout) {
             clearTimeout(this.connectionTimeout);

@@ -119,24 +119,6 @@ export class TinymistFileSyncClient {
     }
 
     /**
-     * Disconnect from the WebSocket server
-     */
-    disconnect(): void {
-        this.stopHeartbeat();
-        this.clearReconnectTimeout();
-        this.clearConnectionTimeout();
-        this.clearTokenRenewalTimeout();
-
-        if (this.socket) {
-            this.socket.close(1000, 'Client disconnected');
-            this.socket = null;
-        }
-
-        this.isConnected = false;
-        this.notifyConnectionState(false);
-    }
-
-    /**
      * Send changes to the server
      */
     sendChanges(changes: any): void {
@@ -343,7 +325,7 @@ export class TinymistFileSyncClient {
 
             if (data.success && data.token) {
                 console.log('[File Sync Module] Token renewed successfully');
-                
+
                 // Update token locally
                 this.token = data.token;
                 this.tokenExpiry = data.expires_at;
@@ -379,5 +361,23 @@ export class TinymistFileSyncClient {
         if (this.onError) {
             this.onError(message);
         }
+    }
+
+    /**
+     * Disconnect from the WebSocket server
+     */
+    disconnect(): void {
+        this.stopHeartbeat();
+        this.clearReconnectTimeout();
+        this.clearConnectionTimeout();
+        this.clearTokenRenewalTimeout();
+
+        if (this.socket) {
+            this.socket.close(1000, 'Client disconnected');
+            this.socket = null;
+        }
+
+        this.isConnected = false;
+        this.notifyConnectionState(false);
     }
 }

@@ -732,12 +732,12 @@ export class TinymistEditor extends Component {
     async compile() {
         // Only compile in fallback mode (WebSocket + Tinymist preview handles compilation otherwise)
         if (!this.fallbackMode) {
-            console.log('[Tinymist] Skipping compile() - WebSocket sync active');
+            console.log('[Typst] Skipping compile() - WebSocket sync active');
             return;
         }
 
         if (!this.fallbackCompiler) {
-            console.error('[Tinymist] Fallback compiler not initialized');
+            console.error('[Typst] Fallback compiler not initialized');
             return;
         }
 

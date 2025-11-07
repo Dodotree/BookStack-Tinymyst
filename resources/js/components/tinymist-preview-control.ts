@@ -14,6 +14,7 @@ export class PreviewControlPlane {
     private fileUri: string;
     private maxReconnectAttempts: number = 5;
     private reconnectAttempts: number = 0;
+    private reconnectAllowed: boolean = true;
     private connectionTimeout: ReturnType<typeof setTimeout> | null = null;
     private controlPort: number;
     private host: string;
@@ -46,6 +47,9 @@ export class PreviewControlPlane {
 
     connect(): Promise<Extension> {
         return new Promise((resolve, reject) => {
+            if (!this.reconnectAllowed) {
+                reject("[Preview Control] Reconnection not allowed");
+            }
             try {
                 // Connect to Tinymist control plane WebSocket
                 const wsUrl = `ws://${this.host}:${this.controlPort}`;
@@ -56,8 +60,11 @@ export class PreviewControlPlane {
                         `[Preview Control] WS connected to Tinymist Preview at ${wsUrl}`
                     );
                     this.reconnectAttempts = 0;
+                    if (this.connectionTimeout) {
+                        clearTimeout(this.connectionTimeout);
+                        this.connectionTimeout = null;
+                    }
                     this.onConnectionStateChange?.(true);
-                    this.connectionTimeout = null;
                     resolve([]);
                 };
 
@@ -179,6 +186,9 @@ export class PreviewControlPlane {
     }
 
     private handleReconnect() {
+        if (!this.reconnectAllowed) {
+            return;
+        }
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
             console.log(
@@ -198,8 +208,18 @@ export class PreviewControlPlane {
     }
 
     disconnect() {
+        this.reconnectAllowed = false;
+        if (this.connectionTimeout) {
+            clearTimeout(this.connectionTimeout);
+            this.connectionTimeout = null;
+        }
         if (this.controlWs) {
             this.controlWs.close();
         }
+    }
+
+    reconnect() {
+        this.reconnectAllowed = true;
+        this.handleReconnect();
     }
 }
