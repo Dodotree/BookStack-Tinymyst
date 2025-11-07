@@ -59,11 +59,13 @@ export class PreviewControlPlane {
                     console.log(
                         `[Preview Control] WS connected to Tinymist Preview at ${wsUrl}`
                     );
+
                     this.reconnectAttempts = 0;
                     if (this.connectionTimeout) {
                         clearTimeout(this.connectionTimeout);
                         this.connectionTimeout = null;
                     }
+
                     this.onConnectionStateChange?.(true);
                     resolve([]);
                 };
@@ -78,10 +80,10 @@ export class PreviewControlPlane {
                     } else if (msg.event === 'syncEditorChanges') {
                         this.onSyncChanges(msg);
                     } else {
-                        this.onMessage?.(msg);
                         console.warn(
-                            `[Preview Control] Unknown message event: ${msg.event}`
+                            `[Preview Control] Unknown message: ${event.data}`
                         );
+                        this.onMessage?.(event.data);
                     }
                 };
 
@@ -116,12 +118,12 @@ export class PreviewControlPlane {
 
     private onSyncChanges(msg: any) {
         // Handle synchronization
-        console.log('Syncing changes:', msg);
+        console.log('[Preview Control] Syncing changes:', msg);
     }
 
     private onOutline(items: OutlineItem[]) {
         // Update table of contents
-        console.log('Document outline:', items);
+        console.log('[Preview Control] Document outline:', items);
     }
 
     public sendControlMessage(message: any) {
@@ -144,8 +146,10 @@ export class PreviewControlPlane {
                 msg = {
                     event: message.event,
                     files: {
-                        // [filePath] is a virtual label, content is the *whole* file content
-                        [message.filePath]: message.content,
+                        // [filepath] is a virtual label, content is the *whole* file content
+                        // `file:///virtual/${pageId}.typ`,
+                        // or full path
+                        [message.filepath]: message.content,
                     },
                 };
                 break;
@@ -153,7 +157,7 @@ export class PreviewControlPlane {
             case "removeMemoryFiles":
                 msg = {
                     event: "removeMemoryFiles",
-                    files: [[message.filePath]],
+                    files: [[message.filepath]],
                 };
                 break;
 
@@ -161,10 +165,11 @@ export class PreviewControlPlane {
             case "panelScrollTo":
                 msg = {
                     event: message.event,
-                    filepath: message.filePath,
+                    filepath: message.filepath,
                     line: message.line,
                     character: message.character,
                 };
+                console.log('[Preview Control] Sending cursor position:', msg);
                 break;
 
             case "sourceScrollBySpan":
@@ -216,6 +221,7 @@ export class PreviewControlPlane {
         if (this.controlWs) {
             this.controlWs.close();
         }
+        console.log("[Preview Control] Intentionally disconnected");
     }
 
     reconnect() {

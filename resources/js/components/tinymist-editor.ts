@@ -32,6 +32,7 @@ export class TinymistEditor extends Component {
     private fileSyncConnected: boolean = false;
     private previewServerDownTime: number = 0;
     private previewServerDownTimer: ReturnType<typeof setTimeout> | null = null;
+    private restartAllowed: boolean = true;
     private restartingPreviewServer: boolean = false;
 
     async startPreviewServer() {
@@ -356,6 +357,11 @@ export class TinymistEditor extends Component {
                                 });
                             }
                         }
+
+                        // Track cursor position changes
+                        if (update.selectionSet) {
+                            this.onCursorPositionChange(update.state);
+                        }
                     }),
                 ],
             });
@@ -385,50 +391,6 @@ export class TinymistEditor extends Component {
         }
     }
 
-    // Cleanup on destroy
-    async destroy() {
-        // Clear preview server monitoring timers
-        if (this.previewServerDownTimer) {
-            clearTimeout(this.previewServerDownTimer);
-            this.previewServerDownTimer = null;
-        }
-
-        // Close WebSocket connection
-        if (this.fileSyncClient) {
-            this.fileSyncClient.disconnect();
-            this.fileSyncClient = null;
-        }
-
-        // Clean up fallback compiler
-        if (this.fallbackCompiler) {
-            this.fallbackCompiler.clear();
-            this.fallbackCompiler = null;
-        }
-
-        if (this.wsConnectionTimeout) {
-            clearTimeout(this.wsConnectionTimeout);
-        }
-
-        if (this.controlClient) {
-            this.controlClient.disconnect();
-        }
-        if (this.previewRenderer) {
-            this.previewRenderer.dispose();
-        }
-
-        try {
-            // Stop [Preview Server]
-            await fetch('/ajax/tinymist/stop-preview', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ pid: this.previewServerInfo?.pid || 0 })
-            });
-            this.logInfo('🛑 [Preview Server] stopped');
-        } catch (error) {
-            console.error('Failed to stop [Preview Server]:', error);
-        }
-    }
-
     handleFileSyncMessage(msg: any) {
         switch (msg.type) {
             case 'fullState':
@@ -446,6 +408,9 @@ export class TinymistEditor extends Component {
     }
 
     scheduleFallbackMode() {
+        if(!this.restartAllowed) {
+            return;
+        }
         // Clear any existing timeout
         if (this.wsConnectionTimeout) {
             clearTimeout(this.wsConnectionTimeout);
@@ -460,6 +425,9 @@ export class TinymistEditor extends Component {
     }
 
     enableFallbackMode() {
+        if(!this.restartAllowed) {
+            return;
+        }
         if (this.fallbackMode) {
             return; // Already in fallback mode
         }
@@ -511,7 +479,7 @@ export class TinymistEditor extends Component {
 
         if (previewServerDown) {
             // Start countdown if not already running
-            if (!this.previewServerDownTimer) {
+            if (!this.previewServerDownTimer && this.restartAllowed) {
                 this.previewServerDownTime = Date.now();
                 this.logWarning('[Preview Server] Both Control and Data planes down. Will attempt restart in 60 seconds...');
 
@@ -534,6 +502,9 @@ export class TinymistEditor extends Component {
      * Attempt to restart the preview server with dynamically allocated ports
      */
     async attemptPreviewServerRestart() {
+        if (!this.restartAllowed) {
+            return;
+        }
         if (this.restartingPreviewServer) {
             console.log('[Preview Server] Restart already in progress');
             return;
@@ -601,6 +572,9 @@ export class TinymistEditor extends Component {
      * Reconnect Control and Data plane clients with new port configuration
      */
     async reconnectPreviewClients() {
+        if (!this.restartAllowed) {
+            return;
+        }
         if (!this.previewServerInfo) {
             return;
         }
@@ -608,7 +582,10 @@ export class TinymistEditor extends Component {
         this.logInfo('[Preview Server] Reconnecting clients with new ports...');
 
         try {
-            // Disconnect old clients
+            // TODO: Disconnect/reconnect old clients
+            // But do not dispose/recreate completely
+            // I doubt they can be garbage connected and this is unnecessary overhead
+
             if (this.controlClient) {
                 this.controlClient.disconnect();
                 this.controlClient = null;
@@ -619,7 +596,7 @@ export class TinymistEditor extends Component {
                 this.previewRenderer = null;
             }
 
-            // Wait for cleanup
+            // TODO: Many questions about this "wait for cleanup"
             await new Promise(resolve => setTimeout(resolve, 500));
 
             // Reconnect with new ports
@@ -666,27 +643,45 @@ export class TinymistEditor extends Component {
 
         // Clean up connections on page navigation
         window.addEventListener('beforeunload', () => {
-            this.cleanup();
+            this.destroy();
         });
 
         // Also listen to pagehide for better mobile support
         window.addEventListener('pagehide', () => {
-            this.cleanup();
+            this.destroy();
         });
     }
 
-    cleanup() {
-        console.log('[Tinymist Editor] Cleaning up connections...');
+    destroy() {
 
-        // Disconnect all WebSocket clients
+        this.restartAllowed = false;
+
+        // Clear preview server monitoring timers
+        if (this.previewServerDownTimer) {
+            clearTimeout(this.previewServerDownTimer);
+            this.previewServerDownTimer = null;
+        }
+
+        if (this.wsConnectionTimeout) {
+            clearTimeout(this.wsConnectionTimeout);
+            this.wsConnectionTimeout = null;
+        }
+
+        // Close WebSocket connection
         if (this.fileSyncClient) {
             this.fileSyncClient.disconnect();
+            this.fileSyncClient = null;
+        }
+
+        // Clean up fallback compiler
+        if (this.fallbackCompiler) {
+            this.fallbackCompiler.clear();
+            this.fallbackCompiler = null;
         }
 
         if (this.controlClient) {
             this.controlClient.disconnect();
         }
-
         if (this.previewRenderer) {
             this.previewRenderer.dispose();
         }
@@ -729,7 +724,38 @@ export class TinymistEditor extends Component {
         window.$events.emit('editor-tinymist-change', '');
     }
 
+    onCursorPositionChange(state: any) {
+        // Get cursor position
+        const selection = state.selection.main;
+        const pos = selection.head;
+
+        // Convert position to line and character
+        const line = state.doc.lineAt(pos);
+        const lineNumber = line.number - 1; // 0-indexed
+        const character = pos - line.from;
+
+        // Send cursor position to control plane
+        if (this.controlClient) {
+            const pageId = this.$opts.pageId;
+            console.log('[Tinymist] Sending cursor position:', {
+                line: lineNumber,
+                character: character,
+                pos: pos
+            });
+            this.controlClient.sendControlMessage({
+                event: 'changeCursorPosition',
+                filepath: `C:\\Users\\Ooo\\Desktop\\GitWork\\BookStack\\storage\\app\\tinymist\\page_266.typ`, //`storage/app/tinymist/page_${pageId}.typ`,
+                line: lineNumber,
+                character: character,
+            });
+        }
+    }
+
     async compile() {
+        if (!this.restartAllowed) {
+            return;
+        }
+
         // Only compile in fallback mode (WebSocket + Tinymist preview handles compilation otherwise)
         if (!this.fallbackMode) {
             console.log('[Typst] Skipping compile() - WebSocket sync active');

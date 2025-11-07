@@ -16,6 +16,7 @@ export class TinymistFileSyncClient {
     private connectionTimeout: ReturnType<typeof setTimeout> | null = null;
 
     // State tracking
+    private reconnectAllowed: boolean = true;
     private reconnectAttempts: number = 0;
     private isConnected: boolean = false;
 
@@ -51,8 +52,13 @@ export class TinymistFileSyncClient {
             this.token = token;
         }
 
+        if (!this.reconnectAllowed) {
+            this.notifyError("[File Sync Module] Reconnection not allowed");
+            return false;
+        }
+
         if (!this.token) {
-            this.notifyError('No WebSocket token available');
+            this.notifyError('[File Sync Module] No token available');
             return false;
         }
 
@@ -199,6 +205,12 @@ export class TinymistFileSyncClient {
     }
 
     private startHeartbeat(): void {
+
+        if (!this.reconnectAllowed) {
+            this.notifyError("[File Sync Module] Reconnection not allowed, heartbeat not started");
+            return;
+        }
+
         this.stopHeartbeat();
         this.pingInterval = setInterval(() => {
             if (this.socket && this.socket.readyState === WebSocket.OPEN) {
@@ -219,6 +231,10 @@ export class TinymistFileSyncClient {
             return; // Already scheduled
         }
 
+        if (!this.reconnectAllowed) {
+            return;
+        }
+
         this.reconnectAttempts++;
         const delay = Math.min(5000 * Math.pow(1.5, this.reconnectAttempts - 1), 30000);
 
@@ -230,15 +246,12 @@ export class TinymistFileSyncClient {
         }, delay);
     }
 
-    private clearReconnectTimeout(): void {
-        if (this.reconnectTimeout) {
-            clearTimeout(this.reconnectTimeout);
-            this.reconnectTimeout = null;
-        }
-    }
-
     private scheduleConnectionTimeout(): void {
         this.clearConnectionTimeout();
+
+        if (!this.reconnectAllowed) {
+            return;
+        }
 
         // Timeout after 1 second if connection doesn't succeed
         this.connectionTimeout = setTimeout(() => {
@@ -247,6 +260,20 @@ export class TinymistFileSyncClient {
                 this.notifyConnectionState(false);
             }
         }, 1000);
+    }
+
+    private clearTokenRenewalTimeout(): void {
+        if (this.tokenRenewalTimeout) {
+            clearTimeout(this.tokenRenewalTimeout);
+            this.tokenRenewalTimeout = null;
+        }
+    }
+
+    private clearReconnectTimeout(): void {
+        if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
+            this.reconnectTimeout = null;
+        }
     }
 
     private clearConnectionTimeout(): void {
@@ -283,6 +310,10 @@ export class TinymistFileSyncClient {
     private scheduleTokenRenewal(): void {
         this.clearTokenRenewalTimeout();
 
+        if (!this.reconnectAllowed) {
+            return;
+        }
+
         if (!this.tokenExpiry) {
             console.warn('[File Sync Module] Token expiry not set, skipping renewal schedule');
             return;
@@ -307,14 +338,12 @@ export class TinymistFileSyncClient {
         }, renewIn * 1000);
     }
 
-    private clearTokenRenewalTimeout(): void {
-        if (this.tokenRenewalTimeout) {
-            clearTimeout(this.tokenRenewalTimeout);
-            this.tokenRenewalTimeout = null;
-        }
-    }
-
     private async renewToken(): Promise<void> {
+
+        if (!this.reconnectAllowed) {
+            return;
+        }
+
         try {
             console.log('[File Sync Module] Renewing WebSocket token...');
             const response = await window.$http.post('/ajax/tinymist/renew-ws-token', {
@@ -367,6 +396,9 @@ export class TinymistFileSyncClient {
      * Disconnect from the WebSocket server
      */
     disconnect(): void {
+
+        this.reconnectAllowed = false;
+
         this.stopHeartbeat();
         this.clearReconnectTimeout();
         this.clearConnectionTimeout();
@@ -379,5 +411,6 @@ export class TinymistFileSyncClient {
 
         this.isConnected = false;
         this.notifyConnectionState(false);
+        console.log("[File Sync Module] Intentionally disconnected");
     }
 }

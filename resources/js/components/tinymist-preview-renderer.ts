@@ -27,6 +27,7 @@ export class PreviewDataPlane {
     private connectionTimeout: ReturnType<typeof setTimeout> | null = null;
     private hasInitialDocument: boolean = false; // Track if we've received initial document
     private processingQueue: Promise<void> = Promise.resolve();
+    private lastSvg: string | null = null;
 
     private onConnectionStateChange?: (connected: boolean) => void;
     private onError?: (error: string) => void;
@@ -182,6 +183,8 @@ export class PreviewDataPlane {
 
     private async handleBinaryMessage(msg: Uint8Array) {
         try {
+            const rawLength = msg.length;
+            console.log(`[Preview Data] Raw message length: ${rawLength} bytes`);
             // Parse message format: "type,payload"
             const commaIndex = msg.indexOf(44); // ASCII for ','
             if (commaIndex === -1) {
@@ -192,14 +195,36 @@ export class PreviewDataPlane {
             const command = new TextDecoder().decode(msg.slice(0, commaIndex));
             const payload = msg.slice(commaIndex + 1);
 
+            console.log(`[Preview Data] Message command "${command}" (payload ${payload.length} bytes, raw ${rawLength})`);
+
             switch (command) {
                 case 'diff-v1':
                     console.log(`[Preview Data] Received diff-v1 (${payload.length} bytes)`);
+                    // Try to peek at the diff content (it's binary, but might have readable parts)
+                    try {
+                        const sample = new TextDecoder('utf-8', { fatal: false }).decode(payload.slice(0, Math.min(200, payload.length)));
+                        console.log('[Preview Data] Diff sample:', sample.substring(0, 100));
+                    } catch (e) {
+                        console.log('[Preview Data] Could not decode diff sample');
+                    }
                     break;
 
                 case 'new':
                     console.log(`[Preview Data] Received new document (${payload.length} bytes)`);
                     break;
+
+                // Successful reply to Control Plane "changeCursorPosition" request
+                case 'cursor-paths': {
+                    const decoded = new TextDecoder().decode(payload);
+                    console.log(`[Preview Data] Cursor paths payload (${payload.length} bytes):`, decoded);
+                    try {
+                        const parsed = JSON.parse(decoded);
+                        console.log('[Preview Data] Cursor paths parsed:', parsed);
+                    } catch (err) {
+                        console.log('[Preview Data] Cursor paths not valid JSON:', err);
+                    }
+                    break;
+                }
 
                 case 'partial-rendering':
                     const enabled = new TextDecoder().decode(payload) === 'true';
@@ -211,6 +236,31 @@ export class PreviewDataPlane {
                     const [page, x, y] = coords.map(Number);
                     console.log(`[Preview Data] Jump to page ${page}, x: ${x}, y: ${y}`);
                     break;
+
+                case 'viewport':
+                    const decoded = new TextDecoder().decode(payload);
+                    console.log(`[Preview Data] Viewport payload (${payload.length} bytes):`, decoded);
+                    break;
+
+                case 'cursor':
+                    const cursorDecoded = new TextDecoder().decode(payload);
+                    console.log(`[Preview Data] Cursor payload (${payload.length} bytes):`, cursorDecoded);
+                    break;
+
+                case 'invert-colors':
+                    const invertColorsDecoded = new TextDecoder().decode(payload);
+                    console.log(`[Preview Data] Invert colors payload (${payload.length} bytes):`, invertColorsDecoded);
+                    break;
+
+                // Not sure what kind of outline is that, usually Control Plane receives "outline" events
+                case 'outline':
+                    const outlineDecoded = new TextDecoder().decode(payload);
+                    console.log(`[Preview Data] Outline payload (${payload.length} bytes):`, outlineDecoded);
+                    break;
+
+                default:
+                    console.warn(`[Preview Data] Unknown data plane command: ${command}`);
+                    break;
             }
 
             if (command === 'diff-v1' || command === 'new') {
@@ -220,7 +270,7 @@ export class PreviewDataPlane {
                     return;
                 }
 
-                console.log(`[Preview Data] Processing ${command} (${payload.length} bytes)`);
+                console.log(`[Preview Data] Processing ${command} (${payload.length} bytes, raw ${rawLength})`);
 
                 try {
                     const isDiff = command === 'diff-v1';
@@ -233,31 +283,95 @@ export class PreviewDataPlane {
                         action = 'reset';
                     }
 
-                    console.log(`[Preview Data] Applying ${action} with ${payload.length} bytes...`);
+                    console.log(`[Preview Data] Applying ${action} with ${payload.length} bytes (raw ${rawLength})...`);
                     this.renderer!.manipulateData({
                         renderSession: session,
                         action,
                         data: payload,
                     });
-                    console.log('[Preview Data] Data applied successfully');
+                    console.log(`[Preview Data] Data applied successfully (raw ${rawLength})`);
 
                     if (action === 'reset') {
                         this.hasInitialDocument = true;
                     }
 
-                    try {
-                        const customData = await this.renderer!.getCustomV1({
-                            renderSession: session,
-                        });
-                        console.log('[Preview Data] Custom data:', customData);
-                    } catch (e) {
-                        console.log('[Preview Data] No custom data:', e);
-                    }
+                    // try {
+                    //     const customData = await this.renderer!.getCustomV1({
+                    //         renderSession: session,
+                    //     });
+                    //     console.log('[Preview Data] Custom data:', customData);
+                    // } catch (e) {
+                    //     console.log('[Preview Data] No custom data:', e);
+                    // }
 
                     console.log('[Preview Data] Rendering to SVG...');
+                    const oldSvg = this.lastSvg ?? this.previewElement.innerHTML;
+                    const oldSvgLength = oldSvg ? oldSvg.length : 0;
                     const svg = await session.renderSvg({});
-                    console.log('[Preview Data] SVG length:', svg.length);
+                    console.log('[Preview Data] SVG length:', svg.length, '(was:', oldSvgLength + ')');
+
+                    // Look for cursor indicator elements (greenish circle with #66bab7 or similar)
+                    const cursorPatterns = [
+                        /<circle[^>]*66bab7[^>]*>/gi,
+                        /<ellipse[^>]*66bab7[^>]*>/gi,
+                        /<g[^>]*cursor[^>]*>/gi,
+                        /<path[^>]*66bab7[^>]*>/gi,
+                    ];
+
+                    let foundCursor = false;
+                    for (const pattern of cursorPatterns) {
+                        const matches = svg.match(pattern);
+                        if (matches && matches.length > 0) {
+                            console.log(`[Preview Data] ✓ Found ${matches.length} cursor element(s)!`);
+                            console.log('[Preview Data] Cursor element:', matches[0].substring(0, 200));
+                            foundCursor = true;
+                            break;
+                        }
+                    }
+
+                    // Compare old and new SVG - look for ALL significant changes
+                    if (oldSvg && oldSvg !== svg) {
+                        const sizeDiff = svg.length - oldSvgLength;
+                        console.log(`[Preview Data] SVG size changed by ${sizeDiff} bytes`);
+
+                        // Find elements that exist in new but not in old
+                        const newCircles = (svg.match(/<circle/g) || []).length;
+                        const oldCircles = (oldSvg.match(/<circle/g) || []).length;
+                        if (newCircles !== oldCircles) {
+                            console.log(`[Preview Data] Circle count changed: ${oldCircles} → ${newCircles}`);
+                        }
+
+                        const newGroups = (svg.match(/<g /g) || []).length;
+                        const oldGroups = (oldSvg.match(/<g /g) || []).length;
+                        if (newGroups !== oldGroups) {
+                            console.log(`[Preview Data] Group count changed: ${oldGroups} → ${newGroups}`);
+                        }
+                        // Walk through character diffs to capture multiple change pockets
+                        const maxDiffSegments = 5;
+                        let diffSegments = 0;
+                        const sharedLength = Math.min(oldSvg.length, svg.length);
+                        for (let i = 0; i < sharedLength && diffSegments < maxDiffSegments; i++) {
+                            if (oldSvg[i] !== svg[i]) {
+                                const pos = i;
+                                const oldSnippetStart = Math.max(0, pos - 120);
+                                const newSnippetStart = Math.max(0, pos - 120);
+                                const oldSnippetEnd = Math.min(oldSvg.length, pos + 120);
+                                const newSnippetEnd = Math.min(svg.length, pos + 120);
+                                console.log(`[Preview Data] Diff #${diffSegments + 1} near position ${pos}`);
+                                console.log('[Preview Data] Old snippet:', oldSvg.substring(oldSnippetStart, oldSnippetEnd));
+                                console.log('[Preview Data] New snippet:', svg.substring(newSnippetStart, newSnippetEnd));
+                                diffSegments++;
+                                i = pos + 120; // skip ahead to avoid spamming adjacent characters
+                            }
+                        }
+
+                        if (diffSegments === 0 && oldSvg.length !== svg.length) {
+                            console.log('[Preview Data] No character diff in shared range; change likely at tail segment.');
+                        }
+                    }
+
                     this.previewElement.innerHTML = svg;
+                    this.lastSvg = svg;
                     console.log('[Preview Data] Render complete');
 
                 } catch (e: any) {

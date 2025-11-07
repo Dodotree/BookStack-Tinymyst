@@ -82,6 +82,7 @@ class TinymistPreviewManager
 
             if (DIRECTORY_SEPARATOR === '\\') {
                 // Windows: Use proc_open directly to preserve environment
+                // other working option "--preview-mode=slide"
                 $command = [
                     $tinymistPath,
                     'preview',
