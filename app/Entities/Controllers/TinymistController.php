@@ -90,6 +90,7 @@ class TinymistController extends Controller
         $pageId = $request->input('page_id');
         $content = $request->input('content', '// Empty document');
         $restart = $request->input('restart', false);
+        $pid = $request->input('pid', 0);
 
         try {
             // Get the page
@@ -97,7 +98,7 @@ class TinymistController extends Controller
 
             $manager = app(TinymistPreviewManager::class);
             $manager->updateTinymistPreviewFile($pageId, $content);
-            $result = $manager->startPreviewServer($pageId, $restart);
+            $result = $manager->startPreviewServer($pageId, $restart, $pid);
 
             return response()->json($result);
 
@@ -120,20 +121,20 @@ class TinymistController extends Controller
     public function stopPreview(Request $request)
     {
         $request->validate([
-            'page_id' => 'required|integer|exists:pages,id',
+            'pid' => 'required|integer|min:1',
         ]);
 
-        $pageId = $request->input('page_id');
+        $pid = $request->input('pid');
 
         try {
             $manager = app(TinymistPreviewManager::class);
-            $manager->stopPreviewServer($pageId);
+            $manager->stopPreviewServer($pid);
 
             return response()->json(['success' => true]);
 
         } catch (\Exception $e) {
             Log::error('Failed to stop preview server', [
-                'page_id' => $pageId,
+                'pid' => $pid,
                 'error' => $e->getMessage(),
             ]);
 

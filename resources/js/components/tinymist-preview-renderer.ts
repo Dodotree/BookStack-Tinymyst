@@ -108,6 +108,7 @@ export class PreviewDataPlane {
 
                 this.dataWs.onerror = (error) => {
                     console.error("[Preview Data] Data plane error:", error);
+                    this.onError?.(error.toString());
                     reject(error);
                 };
 
@@ -124,6 +125,8 @@ export class PreviewDataPlane {
                     this.onConnectionStateChange?.(false);
                     if (event.code !== 1000) {
                         this.handleReconnect();
+                    } else {
+                        reject(new Error(`Connection closed: ${event.code} - ${event.reason || errCodes[event.code] || 'Unknown reason'}`));
                     }
                 };
 

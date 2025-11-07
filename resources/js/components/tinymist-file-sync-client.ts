@@ -103,8 +103,9 @@ export class TinymistFileSyncClient {
                 this.stopHeartbeat();
                 this.notifyConnectionState(false);
 
+                // Only reconnect on abnormal closes (not user-initiated disconnects)
                 if (event.code !== 1000) {
-                    // Abnormal close, attempt reconnect
+                    console.log('[File Sync Module] Reconnecting after abnormal close...');
                     this.scheduleReconnect();
                 }
             };
@@ -342,17 +343,18 @@ export class TinymistFileSyncClient {
 
             if (data.success && data.token) {
                 console.log('[File Sync Module] Token renewed successfully');
+                
+                // Update token locally
                 this.token = data.token;
                 this.tokenExpiry = data.expires_at;
 
-                // Reconnect WebSocket with new token
-                if (this.socket) {
-                    console.log('[File Sync Module] Reconnecting with new token...');
-                    this.socket.close(1000, 'Token renewed');
-                    // onclose handler will trigger reconnect with new token
-                } else {
-                    // Not currently connected, just update the token
-                    this.connect(data.token);
+                // Send token update to server if connected (no reconnection needed!)
+                if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+                    console.log('[File Sync Module] Sending token update to server');
+                    this.socket.send(JSON.stringify({
+                        type: 'updateToken',
+                        token: data.token
+                    }));
                 }
 
                 // Schedule next renewal

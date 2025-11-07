@@ -9,17 +9,29 @@ use Symfony\Component\Process\Process as SymfonyProcess;
 
 class TinymistPreviewManager
 {
-    protected array $processes = [];
-    protected array $lastActivity = [];
+    /**
+     * Check if process is actually running by PID
+     */
+    protected function isProcessRunningByPid(int $pid): bool
+    {
+        if (DIRECTORY_SEPARATOR === '\\') {
+            // Windows: use tasklist
+            $output = shell_exec("tasklist /FI \"PID eq {$pid}\" /NH 2>NUL");
+            return $output && strpos($output, (string)$pid) !== false;
+        } else {
+            // Unix: check if process exists
+            return file_exists("/proc/{$pid}");
+        }
+    }
 
     /**
      * Start preview server for a specific page
      */
-    public function startPreviewServer(int $pageId, bool $restart = false): array
+    public function startPreviewServer(int $pageId, bool $restart = false, int $pid = 0): array
     {
         // TODO: if the process is actually lost connection, restart it anyway
         if ($restart) {
-            $this->stopPreviewServer($pageId);
+            $this->stopPreviewServer($pid);
         }
 
         // Find available ports
@@ -35,16 +47,14 @@ class TinymistPreviewManager
 
         $host = config('tinymist.preview_host', '127.0.0.1');
 
-        // Check if already running for THIS page
-        if (!$restart && isset($this->processes[$pageId]) && $this->isProcessRunning($pageId)) {
-            Log::info("Preview server already running for page {$pageId}");
+        // Check if already running for THIS page (check cache for persistent data)
+        if (!$restart && $pid && $this->isProcessRunningByPid($pid)) {
+            Log::info("Preview server already running for page {$pageId}", ['pid' => $pid]);
             return [
                 'success' => true,
-                'control_port' => $controlPort,
-                'data_port' => $dataPort,
-                'host' => $host,
                 'status' => 'already_running',
             ];
+
         }
 
         // Ensure directory exists (file should be created by caller with actual content)
@@ -95,8 +105,6 @@ class TinymistPreviewManager
                     fclose($pipes[0]); // Close stdin pipe
                     // Don't wait - let it run in background
                     // Store proc resource for later cleanup
-                    $this->processes[$pageId] = $proc;
-                    $process = null; // No Symfony Process object
                 } else {
                     fclose($logHandle);
                     throw new \RuntimeException('Failed to start tinymist process');
@@ -115,27 +123,29 @@ class TinymistPreviewManager
                 );
 
                 $process = Process::path(base_path())->start($tinymistCommand);
-                $this->processes[$pageId] = $process;
             }
-
-            $this->lastActivity[$pageId] = now();
 
             $processInfo = [
                 'control_port' => $controlPort,
                 'data_port' => $dataPort,
                 'file' => $fullPath,
+                'started_at' => now()->toDateTimeString(),
             ];
 
+            $pid = null;
             if (DIRECTORY_SEPARATOR === '\\' && isset($proc)) {
                 // Windows proc_open - check status
                 $status = proc_get_status($proc);
                 $processInfo['process_running'] = $status['running'];
-                $processInfo['process_id'] = $status['pid'];
+                $processInfo['pid'] = $status['pid'];
+                $pid = $status['pid'];
             } elseif ($process) {
-                // Unix Symfony (?!) Process
+                // Unix Symfony Process
                 $processInfo['process_running'] = $process->isRunning();
-                $processInfo['process_id'] = $process->getPid();
+                $processInfo['pid'] = $process->getPid();
+                $pid = $process->getPid();
             }
+
             Log::info("Starting tinymist preview", [
                 'command' => $tinymistCommand,
                 'page_id' => $pageId,
@@ -150,6 +160,7 @@ class TinymistPreviewManager
                 'data_port' => $dataPort,
                 'host' => $host,
                 'status' => 'started',
+                'pid' => $pid,
             ];
 
         } catch (\Exception $e) {
@@ -167,47 +178,39 @@ class TinymistPreviewManager
     /**
      * Stop preview server for a specific page
      */
-    public function stopPreviewServer(int $pageId): bool
+    public function stopPreviewServer(int $pid): bool
     {
-        if (!isset($this->processes[$pageId])) {
-            return true; // Already stopped
-        }
-
         try {
-            $process = $this->processes[$pageId];
 
-            if ($process->running()) {
-                // On Windows, just kill the process (signals don't work the same way)
-                if (DIRECTORY_SEPARATOR === '\\') {
-                    $process->signal(9); // SIGKILL equivalent on Windows
-                } else {
-                    // Unix: try graceful shutdown first
-                    $process->signal(15); // SIGTERM
+            // Kill process by PID
+            if (DIRECTORY_SEPARATOR === '\\') {
+                // Windows: use taskkill
+                exec("taskkill /F /PID {$pid} 2>NUL", $output, $returnCode);
+                $killed = ($returnCode === 0);
+            } else {
+                // Unix: use kill command
+                // Try graceful SIGTERM first
+                exec("kill -15 {$pid} 2>/dev/null", $output, $returnCode);
 
-                    // Wait for graceful shutdown
-                    $timeout = 5;
-                    while ($process->running() && $timeout > 0) {
-                        usleep(100000); // 100ms
-                        $timeout -= 0.1;
-                    }
+                // Wait a moment for graceful shutdown
+                usleep(500000); // 500ms
 
-                    // Force kill if still running
-                    if ($process->running()) {
-                        $process->signal(9); // SIGKILL
-                    }
+                // Check if still running
+                if (file_exists("/proc/{$pid}")) {
+                    // Force kill with SIGKILL
+                    exec("kill -9 {$pid} 2>/dev/null");
                 }
+                $killed = true;
             }
 
-            unset($this->processes[$pageId]);
-            unset($this->lastActivity[$pageId]);
-
-            Log::info("Stopped preview server for page {$pageId}");
+            Log::info("Stopped preview server", ['pid' => $pid, 'killed' => $killed]);
             return true;
 
         } catch (\Exception $e) {
-            Log::error("Failed to stop preview server for page {$pageId}", [
+            Log::error("Failed to stop preview server", [
                 'error' => $e->getMessage(),
             ]);
+
             return false;
         }
     }
@@ -227,65 +230,6 @@ class TinymistPreviewManager
         }
 
         file_put_contents($filePath, $content);
-    }
-
-    /**
-     * Clean up idle preview servers
-     */
-    public function cleanupIdleServers(): int
-    {
-        $timeout = config('tinymist.preview_idle_timeout', 30);
-        $cleaned = 0;
-
-        foreach ($this->lastActivity as $pageId => $lastActive) {
-            if ($lastActive->diffInMinutes(now()) > $timeout) {
-                $this->stopPreviewServer($pageId);
-                $cleaned++;
-            }
-        }
-
-        if ($cleaned > 0) {
-            Log::info("Cleaned up {$cleaned} idle preview servers");
-        }
-
-        return $cleaned;
-    }
-
-    /**
-     * Check if process is running
-     */
-    protected function isProcessRunning(int $pageId): bool
-    {
-        if (DIRECTORY_SEPARATOR === '\\') {
-            // Windows: use proc_get_status
-            $proc = $this->processes[$pageId];
-            if (is_resource($proc)) {
-                $status = proc_get_status($proc);
-                return $status['running'];
-            }
-            return false;
-        }
-        // Symfony would be $process->isRunning();
-        // Checks for laravel process running
-        return isset($this->processes[$pageId]) &&
-               $this->processes[$pageId]->running();
-    }
-
-    /**
-     * Get active preview server info
-     */
-    public function getServerInfo(int $pageId): ?array
-    {
-        if (!$this->isProcessRunning($pageId)) {
-            return null;
-        }
-
-        return [
-            'control_port' => config('tinymist.control_plane_base_port') + (2 * $pageId),
-            'data_port' => config('tinymist.data_plane_base_port') + (2 * $pageId) + 1,
-            'host' => config('tinymist.preview_host'),
-            'last_activity' => $this->lastActivity[$pageId] ?? null,
-        ];
     }
 
     /**
@@ -327,14 +271,4 @@ class TinymistPreviewManager
         return true; // Port is available
     }
 
-    /**
-     * Shutdown all preview servers (cleanup on application shutdown)
-     */
-    public function shutdownAll(): void
-    {
-        foreach (array_keys($this->processes) as $pageId) {
-            $this->stopPreviewServer($pageId);
-        }
-        Log::info("Shut down all preview servers");
-    }
 }

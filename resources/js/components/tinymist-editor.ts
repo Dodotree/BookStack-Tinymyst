@@ -19,7 +19,7 @@ export class TinymistEditor extends Component {
 
     private controlClient: PreviewControlPlane | null = null;
     private previewRenderer: PreviewDataPlane | null = null;
-    private previewServerInfo: { controlPort: number, dataPort: number, host: string } | null = null;
+    private previewServerInfo: { controlPort: number, dataPort: number, host: string, pid: number } | null = null;
 
     private fileSyncClient: TinymistFileSyncClient | null = null;
     private fallbackCompiler: TinymistFallbackCompiler | null = null;
@@ -41,6 +41,7 @@ export class TinymistEditor extends Component {
                 controlPort: parseInt(this.$opts.controlPort as string, 10),
                 dataPort: parseInt(this.$opts.dataPort as string, 10),
                 host: this.$opts.host as string || '127.0.0.1',
+                pid: this.$opts.pid as number || 0,
             };
             console.log('[Preview Server] pre-started:', this.previewServerInfo);
             this.logSuccess(`[Preview Server] already started on ports ${this.previewServerInfo.controlPort}/${this.previewServerInfo.dataPort}`);
@@ -60,6 +61,7 @@ export class TinymistEditor extends Component {
                 page_id: pageId,
                 content: content,
                 restart: false,
+                pid: this.$opts.pid as number || 0,
             }) as any;
 
             console.log('[Preview Server] response:', response);
@@ -78,6 +80,7 @@ export class TinymistEditor extends Component {
                     controlPort: data.control_port,
                     dataPort: data.data_port,
                     host: data.host,
+                    pid: data.pid || 0,
                 };
                 console.log('[Preview Server] started:', this.previewServerInfo);
                 this.logSuccess(`[Preview Server] started on ports ${data.control_port}/${data.data_port}`);
@@ -120,11 +123,10 @@ export class TinymistEditor extends Component {
                         this.controlConnected = connected;
                         if (connected) {
                             this.logSuccess('[Preview Control Plane] connected');
-                            this.checkPreviewServerHealth();
                         } else {
                             this.logError('[Preview Control Plane] disconnected');
-                            this.checkPreviewServerHealth();
                         }
+                        this.checkPreviewServerHealth();
                     },
                     onCompileStatus: (kind: string, msg?: any) => {
                         // Update compilation status UI
@@ -145,6 +147,7 @@ export class TinymistEditor extends Component {
                     },
                     onError: (error) => {
                         this.logError(error);
+                        this.checkPreviewServerHealth();
                     }
                 }
             );
@@ -186,14 +189,14 @@ export class TinymistEditor extends Component {
                         this.dataConnected = connected;
                         if (connected) {
                             this.logSuccess('[Preview Data Plane] connected');
-                            this.checkPreviewServerHealth();
                         } else {
                             this.logError('[Preview Data Plane] disconnected');
-                            this.checkPreviewServerHealth();
                         }
+                        this.checkPreviewServerHealth();
                     },
                     onError: (error) => {
                         this.logError(error);
+                        this.checkPreviewServerHealth();
                     }
                 }
             );
@@ -418,7 +421,7 @@ export class TinymistEditor extends Component {
             await fetch('/ajax/tinymist/stop-preview', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ page_id: this.$opts.pageId })
+                body: JSON.stringify({ pid: this.previewServerInfo?.pid || 0 })
             });
             this.logInfo('🛑 [Preview Server] stopped');
         } catch (error) {
@@ -553,12 +556,13 @@ export class TinymistEditor extends Component {
                 page_id: pageId,
                 content: content,
                 restart: true,
+                pid: this.previewServerInfo?.pid || 0,
             }) as any;
 
             const data = response.data || response;
 
             if (data && typeof data === 'object' && 'success' in data) {
-                const result = data as { success: boolean; control_port?: number; data_port?: number; host?: string; error?: string };
+                const result = data as { success: boolean; control_port?: number; data_port?: number; host?: string; error?: string; pid?: number };
 
                 if (result.success && result.control_port && result.data_port && result.host) {
                     this.logSuccess(`[Preview Server] Restarted on ports ${result.control_port}/${result.data_port}`);
@@ -568,6 +572,7 @@ export class TinymistEditor extends Component {
                         controlPort: result.control_port,
                         dataPort: result.data_port,
                         host: result.host,
+                        pid: result.pid || 0,
                     };
 
                     // Reconnect Control and Data planes with new ports
@@ -658,6 +663,40 @@ export class TinymistEditor extends Component {
             if (action === 'insertHeading') this.insertHeading();
             if (action === 'clearConsole') this.clearConsole();
         });
+
+        // Clean up connections on page navigation
+        window.addEventListener('beforeunload', () => {
+            this.cleanup();
+        });
+
+        // Also listen to pagehide for better mobile support
+        window.addEventListener('pagehide', () => {
+            this.cleanup();
+        });
+    }
+
+    cleanup() {
+        console.log('[Tinymist Editor] Cleaning up connections...');
+
+        // Disconnect all WebSocket clients
+        if (this.fileSyncClient) {
+            this.fileSyncClient.disconnect();
+        }
+
+        if (this.controlClient) {
+            this.controlClient.disconnect();
+        }
+
+        if (this.previewRenderer) {
+            this.previewRenderer.dispose();
+        }
+
+        // Send stop-preview request (use sendBeacon for reliability during unload)
+        if (this.$opts.pageId) {
+            const data = JSON.stringify({ pid: this.previewServerInfo?.pid || 0 });
+            const blob = new Blob([data], { type: 'application/json' });
+            navigator.sendBeacon('/ajax/tinymist/stop-preview', blob);
+        }
     }
 
     setupFormSubmitHandler() {

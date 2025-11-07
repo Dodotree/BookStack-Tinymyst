@@ -8,15 +8,16 @@
      option:tinymist-editor:use-web-socket="true"
      option:tinymist-editor:host="{{ config('tinymist.preview_host', '127.0.0.1') }}"
      @if(isset($tinymistPreview) && $tinymistPreview)
+     option:tinymist-editor:ws-token="{{ $tinymistPreview['ws_token'] }}"
      option:tinymist-editor:control-port="{{ $tinymistPreview['control_port'] }}"
      option:tinymist-editor:data-port="{{ $tinymistPreview['data_port'] }}"
+     option:tinymist-editor:pid="{{ $tinymistPreview['pid'] ?? 0 }}"
      option:tinymist-editor:preview-started="true"
-     option:tinymist-editor:ws-token="{{ $tinymistPreview['ws_token'] }}"
      @endif
-     class="flex-container-column code-fill">
+     class="flex-container-row code-fill">
 
-    {{-- Top Row: Editor and Preview (70% height in landscape) --}}
-    <div class="tinymist-top-row flex-container-row items-stretch">
+    {{-- Left Side: Editor + Console --}}
+    <div class="tinymist-left-column flex-container-column">
         {{-- Editor Pane --}}
         <div class="tinymist-editor-pane flex-fill flex-container-column">
             <div class="editor-toolbar flex-container-row items-stretch justify-space-between">
@@ -50,43 +51,47 @@
             </div>
         </div>
 
-        {{-- Vertical Panel Divider --}}
-        <div class="tinymist-panel-divider-vertical"></div>
+        {{-- Horizontal Divider (between editor and console) --}}
+        <div class="tinymist-panel-divider-horizontal"></div>
 
-        {{-- Preview Pane --}}
-        <div class="tinymist-preview-pane flex-container-column">
-            <div class="editor-toolbar">
+        {{-- Console Panel --}}
+        <div class="tinymist-console-panel flex-container-column">
+            <div class="editor-toolbar flex-container-row items-stretch justify-space-between">
                 <div class="editor-toolbar-label text-mono bold px-m py-xs">
-                    <span>{{ trans('entities.pages_tinymist_preview') ?? 'Live Preview' }}</span>
+                    <span>{{ trans('entities.pages_tinymist_console') ?? 'Console' }}</span>
+                </div>
+                <div class="buttons flex-container-row items-stretch">
+                    <button class="text-button" type="button" data-action="clearConsole" title="Clear Console">
+                        @icon('delete')
+                    </button>
                 </div>
             </div>
 
-            <div refs="tinymist-editor@preview"
-                 class="tinymist-preview-content flex flex-fill">
-                <div class="text-muted p-m">Loading preview...</div>
+            <div refs="tinymist-editor@console"
+                 class="tinymist-console-content flex flex-fill">
+                <div class="text-muted p-m text-small">Ready. Waiting for compilation...</div>
             </div>
         </div>
     </div>
 
-    {{-- Horizontal Divider --}}
-    <div class="tinymist-panel-divider-horizontal"></div>
+    {{-- Vertical Divider (between left column and preview) --}}
+    <div class="tinymist-panel-divider-vertical"></div>
 
-    {{-- Console Panel (30% height in landscape) --}}
-    <div class="tinymist-console-panel flex-container-column">
-        <div class="editor-toolbar flex-container-row items-stretch justify-space-between">
+    {{-- Right Side: Preview (full height) --}}
+    <div class="tinymist-preview-pane flex-container-column">
+        <div class="editor-toolbar">
             <div class="editor-toolbar-label text-mono bold px-m py-xs">
-                <span>{{ trans('entities.pages_tinymist_console') ?? 'Console' }}</span>
-            </div>
-            <div class="buttons flex-container-row items-stretch">
-                <button class="text-button" type="button" data-action="clearConsole" title="Clear Console">
-                    @icon('delete')
-                </button>
+                <span>{{ trans('entities.pages_tinymist_preview') ?? 'Live Preview' }}</span>
             </div>
         </div>
 
-        <div refs="tinymist-editor@console"
-             class="tinymist-console-content flex flex-fill">
-            <div class="text-muted p-m text-small">Ready. Waiting for compilation...</div>
+        <div refs="tinymist-editor@preview"
+             class="tinymist-preview-content flex flex-fill">
+            @if(isset($model) && !empty($model->html))
+                {!! $model->html !!}
+            @else
+                <div class="text-muted p-m">Loading preview...</div>
+            @endif
         </div>
     </div>
 </div>
@@ -98,30 +103,31 @@
         max-width: 100%;
     }
 
-    /* Main container - vertical stack in landscape */
+    /* Main container - horizontal layout (left column + preview) */
     #tinymist-editor {
         display: flex;
-        flex-direction: column;
+        flex-direction: row;
         width: 100%;
         height: 100%;
     }
 
-    /* Top row (Editor + Preview) - 70% height */
-    .tinymist-top-row {
+    /* Left column (Editor + Console) - 50% width */
+    .tinymist-left-column {
         display: flex;
-        flex-direction: row;
-        flex: 7;
-        min-height: 0;
+        flex-direction: column;
+        flex: 1;
+        min-width: 0;
         overflow: hidden;
     }
 
-    /* Editor Pane (left side of top row) */
+    /* Editor Pane (top of left column) - 2/3 height */
     .tinymist-editor-pane {
         border-top: 1px solid #ddd;
         border-bottom: 1px solid #ddd;
         position: relative;
-        flex: 1;
+        flex: 2;
         min-width: 0;
+        min-height: 0;
         display: flex;
         flex-direction: column;
         overflow: hidden;
@@ -131,7 +137,23 @@
         border-color: #000;
     }
 
-    /* Preview Pane (right side of top row) */
+    /* Console Panel (bottom of left column) - 1/3 height */
+    .tinymist-console-panel {
+        border-top: 1px solid #ddd;
+        border-bottom: 1px solid #ddd;
+        flex: 1;
+        min-height: 150px;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        overflow: hidden;
+    }
+
+    html.dark-mode .tinymist-console-panel {
+        border-color: #000;
+    }
+
+    /* Preview Pane (right side, full height) - 50% width */
     .tinymist-preview-pane {
         border-top: 1px solid #ddd;
         border-bottom: 1px solid #ddd;
@@ -149,23 +171,7 @@
         border-color: #000;
     }
 
-    /* Console Panel (bottom) - 30% height */
-    .tinymist-console-panel {
-        border-top: 1px solid #ddd;
-        border-bottom: 1px solid #ddd;
-        flex: 3;
-        min-height: 150px;
-        display: flex;
-        flex-direction: column;
-        position: relative;
-        overflow: hidden;
-    }
-
-    html.dark-mode .tinymist-console-panel {
-        border-color: #000;
-    }
-
-    /* Vertical divider (between editor and preview) */
+    /* Vertical divider (between left column and preview) */
     .tinymist-panel-divider-vertical {
         width: 2px;
         background-color: #ddd;
@@ -177,7 +183,7 @@
         background-color: #000;
     }
 
-    /* Horizontal divider (between top row and console) */
+    /* Horizontal divider (between editor and console in left column) */
     .tinymist-panel-divider-horizontal {
         height: 2px;
         background-color: #ddd;
@@ -387,22 +393,30 @@
 
     /* Mobile/Portrait mode - stack all three panels vertically */
     @media (max-width: 1000px) {
-        .tinymist-top-row {
+        #tinymist-editor {
             flex-direction: column;
+        }
+
+        .tinymist-left-column {
+            width: 100%;
             flex: 6;
         }
 
-        .tinymist-editor-pane,
-        .tinymist-preview-pane {
-            width: 100%;
-            flex-basis: auto !important;
+        .tinymist-editor-pane {
             min-height: 250px;
             flex: 1;
         }
 
         .tinymist-console-panel {
-            flex: 4;
+            flex: 1;
             min-height: 200px;
+        }
+
+        .tinymist-preview-pane {
+            width: 100%;
+            flex-basis: auto !important;
+            min-height: 250px;
+            flex: 4;
         }
 
         .tinymist-panel-divider-vertical {

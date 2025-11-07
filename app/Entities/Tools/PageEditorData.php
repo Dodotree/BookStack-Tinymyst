@@ -145,11 +145,12 @@ class PageEditorData
 
             if ($result['success'] ?? false) {
                 return [
+                    'ws_token' => $wsToken,
                     'control_port' => $result['control_port'],
                     'data_port' => $result['data_port'],
                     'host' => $result['host'],
                     'status' => $result['status'] ?? 'started',
-                    'ws_token' => $wsToken,
+                    'pid' => $result['pid'] ?? 0,
                 ];
             }
 

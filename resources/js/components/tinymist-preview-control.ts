@@ -64,6 +64,7 @@ export class PreviewControlPlane {
                 this.controlWs.onmessage = (event) => {
                     const msg = JSON.parse(event.data);
                     if (msg.event === 'compileStatus') {
+                        console.log(`[Preview Control] Debug status event:`, event);
                         this.onCompileStatus(msg.kind, msg);
                     } else if (msg.event === 'outline') {
                         this.onOutline(msg.items);
@@ -79,6 +80,7 @@ export class PreviewControlPlane {
 
                 this.controlWs.onerror = (error) => {
                     console.error("[Preview Control] WS error:", error);
+                    this.onError?.(error.toString());
                     reject(error);
                 };
 
@@ -87,12 +89,16 @@ export class PreviewControlPlane {
                         `[Preview Control] WS disconnected: code=${event.code}, reason=${event.reason}`
                     );
                     this.onConnectionStateChange?.(false);
-                    // Common close codes:
-                    // 1000 = Normal closure
-                    // 1001 = Going away
-                    // 1006 = Abnormal closure (no close frame)
+                    const errCodes: Record<number, string> = {
+                        1000: "Normal closure",
+                        1001: "Going away",
+                        1006: "Abnormal closure (no close frame)",
+                        1011: "Internal server error",
+                    };
                     if (event.code !== 1000) {
                         this.handleReconnect();
+                    } else {
+                        reject(new Error(`Connection closed: ${event.code} - ${event.reason || errCodes[event.code] || 'Unknown reason'}`));
                     }
                 };
             } catch (error) {

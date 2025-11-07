@@ -23,6 +23,10 @@ type IncomingMessagePayload =
       pageId: number;
       docVersion: number;
       changes: unknown; // serialized ChangeSet
+    }
+  | {
+      type: 'updateToken';
+      token: string;
     };
 
 type OutgoingMessagePayload =
@@ -135,7 +139,14 @@ function handleChanges(ctx: ConnectionContext, msg: Extract<IncomingMessagePaylo
     return;
   }
 
-  const updated = changeSet.apply(text).toString();
+  let updated: string;
+  try {
+    updated = changeSet.apply(text).toString();
+  } catch (err) {
+    console.error('Failed to apply changeset', { pageId: ctx.pageId, err });
+    send(ctx.socket, { type: 'error', code: 'CHANGESET_APPLY_FAILED', message: 'Failed to apply changeset' });
+    return;
+  }
 
   try {
     persistDocument(ctx.pageId, updated);
@@ -146,6 +157,33 @@ function handleChanges(ctx: ConnectionContext, msg: Extract<IncomingMessagePaylo
 
   ctx.docVersion = msg.docVersion;
   send(ctx.socket, { type: 'ack', pageId: ctx.pageId, docVersion: ctx.docVersion });
+}
+
+function handleTokenUpdate(ctx: ConnectionContext, msg: Extract<IncomingMessagePayload, { type: 'updateToken' }>) {
+  try {
+    console.log('[File Sync] Token update request', { pageId: ctx.pageId, userId: ctx.userId });
+    const payload = verifyToken(msg.token);
+
+    // Verify it's for the same page
+    if (payload.page_id !== ctx.pageId) {
+      console.error('[File Sync] Token update failed: page mismatch', {
+        contextPageId: ctx.pageId,
+        tokenPageId: payload.page_id
+      });
+      send(ctx.socket, { type: 'error', code: 'PAGE_MISMATCH', message: 'Token is for different page' });
+      return;
+    }
+
+    // Update context with new user ID (in case user changed)
+    ctx.userId = payload.user_id;
+    console.log('[File Sync] Token updated successfully', { pageId: ctx.pageId, userId: ctx.userId });
+
+    // Send acknowledgment
+    send(ctx.socket, { type: 'ack', pageId: ctx.pageId, docVersion: ctx.docVersion });
+  } catch (err) {
+    console.error('[File Sync] Token update failed:', err);
+    send(ctx.socket, { type: 'error', code: 'INVALID_TOKEN', message: 'Token verification failed' });
+  }
 }
 
 function processMessage(ctx: ConnectionContext, raw: RawData) {
@@ -165,6 +203,9 @@ function processMessage(ctx: ConnectionContext, raw: RawData) {
       return;
     case 'changes':
       handleChanges(ctx, msg);
+      return;
+    case 'updateToken':
+      handleTokenUpdate(ctx, msg);
       return;
     default:
       send(ctx.socket, { type: 'error', code: 'UNKNOWN_TYPE', message: 'Unsupported message type' });
