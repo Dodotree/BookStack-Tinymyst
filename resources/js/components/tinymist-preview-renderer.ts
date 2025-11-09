@@ -11,6 +11,11 @@ import renderModule from "@myriaddreamin/typst-ts-renderer/pkg/typst_ts_renderer
 import { TypstDomDocument as TypstDocument } from '@myriaddreamin/typst.ts/dist/esm/dom.mjs';
 import { PreviewMode } from "@myriaddreamin/typst.ts/dist/esm/contrib/dom/typst-doc.mjs";
 
+type CursorParams = {
+    textSelector: string;
+    charIndex: number;
+};
+
 
 export class PreviewDataPlane {
     private renderer: TypstRenderer | null = null;
@@ -28,6 +33,8 @@ export class PreviewDataPlane {
     private hasInitialDocument: boolean = false; // Track if we've received initial document
     private processingQueue: Promise<void> = Promise.resolve();
     private lastSvg: string | null = null;
+    private cursorCircle: SVGCircleElement | null = null;
+    private cursorParams: CursorParams = { textSelector: 'svg.typst-doc>g.typst-group', charIndex: 0 };
 
     private onConnectionStateChange?: (connected: boolean) => void;
     private onError?: (error: string) => void;
@@ -44,7 +51,7 @@ export class PreviewDataPlane {
         this.previewElement = previewElement;
         this.host = host;
         this.dataPort = dataPort;
-        if(options) {
+        if (options) {
             this.onConnectionStateChange = options.onConnectionStateChange;
             this.onError = options.onError;
         }
@@ -219,9 +226,10 @@ export class PreviewDataPlane {
                     console.log(`[Preview Data] Cursor paths payload (${payload.length} bytes):`, decoded);
                     try {
                         const parsed = JSON.parse(decoded);
-                        console.log('[Preview Data] Cursor paths parsed:', parsed);
+                        console.info('[Preview Data] Cursor paths parsed:', parsed);
+                        this.pathToSelector(parsed);
                     } catch (err) {
-                        console.log('[Preview Data] Cursor paths not valid JSON:', err);
+                        console.error('[Preview Data] Cursor paths not valid JSON:', err);
                     }
                     break;
                 }
@@ -310,36 +318,10 @@ export class PreviewDataPlane {
                     const svg = await session.renderSvg({});
                     console.log('[Preview Data] SVG length:', svg.length, '(was:', oldSvgLength + ')');
 
-                    // Look for cursor indicator elements (greenish circle with #66bab7 or similar)
-                    const cursorPatterns = [
-                        /<circle[^>]*66bab7[^>]*>/gi,
-                        /<ellipse[^>]*66bab7[^>]*>/gi,
-                        /<g[^>]*cursor[^>]*>/gi,
-                        /<path[^>]*66bab7[^>]*>/gi,
-                    ];
-
-                    let foundCursor = false;
-                    for (const pattern of cursorPatterns) {
-                        const matches = svg.match(pattern);
-                        if (matches && matches.length > 0) {
-                            console.log(`[Preview Data] ✓ Found ${matches.length} cursor element(s)!`);
-                            console.log('[Preview Data] Cursor element:', matches[0].substring(0, 200));
-                            foundCursor = true;
-                            break;
-                        }
-                    }
-
                     // Compare old and new SVG - look for ALL significant changes
                     if (oldSvg && oldSvg !== svg) {
                         const sizeDiff = svg.length - oldSvgLength;
                         console.log(`[Preview Data] SVG size changed by ${sizeDiff} bytes`);
-
-                        // Find elements that exist in new but not in old
-                        const newCircles = (svg.match(/<circle/g) || []).length;
-                        const oldCircles = (oldSvg.match(/<circle/g) || []).length;
-                        if (newCircles !== oldCircles) {
-                            console.log(`[Preview Data] Circle count changed: ${oldCircles} → ${newCircles}`);
-                        }
 
                         const newGroups = (svg.match(/<g /g) || []).length;
                         const oldGroups = (oldSvg.match(/<g /g) || []).length;
@@ -371,6 +353,7 @@ export class PreviewDataPlane {
                     }
 
                     this.previewElement.innerHTML = svg;
+                    this.showCursorAt(this.cursorParams.textSelector, this.cursorParams.charIndex);
                     this.lastSvg = svg;
                     console.log('[Preview Data] Render complete');
 
@@ -476,4 +459,123 @@ export class PreviewDataPlane {
 
         return this.sessionPromise;
     }
+
+
+    /**
+     * * * * * CssClassToType
+     * ["typst-text", SourceMappingType.Text],
+     * ["typst-group", SourceMappingType.Group],
+     * ["typst-image", SourceMappingType.Image],
+     * ["typst-shape", SourceMappingType.Shape],
+     * ["typst-page", SourceMappingType.Page],
+     * ["tsel", SourceMappingType.CharIndex],
+     *
+     * SVG Structure Notes:
+     * svg.typst-doc
+     *  > g.typst-page (one per page)
+     *    > g data-tid="..." (data-tid wrappers)
+     *      > g.typst-group (frames, groups)
+     *        > g data-tid="..." (data-tid wrappers)
+     *          > g.typst-text (text blocks)
+     *            > use (glyphs)
+     * Every group except the first one is wrapped in a data-tid element.
+     * Cursor paths count only mentioned below elements as children
+     * ${n} is 1-based index
+     * `svg.typst-doc > :nth-child(${n} of .typst-page)` is a starting point
+     * `> :nth-child(${n} of :is(.typst-group,.typst-text))` first element in the page
+     *  followed by data-tid wrapper for the 12th group and the group itself
+     * :is() and :has() should have all allowed child types (except typst-page)
+     * `> :nth-child(${n} of g:has(>g.typst-group,>g.typst-text, ...))>g`
+     *  repeats for nested groups until text g.typst-text
+     *  > :nth-child(${n} of g:has(>g.typst-group,>g.typst-text, ...))>g> :nth-child(${n} of use)
+     *
+     * The g.typst-text element is where we will append the cursor svg circle.
+     * And we should copy "x" from "use" element to "cx" of the circle.
+     *
+     * Path format notes:
+     * Usually cursor paths have only 1 path [[]]
+     * Code blocks give extra paths [[],[],[],[],[]] - purpose unknown
+     */
+    private pathToSelector(paths: any): void {
+        const kindMap: Record<number, string> = {
+            0: '.typst-text', //g
+            1: '.typst-group', //g
+            2: '.typst-image', //g
+            3: '.typst-shape', //g
+            4: '.typst-page', //g
+            5: 'use' // theoretically .tsel, but actually "use" tag
+        };
+
+        const pairs = paths[0].map((step: any) => [
+            kindMap[Number(step.kind)] ?? '???',
+            step.index + 1 // Convert to 1-based index for CSS
+        ]);
+        console.warn('[Preview Data] pathToSelector pairs:', pairs);
+
+        const pageStep = pairs.shift();
+        const topGroupStep = pairs.shift();
+        const topGroup = `svg.typst-doc > :nth-child(${pageStep[1]} of .typst-page)`
+            + ` > :nth-child(${topGroupStep[1]} of :is(.typst-group,.typst-text,.typst-image,.typst-shape))`;
+        const ofHas = `of :has(>g.typst-group,>g.typst-text,>g.typst-image,>g.typst-shape)`;
+
+        let charStep = pairs.pop();
+        if (charStep[0] !== 'use') {
+            pairs.push(charStep);
+            charStep = ['use', 1];
+        }
+
+        const textSelector = pairs.reduce((selector: string, [tag, child]: [string, number]) =>
+            selector + `> :nth-child(${child} ${ofHas})>g`,
+            topGroup);
+        console.warn('[Preview Data] selector of the text node:', textSelector);
+
+        this.showCursorAt(textSelector, charStep[1]);
+    }
+
+    /**
+     * Show cursor circle at the specified glyph position
+     */
+    private showCursorAt(textSelector: string, charIndex: number): void {
+        const textNode = document.querySelector(textSelector);
+        if (!textNode) return;
+
+        this.cursorParams = { textSelector, charIndex };
+
+        let cx = 0;      // default position in text node
+        let radius = 5;  // default radius
+
+        console.warn('[Preview Data] pathToSelector found node:', textNode);
+        // append cursor circle, since svg is redrawn on every update, circle must be re-added
+        const glyphNode = textNode.querySelector(`:nth-child(${charIndex} of use)`);
+        // set cursor 'cx' attribute to match glyph 'x' attribute
+        if (glyphNode) {
+            cx = Number(glyphNode.getAttribute('x') || 0);
+            const bbox = (glyphNode as SVGGraphicsElement).getBBox();
+            radius = 2 * Math.max(bbox.height, bbox.width);
+        }
+
+        // Remove old circle if it's attached to a different text node
+        if (this.cursorCircle) {
+            this.cursorCircle.remove();
+        }
+
+        // Create new circle
+        this.cursorCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        this.cursorCircle.setAttribute('fill', '#66bab7');
+        this.cursorCircle.setAttribute('fill-opacity', '0.25');
+        this.cursorCircle.setAttribute('stroke', '#66bab7');
+        this.cursorCircle.setAttribute('stroke-opacity', '0.65');
+        this.cursorCircle.setAttribute('stroke-width', '1.5');
+        this.cursorCircle.dataset.cursorIndicator = 'true';
+        this.cursorCircle.style.pointerEvents = 'none';
+        this.cursorCircle.style.transition = 'cx 0.1s ease, cy 0.1s ease, r 0.1s ease';
+
+        // Append to text node
+        textNode.appendChild(this.cursorCircle);
+
+        // Update circle position
+        this.cursorCircle.setAttribute('cx', cx.toFixed(2));
+        this.cursorCircle.setAttribute('r', radius.toFixed(2));
+    }
+
 }

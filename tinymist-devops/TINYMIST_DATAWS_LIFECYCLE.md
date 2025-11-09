@@ -122,19 +122,14 @@ WASM provides high-performance operations:
 - `initWasm()`: Initialize WASM module  -- should be `renderer.init()`
 - `renderSession.loadSvgState()`: Store SVG baseline for diffs -- (?)
 - `renderSession.manipulateData()`: Apply binary diffs -- checks out
-- `renderSession.getPageLayout()`: Get page metrics -- `retrievePagesInfo` or `docWidth` `docHeight`?
-- `renderSession.getElementAtPosition()`: Query element at position -- (?)
-- `renderSession.getPathRenderInfo()`: Get path styling -- (?)
-- `renderSession.analyzeColors()`: Analyze color space -- `backgroundColor` ?
-- `renderSession.shouldInvertColors()`: Color inversion decision --(?)
 
-    **session**
+    **session methods**
     getSourceLoc
-    retrievePagesInfo
+    retrievePagesInfo -- offset and w,h
     reset
     manipulateData
     renderCanvas
-    renderToSvg
+    renderToSvg -- to get svg html: `const svg = await session.renderSvg({});`
     renderSvgDiff
     renderSvg -- does not include "container" parameter to place SVG
     pixelPerPt
@@ -142,20 +137,29 @@ WASM provides high-performance operations:
     docHeight
     backgroundColor
 
-    **renderer**
+    **renderer methods**
     createWorkerV0
     getCustomV1
     init
     loadGlyphPack
     manipulateData
-    renderDom
+    renderDom -- TypstDomDocument which is renamed during export TypstDocument
     renderCanvas
+    renderToCanvas
     renderSvgDiff // experimental
     renderToSvg -- does not include "container" parameter to place SVG
     renderSvg // not incremental
     resetSession
     retrievePagesInfoFromSession
     runWithSession
+
+```js
+  PageInfo {
+    pageOffset: number;
+    width: number;
+    height: number;
+  }
+```
 
 ## WASM MODULE REFERENCES
 
@@ -710,4 +714,31 @@ switch (command) {
   case 'invert-colors': this.handleInvertColors(payload); break;
   case 'outline': this.handleOutline(payload); break;
 }
+```
+
+#### cursor-paths
+
+```js
+[
+  [
+    {"kind":4,"index":0,"fingerprint":""},   // page
+    {"kind":1,"index":0,"fingerprint":""},   // group
+    {"kind":0,"index":7,"fingerprint":""},   // text block
+    {"kind":5,"index":28,"fingerprint":""}   // character index
+  ]
+]
+
+// example
+
+[
+    [
+        {"kind": 4, "index": 0, "fingerprint": ""}, // page[0]
+        {"kind": 1, "index": 0, "fingerprint": ""}, // page[0].g[0]
+        {"kind": 1, "index": 11,"fingerprint": ""}, // page[0].g[0].g[11]
+        {"kind": 1, "index": 3, "fingerprint": ""}, // page[0].g[0].g[11].g[3]
+        {"kind": 1, "index": 2, "fingerprint": ""}, // page[0].g[0].g[11].g[3].g[2]
+        {"kind": 0, "index": 0, "fingerprint": ""}, // page[0].g[0].g[11].g[3].g[2].text[0]
+        {"kind": 5, "index": 10,"fingerprint": ""}  // page[0].g[0].g[11].g[3].g[2].text[0].char[10]
+    ]
+]
 ```
