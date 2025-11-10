@@ -14,6 +14,8 @@ import { PreviewMode } from "@myriaddreamin/typst.ts/dist/esm/contrib/dom/typst-
 type CursorParams = {
     textSelector: string;
     charIndex: number;
+    cx: number;
+    radius: number;
 };
 
 
@@ -34,7 +36,7 @@ export class PreviewDataPlane {
     private processingQueue: Promise<void> = Promise.resolve();
     private lastSvg: string | null = null;
     private cursorCircle: SVGCircleElement | null = null;
-    private cursorParams: CursorParams = { textSelector: 'svg.typst-doc>g.typst-group', charIndex: 0 };
+    private cursorParams: CursorParams = { textSelector: 'svg.typst-doc>g.typst-group', charIndex: 0, cx: 0, radius: 0 };
 
     private onConnectionStateChange?: (connected: boolean) => void;
     private onError?: (error: string) => void;
@@ -493,8 +495,15 @@ export class PreviewDataPlane {
      * And we should copy "x" from "use" element to "cx" of the circle.
      *
      * Path format notes:
+     *
+     * Nested data-tid without class can throw off indexing, handled for 2 levels (for now)
+     *
      * Usually cursor paths have only 1 path [[]]
-     * Code blocks give extra paths [[],[],[],[],[]] - purpose unknown
+     * Code blocks give extra paths [[],[],[],[],[]]
+     * "occur when a single source-code cursor position maps to multiple rendered elements"
+     * Put a circle at each resolved node of not 0 bounding box
+     *
+     * Cursor Paths are not provided for $infinity$ and functions like #datetime.today()
      */
     private pathToSelector(paths: any): void {
         const kindMap: Record<number, string> = {
@@ -505,61 +514,81 @@ export class PreviewDataPlane {
             4: '.typst-page',  // g
             5: 'use' // theoretically .tsel, but actually "use" tag
         };
-
-        const pairs = paths[0].map((step: any) => [
-            kindMap[Number(step.kind)] ?? '???',
-            step.index + 1 // Convert to 1-based index for CSS
-        ]);
-        console.warn('[Preview Data] pathToSelector pairs:', pairs);
-
-        const pageStep = pairs.shift();
-        const topGroupStep = pairs.shift();
-        const topGroup = `svg.typst-doc > :nth-child(${pageStep[1]} of .typst-page)`
-            + ` > :nth-child(${topGroupStep[1]} of :is(.typst-group,.typst-text,.typst-image,.typst-shape))`;
         const validChildren = `>g.typst-group,>g.typst-text,>.typst-image,>.typst-shape,>g.typst-wrap`;
 
-        let charStep = pairs.pop();
-        if (charStep[0] !== 'use') {
-            pairs.push(charStep);
-            charStep = ['use', 1];
-        }
+        this.cursorParams = paths.reduce((cursorMax: CursorParams, steps: any[]) => {
 
-        const textSelector = pairs.reduce((selector: string, [tag, child]: [string, number]) =>
-            selector + `> :nth-child(${child} of :has(${validChildren}))>g`,
-            topGroup);
+            let cx = 0;
+            let radius = 0;
 
-        // For double data-tid wrappers not to get ignored / throw off indexing
-        // Happens with rare shape paths
-        document.querySelectorAll(`g[data-tid]:not([class])>[data-tid]:not([class]):has(${validChildren})`)
-            .forEach(element => {
-                element.classList.add('typst-wrap');
-            });
-        console.debug('[Preview Data] selector of the text node:', textSelector);
-        console.debug('[Preview Data] works?', document.querySelector(textSelector));
+            const pairs: [string, number][] = steps.map((step: any) => [
+                kindMap[Number(step.kind)] ?? '???',
+                step.index + 1 // Convert to 1-based index for CSS
+            ]);
+            console.warn('[Preview Data] pathToSelector pairs:', pairs);
 
-        this.showCursorAt(textSelector, charStep[1]);
+            const pageStep = pairs.shift();
+            const topGroupStep = pairs.shift();
+
+            if (!pageStep || !topGroupStep) {
+                console.warn('[Preview Data] Invalid cursor path: insufficient steps');
+                return cursorMax;
+            }
+
+            const topGroup = `svg.typst-doc > :nth-child(${pageStep[1]} of .typst-page)`
+                + ` > :nth-child(${topGroupStep[1]} of :is(.typst-group,.typst-text,.typst-image,.typst-shape))`;
+
+            let charStep = pairs.pop();
+            if (!charStep || charStep[0] !== 'use') {
+                if (charStep) {
+                    pairs.push(charStep);
+                }
+                charStep = ['use', 1];
+            }
+
+            const textSelector = pairs.reduce((selector: string, [tag, child]: [string, number]) =>
+                selector + `> :nth-child(${child} of :has(${validChildren}))>g`,
+                topGroup);
+
+            // For double data-tid wrappers not to get ignored / throw off indexing
+            // Happens with rare shape paths
+            document.querySelectorAll(`g[data-tid]:not([class])>[data-tid]:not([class]):has(${validChildren})`)
+                .forEach(element => {
+                    element.classList.add('typst-wrap');
+                });
+            console.debug('[Preview Data] selector of the text node:', textSelector);
+            console.debug('[Preview Data] works?', document.querySelector(textSelector));
+
+            const textNode = document.querySelector(textSelector);
+            if (!textNode) {
+                console.warn('[Preview Data] Text node not found for selector:', textSelector);
+                return cursorMax;
+            }
+            // append cursor circle, since svg is redrawn on every update, circle must be re-added
+            const glyphNode = textNode.querySelector(`:nth-child(${charStep[1]} of use)`);
+            // set cursor 'cx' attribute to match glyph 'x' attribute
+            if (glyphNode) {
+                cx = Number(glyphNode.getAttribute('x') || 0);
+                const bbox = (glyphNode as SVGGraphicsElement).getBBox();
+                radius = 2 * Math.max(bbox.height, bbox.width);
+            }
+            if (radius > cursorMax.radius!) {
+                return { textSelector, charIndex: charStep[1], cx, radius };
+            }
+            return cursorMax;
+
+            // Default selector stays if no larger radius found
+        }, { textSelector: this.cursorParams.textSelector, charIndex: 0, cx: 0, radius: 0 } as CursorParams);
+
+        this.showCursorAt();
     }
 
     /**
      * Show cursor circle at the specified glyph position
      */
-    private showCursorAt(textSelector: string, charIndex: number): void {
-        const textNode = document.querySelector(textSelector);
+    private showCursorAt(): void {
+        const textNode = document.querySelector(this.cursorParams.textSelector);
         if (!textNode) return;
-
-        this.cursorParams = { textSelector, charIndex };
-
-        let cx = 0;      // default position in text node
-        let radius = 5;  // default radius
-
-        // append cursor circle, since svg is redrawn on every update, circle must be re-added
-        const glyphNode = textNode.querySelector(`:nth-child(${charIndex} of use)`);
-        // set cursor 'cx' attribute to match glyph 'x' attribute
-        if (glyphNode) {
-            cx = Number(glyphNode.getAttribute('x') || 0);
-            const bbox = (glyphNode as SVGGraphicsElement).getBBox();
-            radius = 2 * Math.max(bbox.height, bbox.width);
-        }
 
         // Remove old circle if it's attached to a different text node
         if (this.cursorCircle) {
@@ -581,8 +610,8 @@ export class PreviewDataPlane {
         textNode.appendChild(this.cursorCircle);
 
         // Update circle position
-        this.cursorCircle.setAttribute('cx', cx.toFixed(2));
-        this.cursorCircle.setAttribute('r', radius.toFixed(2));
+        this.cursorCircle.setAttribute('cx', this.cursorParams.cx.toFixed(2));
+        this.cursorCircle.setAttribute('r', Math.max(5, this.cursorParams.radius).toFixed(2));
     }
 
 }
