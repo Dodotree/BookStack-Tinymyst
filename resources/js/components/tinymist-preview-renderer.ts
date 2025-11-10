@@ -498,11 +498,11 @@ export class PreviewDataPlane {
      */
     private pathToSelector(paths: any): void {
         const kindMap: Record<number, string> = {
-            0: '.typst-text', //g
-            1: '.typst-group', //g
-            2: '.typst-image', //g
-            3: '.typst-shape', //g
-            4: '.typst-page', //g
+            0: '.typst-text',  // g
+            1: '.typst-group', // g
+            2: '.typst-image', // ?
+            3: '.typst-shape', // path
+            4: '.typst-page',  // g
             5: 'use' // theoretically .tsel, but actually "use" tag
         };
 
@@ -516,7 +516,7 @@ export class PreviewDataPlane {
         const topGroupStep = pairs.shift();
         const topGroup = `svg.typst-doc > :nth-child(${pageStep[1]} of .typst-page)`
             + ` > :nth-child(${topGroupStep[1]} of :is(.typst-group,.typst-text,.typst-image,.typst-shape))`;
-        const ofHas = `of :has(>g.typst-group,>g.typst-text,>g.typst-image,>g.typst-shape)`;
+        const validChildren = `>g.typst-group,>g.typst-text,>.typst-image,>.typst-shape,>g.typst-wrap`;
 
         let charStep = pairs.pop();
         if (charStep[0] !== 'use') {
@@ -525,9 +525,17 @@ export class PreviewDataPlane {
         }
 
         const textSelector = pairs.reduce((selector: string, [tag, child]: [string, number]) =>
-            selector + `> :nth-child(${child} ${ofHas})>g`,
+            selector + `> :nth-child(${child} of :has(${validChildren}))>g`,
             topGroup);
-        console.warn('[Preview Data] selector of the text node:', textSelector);
+
+        // For double data-tid wrappers not to get ignored / throw off indexing
+        // Happens with rare shape paths
+        document.querySelectorAll(`g[data-tid]:not([class])>[data-tid]:not([class]):has(${validChildren})`)
+            .forEach(element => {
+                element.classList.add('typst-wrap');
+            });
+        console.debug('[Preview Data] selector of the text node:', textSelector);
+        console.debug('[Preview Data] works?', document.querySelector(textSelector));
 
         this.showCursorAt(textSelector, charStep[1]);
     }
@@ -544,7 +552,6 @@ export class PreviewDataPlane {
         let cx = 0;      // default position in text node
         let radius = 5;  // default radius
 
-        console.warn('[Preview Data] pathToSelector found node:', textNode);
         // append cursor circle, since svg is redrawn on every update, circle must be re-added
         const glyphNode = textNode.querySelector(`:nth-child(${charIndex} of use)`);
         // set cursor 'cx' attribute to match glyph 'x' attribute
