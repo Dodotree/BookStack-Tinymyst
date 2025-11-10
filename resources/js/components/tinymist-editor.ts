@@ -1,11 +1,87 @@
 import { Component } from './component';
-import { EditorView } from '@codemirror/view';
-import { StateEffect } from '@codemirror/state';
+import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate } from '@codemirror/view';
+import { StateEffect, StateField, RangeSetBuilder } from '@codemirror/state';
 import { linter, Diagnostic, forceLinting, setDiagnostics } from '@codemirror/lint';
 import { PreviewControlPlane } from './tinymist-preview-control';
 import { PreviewDataPlane } from './tinymist-preview-renderer';
 import { TinymistFileSyncClient } from './tinymist-file-sync-client';
 import { TinymistFallbackCompiler } from './tinymist-fallback-compiler';
+
+// Highlight region interface
+interface HighlightRegion {
+    line: number;      // 1-based line number
+    start: number;     // Character offset in line
+    len: number;       // Length of highlight
+    type: string;      // Highlight type (math, string, comment, etc.)
+}
+
+// Color mapping for highlight types (text colors, not backgrounds)
+const highlightColors: Record<string, string> = {
+    'math': '#5DADE2',          // Light blue for math
+    'string': '#52BE80',        // Green for strings
+    'comment': '#808080',       // Gray for comments
+    'keyword': '#BB8FCE',       // Purple for keywords
+    'punctuation': '#D19A66',   // Orange for punctuation
+    'function': '#5DADE2',      // Blue for functions
+    'parameter': '#E5C07B',     // Yellow for parameters
+    'operator': '#E06C75',      // Red for operators
+    'delimiter': '#D19A66',     // Orange for delimiters
+    'error': '#E74C3C',         // Red for errors
+};
+
+// StateEffect to add highlights
+const addHighlightsEffect = StateEffect.define<HighlightRegion[]>();
+
+// StateEffect to clear highlights
+const clearHighlightsEffect = StateEffect.define();
+
+// StateField to store highlight decorations
+const highlightField = StateField.define<DecorationSet>({
+    create() {
+        return Decoration.none;
+    },
+    update(highlights, tr) {
+        // Map existing highlights through document changes
+        highlights = highlights.map(tr.changes);
+
+        for (const effect of tr.effects) {
+            if (effect.is(clearHighlightsEffect)) {
+                highlights = Decoration.none;
+            } else if (effect.is(addHighlightsEffect)) {
+                const builder = new RangeSetBuilder<Decoration>();
+                const doc = tr.state.doc;
+
+                for (const region of effect.value) {
+                    try {
+                        // Convert 1-based line to 0-based
+                        const lineNum = Math.max(0, region.line - 1);
+                        if (lineNum >= doc.lines) continue;
+
+                        const line = doc.line(lineNum + 1); // doc.line is 1-based
+                        const from = line.from + region.start;
+                        const to = Math.min(line.to, from + region.len);
+
+                        if (from < to && from >= 0 && to <= doc.length) {
+                            const color = highlightColors[region.type] || '#FFD700';
+                            const mark = Decoration.mark({
+                                class: `tinymist-highlight-${region.type}`,
+                                attributes: { style: `color: ${color}; font-weight: 500;` }
+                            });
+                            builder.add(from, to, mark);
+                        }
+                    } catch (e) {
+                        console.warn('[Highlight] Failed to add highlight:', region, e);
+                    }
+                }
+
+                highlights = builder.finish();
+            }
+        }
+
+        return highlights;
+    },
+    provide: f => EditorView.decorations.from(f)
+});
 
 export class TinymistEditor extends Component {
     elem!: HTMLElement;
@@ -343,6 +419,7 @@ export class TinymistEditor extends Component {
                     lineNumbers(), // Enable line numbers
                     highlightActiveLineGutter(), // Highlight current line number in gutter
                     highlightActiveLine(), // Highlight current line
+                    highlightField, // Add custom highlighting support
                     keymap.of(defaultKeymap),
                     EditorView.editable.of(true), // Make editor editable
                     EditorView.updateListener.of((update) => {
@@ -382,6 +459,12 @@ export class TinymistEditor extends Component {
 
             // Connect to file sync WebSocket if token is available
             await this.initializeFileSyncClient();
+
+            // Test highlighting - add light blue highlight to line 17
+            setTimeout(() => {
+                this.addHighlights([{line: 17, start: 0, len: 10, type: "math"}]);
+                console.log('[Test] Added math highlight to line 17');
+            }, 1000);
         } catch (error) {
             console.error('Failed to initialize CodeMirror:', error);
             this.logError(`Failed to initialize CodeMirror editor: ${error}`);
@@ -744,7 +827,9 @@ export class TinymistEditor extends Component {
             });
             this.controlClient.sendControlMessage({
                 event: 'changeCursorPosition',
-                filepath: `C:\\Users\\Ooo\\Desktop\\GitWork\\BookStack\\storage\\app\\tinymist\\page_266.typ`, //`storage/app/tinymist/page_${pageId}.typ`,
+                filepath: `C:\\Users\\Ooo\\Desktop\\GitWork\\BookStack\\storage\\app\\tinymist\\page_${pageId
+
+                }.typ`, //`storage/app/tinymist/page_${pageId}.typ`,
                 line: lineNumber,
                 character: character,
             });
@@ -961,5 +1046,42 @@ export class TinymistEditor extends Component {
         } else {
             this.editor.focus();
         }
+    }
+
+    /**
+     * Add highlights to the editor
+     * @param regions Array of highlight regions
+     * Example: addHighlights([{line: 17, start: 0, len: 10, type: "math"}])
+     */
+    addHighlights(regions: HighlightRegion[]) {
+        if (!this.editorView) {
+            console.warn('[Highlight] Editor view not available');
+            return;
+        }
+
+        this.editorView.dispatch({
+            effects: addHighlightsEffect.of(regions)
+        });
+    }
+
+    /**
+     * Clear all highlights from the editor
+     */
+    clearHighlights() {
+        if (!this.editorView) {
+            console.warn('[Highlight] Editor view not available');
+            return;
+        }
+
+        this.editorView.dispatch({
+            effects: clearHighlightsEffect.of(null)
+        });
+    }
+
+    /**
+     * Update highlight color mapping
+     */
+    static setHighlightColor(type: string, color: string) {
+        highlightColors[type] = color;
     }
 }
