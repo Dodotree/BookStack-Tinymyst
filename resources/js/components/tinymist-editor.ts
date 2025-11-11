@@ -1,33 +1,72 @@
-import { Component } from './component';
-import { EditorView, Decoration, DecorationSet, ViewPlugin, ViewUpdate } from '@codemirror/view';
-import { StateEffect, StateField, RangeSetBuilder } from '@codemirror/state';
-import { linter, Diagnostic, forceLinting, setDiagnostics } from '@codemirror/lint';
-import { PreviewControlPlane } from './tinymist-preview-control';
-import { PreviewDataPlane } from './tinymist-preview-renderer';
-import { TinymistFileSyncClient } from './tinymist-file-sync-client';
-import { TinymistFallbackCompiler } from './tinymist-fallback-compiler';
+import { Component } from "./component";
+import {
+    EditorView,
+    Decoration,
+    DecorationSet,
+    ViewPlugin,
+    ViewUpdate,
+} from "@codemirror/view";
+import { StateEffect, StateField, RangeSetBuilder } from "@codemirror/state";
+import {
+    linter,
+    Diagnostic,
+    forceLinting,
+    setDiagnostics,
+} from "@codemirror/lint";
+import { PreviewControlPlane } from "./tinymist-preview-control";
+import { PreviewDataPlane } from "./tinymist-preview-renderer";
+import { TinymistFileSyncClient } from "./tinymist-file-sync-client";
+import { TinymistFallbackCompiler } from "./tinymist-fallback-compiler";
 
 // Highlight region interface
 interface HighlightRegion {
-    line: number;      // 1-based line number
-    start: number;     // Character offset in line
-    len: number;       // Length of highlight
-    type: string;      // Highlight type (math, string, comment, etc.)
+    line: number; // 1-based line number
+    start: number; // Character offset in line
+    len: number; // Length of highlight
+    type: string; // Highlight type (math, string, comment, etc.)
 }
 
 // Color mapping for highlight types (text colors, not backgrounds)
 const highlightColors: Record<string, string> = {
-    'math': '#5DADE2',          // Light blue for math
-    'string': '#52BE80',        // Green for strings
-    'comment': '#808080',       // Gray for comments
-    'keyword': '#BB8FCE',       // Purple for keywords
-    'punctuation': '#D19A66',   // Orange for punctuation
-    'function': '#5DADE2',      // Blue for functions
-    'parameter': '#E5C07B',     // Yellow for parameters
-    'operator': '#E06C75',      // Red for operators
-    'delimiter': '#D19A66',     // Orange for delimiters
-    'error': '#E74C3C',         // Red for errors
+    math: "#5DADE2", // Light blue for math
+    string: "#52BE80", // Green for strings
+    comment: "#808080", // Gray for comments
+    keyword: "#BB8FCE", // Purple for keywords
+    operator: "#E06C75", // Red for operators
+    number: "#D6863E", // Brown for numbers
+    function: "#5DADE2", // Blue for functions
+    method: "#5DADE2", // Blue for methods
+    macro: "#5DADE2", // Blue for macros
+    decorator: "#5DADE2", // Blue for decorators
+    type: "#56B6C2", // Cyan for types
+    class: "#56B6C2", // Cyan for classes
+    enum: "#56B6C2", // Cyan for enums
+    interface: "#56B6C2", // Cyan for interfaces
+    struct: "#56B6C2", // Cyan for structs
+    typeParameter: "#56B6C2", // Cyan for generic parameters
+    namespace: "#56B6C2", // Cyan for namespaces
+    variable: "#E5C07B", // Yellow for variables
+    property: "#E5C07B", // Yellow for properties
+    enumMember: "#E5C07B", // Yellow for enum members
+    parameter: "#E5C07B", // Yellow for parameters
+    punct: "#D19A66", // Orange for punctuation
+    bool: "#C678DD", // Pink for booleans
+    escape: "#E06C75", // Red for escape sequences
+    link: "#61AFEF", // Light blue for links
+    raw: "#E06C75", // Red for raw
+    label: "#E5C07B", // Yellow for labels
+    ref: "#61AFEF", // Light blue for references
+    heading: "#61AFEF", // Light blue for headings
+    marker: "#E06C75", // Red for list markers
+    term: "#E5C07B", // Yellow for list terms
+    delim: "#D19A66", // Orange for delimiters
+    pol: "#C678DD", // Pink for list interpolations
+    error: "#E74C3C", // Red for errors
+    text: "#FFFFFF", // White for normal text
 };
+// public tokenModifiers = [
+//     "strong", "emph", "math", "readonly", "static", "defaultLibrary"
+// ];
 
 // StateEffect to add highlights
 const addHighlightsEffect = StateEffect.define<HighlightRegion[]>();
@@ -62,15 +101,15 @@ const highlightField = StateField.define<DecorationSet>({
                         const to = Math.min(line.to, from + region.len);
 
                         if (from < to && from >= 0 && to <= doc.length) {
-                            const color = highlightColors[region.type] || '#FFD700';
+                            const color = highlightColors[region.type] || "#FFD700";
                             const mark = Decoration.mark({
                                 class: `tinymist-highlight-${region.type}`,
-                                attributes: { style: `color: ${color}; font-weight: 500;` }
+                                attributes: { style: `color: ${color}; font-weight: 500;` },
                             });
                             builder.add(from, to, mark);
                         }
                     } catch (e) {
-                        console.warn('[Highlight] Failed to add highlight:', region, e);
+                        console.warn("[Highlight] Failed to add highlight:", region, e);
                     }
                 }
 
@@ -80,7 +119,7 @@ const highlightField = StateField.define<DecorationSet>({
 
         return highlights;
     },
-    provide: f => EditorView.decorations.from(f)
+    provide: (f) => EditorView.decorations.from(f),
 });
 
 export class TinymistEditor extends Component {
@@ -91,11 +130,16 @@ export class TinymistEditor extends Component {
     console!: HTMLElement;
     currentSource: any;
 
-    previousContent: string = '';
+    previousContent: string = "";
 
     private controlClient: PreviewControlPlane | null = null;
     private previewRenderer: PreviewDataPlane | null = null;
-    private previewServerInfo: { controlPort: number, dataPort: number, host: string, pid: number } | null = null;
+    private previewServerInfo: {
+        controlPort: number;
+        dataPort: number;
+        host: string;
+        pid: number;
+    } | null = null;
 
     private fileSyncClient: TinymistFileSyncClient | null = null;
     private fallbackCompiler: TinymistFallbackCompiler | null = null;
@@ -110,46 +154,56 @@ export class TinymistEditor extends Component {
     private previewServerDownTimer: ReturnType<typeof setTimeout> | null = null;
     private restartAllowed: boolean = true;
     private restartingPreviewServer: boolean = false;
+    private pendingSemanticHighlights: HighlightRegion[] | null = null;
 
     async startPreviewServer() {
         // Check if preview was already started server-side
-        if (this.$opts.previewStarted === 'true' && this.$opts.controlPort && this.$opts.dataPort) {
+        if (
+            this.$opts.previewStarted === "true" &&
+            this.$opts.controlPort &&
+            this.$opts.dataPort
+        ) {
             this.previewServerInfo = {
                 controlPort: parseInt(this.$opts.controlPort as string, 10),
                 dataPort: parseInt(this.$opts.dataPort as string, 10),
-                host: this.$opts.host as string || '127.0.0.1',
-                pid: this.$opts.pid as number || 0,
+                host: (this.$opts.host as string) || "127.0.0.1",
+                pid: (this.$opts.pid as number) || 0,
             };
-            console.log('[Preview Server] pre-started:', this.previewServerInfo);
-            this.logSuccess(`[Preview Server] already started on ports ${this.previewServerInfo.controlPort}/${this.previewServerInfo.dataPort}`);
+            console.log("[Preview Server] pre-started:", this.previewServerInfo);
+            this.logSuccess(
+                `[Preview Server] already started on ports ${this.previewServerInfo.controlPort}/${this.previewServerInfo.dataPort}`
+            );
             return;
         }
 
         // Otherwise start it via AJAX
         const pageId = this.$opts.pageId;
         if (!pageId) {
-            throw new Error('Page ID not found');
+            throw new Error("Page ID not found");
         }
 
-        const content = this.editor.value || '';
+        const content = this.editor.value || "";
 
         try {
-            const response = await window.$http.post('/ajax/tinymist/start-preview', {
-                page_id: pageId,
-                content: content,
-                restart: false,
-                pid: this.$opts.pid as number || 0,
-            }) as any;
+            const response = (await window.$http.post(
+                "/ajax/tinymist/start-preview",
+                {
+                    page_id: pageId,
+                    content: content,
+                    restart: false,
+                    pid: (this.$opts.pid as number) || 0,
+                }
+            )) as any;
 
-            console.log('[Preview Server] response:', response);
+            console.log("[Preview Server] response:", response);
 
             // BookStack's HTTP service wraps the response in a 'data' property
             const data = response.data || response;
 
-            console.log('Response data:', data);
-            console.log('Data.success:', data.success);
-            console.log('Data.control_port:', data.control_port);
-            console.log('Data.data_port:', data.data_port);
+            console.log("Response data:", data);
+            console.log("Data.success:", data.success);
+            console.log("Data.control_port:", data.control_port);
+            console.log("Data.data_port:", data.data_port);
 
             // Check if we have the required fields
             if (data.control_port && data.data_port && data.host) {
@@ -159,18 +213,23 @@ export class TinymistEditor extends Component {
                     host: data.host,
                     pid: data.pid || 0,
                 };
-                console.log('[Preview Server] started:', this.previewServerInfo);
-                this.logSuccess(`[Preview Server] started on ports ${data.control_port}/${data.data_port}`);
+                console.log("[Preview Server] started:", this.previewServerInfo);
+                this.logSuccess(
+                    `[Preview Server] started on ports ${data.control_port}/${data.data_port}`
+                );
             } else if (data.success === false) {
-                throw new Error(data.error || '[Preview Server] Failed to start');
+                throw new Error(data.error || "[Preview Server] Failed to start");
             } else {
-                throw new Error(' [Preview Server] Invalid response from server: missing port information');
+                throw new Error(
+                    " [Preview Server] Invalid response from server: missing port information"
+                );
             }
         } catch (error) {
-            console.error('[Preview Server] Failed to start:', error);
-            console.error('[Preview Server] Error details:', error);
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            this.logError('⚠ [Preview Server] Failed to start: ' + errorMessage);
+            console.error("[Preview Server] Failed to start:", error);
+            console.error("[Preview Server] Error details:", error);
+            const errorMessage =
+                error instanceof Error ? error.message : String(error);
+            this.logError("⚠ [Preview Server] Failed to start: " + errorMessage);
             throw error;
         }
     }
@@ -179,15 +238,17 @@ export class TinymistEditor extends Component {
         try {
             const pageId = this.$opts.pageId;
             if (!pageId) {
-                throw new Error('[Preview Control Plane] Page ID not found, exiting setup');
+                throw new Error(
+                    "[Preview Control Plane] Page ID not found, exiting setup"
+                );
             }
 
             if (!this.previewServerInfo) {
-                throw new Error('[Preview Control Plane] not started');
+                throw new Error("[Preview Control Plane] not started");
             }
 
             // Get initial content from textarea (before CodeMirror is created)
-            const content = this.editor.value || '';
+            const content = this.editor.value || "";
 
             // Initialize Control client with custom port and message handler
             this.controlClient = new PreviewControlPlane(
@@ -199,23 +260,23 @@ export class TinymistEditor extends Component {
                     onConnectionStateChange: (connected) => {
                         this.controlConnected = connected;
                         if (connected) {
-                            this.logSuccess('[Preview Control Plane] connected');
+                            this.logSuccess("[Preview Control Plane] connected");
                         } else {
-                            this.logError('[Preview Control Plane] disconnected');
+                            this.logError("[Preview Control Plane] disconnected");
                         }
                         this.checkPreviewServerHealth();
                     },
                     onCompileStatus: (kind: string, msg?: any) => {
                         // Update compilation status UI
-                        if (kind === 'Compiling') {
-                            this.preview.classList.add('loading');
-                            this.logInfo('[Preview Control Plane] Compiling...');
-                        } else if (kind === 'CompileSuccess') {
-                            this.preview.classList.remove('loading');
-                            this.logSuccess('[Preview Control Plane] Compilation successful');
-                        } else if (kind === 'CompileError') {
-                            this.preview.classList.remove('loading');
-                            this.logError('[Preview Control Plane] Compilation failed');
+                        if (kind === "Compiling") {
+                            this.preview.classList.add("loading");
+                            this.logInfo("[Preview Control Plane] Compiling...");
+                        } else if (kind === "CompileSuccess") {
+                            this.preview.classList.remove("loading");
+                            this.logSuccess("[Preview Control Plane] Compilation successful");
+                        } else if (kind === "CompileError") {
+                            this.preview.classList.remove("loading");
+                            this.logError("[Preview Control Plane] Compilation failed");
                             console.log(msg);
                         }
                     },
@@ -225,7 +286,7 @@ export class TinymistEditor extends Component {
                     onError: (error) => {
                         this.logError(error);
                         this.checkPreviewServerHealth();
-                    }
+                    },
                 }
             );
             const controlExtension = await this.controlClient.connect();
@@ -233,14 +294,16 @@ export class TinymistEditor extends Component {
             // Add Control extension to editor view (not textarea)
             if (this.editorView) {
                 this.editorView.dispatch({
-                    effects: StateEffect.appendConfig.of(controlExtension)
+                    effects: StateEffect.appendConfig.of(controlExtension),
                 });
             }
-
         } catch (error) {
-            console.error('[Preview Control Plane] setup failed:', error);
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            this.logError('⚠ [Preview Control Plane] connection failed: ' + errorMessage);
+            console.error("[Preview Control Plane] setup failed:", error);
+            const errorMessage =
+                error instanceof Error ? error.message : String(error);
+            this.logError(
+                "⚠ [Preview Control Plane] connection failed: " + errorMessage
+            );
         }
     }
 
@@ -248,12 +311,14 @@ export class TinymistEditor extends Component {
         try {
             const previewElement = this.$refs.preview as HTMLElement;
             if (!previewElement) {
-                console.warn('[Preview Data Plane] Preview element not found, skipping preview setup');
+                console.warn(
+                    "[Preview Data Plane] Preview element not found, skipping preview setup"
+                );
                 return;
             }
 
             if (!this.previewServerInfo) {
-                throw new Error('[Preview Data Plane] not started');
+                throw new Error("[Preview Data Plane] not started");
             }
 
             // Initialize preview renderer with custom port
@@ -265,24 +330,26 @@ export class TinymistEditor extends Component {
                     onConnectionStateChange: (connected) => {
                         this.dataConnected = connected;
                         if (connected) {
-                            this.logSuccess('[Preview Data Plane] connected');
+                            this.logSuccess("[Preview Data Plane] connected");
                         } else {
-                            this.logError('[Preview Data Plane] disconnected');
+                            this.logError("[Preview Data Plane] disconnected");
                         }
                         this.checkPreviewServerHealth();
                     },
                     onError: (error) => {
                         this.logError(error);
                         this.checkPreviewServerHealth();
-                    }
+                    },
                 }
             );
             await this.previewRenderer.initialize();
-
         } catch (error) {
-            console.error('[Preview Data Plane] setup failed:', error);
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            this.logError('⚠ [Preview Data Plane] initialization failed: ' + errorMessage);
+            console.error("[Preview Data Plane] setup failed:", error);
+            const errorMessage =
+                error instanceof Error ? error.message : String(error);
+            this.logError(
+                "⚠ [Preview Data Plane] initialization failed: " + errorMessage
+            );
         }
     }
 
@@ -291,13 +358,15 @@ export class TinymistEditor extends Component {
         const pageId = this.$opts.pageId;
 
         if (!wsToken) {
-            console.warn('[File Sync Module] No WS token available, enabling fallback mode');
+            console.warn(
+                "[File Sync Module] No WS token available, enabling fallback mode"
+            );
             this.scheduleFallbackMode();
             return;
         }
 
         if (!pageId) {
-            console.error('[File Sync Module] No page ID for WebSocket connection');
+            console.error("[File Sync Module] No page ID for WebSocket connection");
             return;
         }
 
@@ -312,7 +381,7 @@ export class TinymistEditor extends Component {
                 onConnectionStateChange: (connected) => {
                     this.fileSyncConnected = connected;
                     if (connected) {
-                        this.logSuccess('[File Sync Module] connected');
+                        this.logSuccess("[File Sync Module] connected");
                         this.disableFallbackMode();
                     } else {
                         this.enableFallbackMode();
@@ -323,7 +392,7 @@ export class TinymistEditor extends Component {
                 },
                 onError: (error) => {
                     this.logError(error);
-                }
+                },
             }
         );
 
@@ -333,51 +402,57 @@ export class TinymistEditor extends Component {
     private initializeFallbackCompiler() {
         this.fallbackCompiler = new TinymistFallbackCompiler(800, {
             onCompileStart: () => {
-                console.log('[Typst Compiler] Fallback compilation started');
+                console.log("[Typst Compiler] Fallback compilation started");
                 if (this.preview) {
-                    this.preview.classList.add('loading');
+                    this.preview.classList.add("loading");
                 }
             },
             onCompileSuccess: (svg: string, diagnostics?: any[]) => {
-                console.log('[Typst Compiler] Fallback compilation succeeded');
+                console.log("[Typst Compiler] Fallback compilation succeeded");
                 this.showSvg(svg);
                 if (this.preview) {
-                    this.preview.classList.remove('loading');
+                    this.preview.classList.remove("loading");
                 }
                 this.triggerLinting();
             },
             onCompileError: (errors: string[], diagnostics?: any[]) => {
-                console.error('[Typst Compiler] Fallback compilation errors:', errors);
+                console.error("[Typst Compiler] Fallback compilation errors:", errors);
                 if (this.preview) {
-                    this.preview.classList.remove('loading');
+                    this.preview.classList.remove("loading");
                 }
-                errors.forEach(error => this.logMessage(error, 'error'));
+                errors.forEach((error) => this.logMessage(error, "error"));
             },
-            onMessage: (message: string, type: 'info' | 'success' | 'error' | 'warning') => {
+            onMessage: (
+                message: string,
+                type: "info" | "success" | "error" | "warning"
+            ) => {
                 this.logMessage(message, type);
-            }
+            },
         });
     }
 
     setup() {
-        console.log('[Tinymist Editor] setup() called');
+        console.log("[Tinymist Editor] setup() called");
 
         this.elem = this.$el;
         this.editor = this.$refs.editor as HTMLTextAreaElement;
         this.preview = this.$refs.preview;
         this.console = this.$refs.console;
 
-        console.log('[Tinymist Editor] Elements found:', {
+        console.log("[Tinymist Editor] Elements found:", {
             elem: !!this.elem,
             editor: !!this.editor,
             preview: !!this.preview,
-            console: !!this.console
+            console: !!this.console,
         });
 
         this.currentSource = this.editor.value;
         this.editorView = null;
 
-        console.log('[Tinymist Editor] Initial content length:', this.currentSource.length);
+        console.log(
+            "[Tinymist Editor] Initial content length:",
+            this.currentSource.length
+        );
 
         // Initialize fallback compiler
         this.initializeFallbackCompiler();
@@ -392,7 +467,7 @@ export class TinymistEditor extends Component {
         this.setupFormSubmitHandler();
 
         // Initial compilation
-        console.log('[Tinymist Editor] Triggering initial compile...');
+        console.log("[Tinymist Editor] Triggering initial compile...");
         this.compile();
     }
 
@@ -402,15 +477,21 @@ export class TinymistEditor extends Component {
             await this.startPreviewServer();
 
             // Import CodeMirror modules
-            const { EditorView, keymap, lineNumbers, highlightActiveLineGutter, highlightActiveLine } = await import('@codemirror/view');
-            const { EditorState } = await import('@codemirror/state');
-            const { defaultKeymap } = await import('@codemirror/commands');
+            const {
+                EditorView,
+                keymap,
+                lineNumbers,
+                highlightActiveLineGutter,
+                highlightActiveLine,
+            } = await import("@codemirror/view");
+            const { EditorState } = await import("@codemirror/state");
+            const { defaultKeymap } = await import("@codemirror/commands");
 
             // Add Control and preview (now that server is running)
             await this.setupControl();
-            console.log('Control client initialized');
+            console.log("Control client initialized");
             await this.setupPreview();
-            console.log('Preview client initialized');
+            console.log("Preview client initialized");
 
             // Create editor state
             const startState = EditorState.create({
@@ -426,8 +507,8 @@ export class TinymistEditor extends Component {
                         if (update.docChanged) {
                             this.onInput();
                             // Send changes to WebSocket server
-                            if (update.transactions.some(tr => tr.docChanged)) {
-                                update.transactions.forEach(tr => {
+                            if (update.transactions.some((tr) => tr.docChanged)) {
+                                update.transactions.forEach((tr) => {
                                     if (tr.changes && !tr.changes.empty) {
                                         this.sendChangesToServer(tr.changes);
                                     }
@@ -450,48 +531,55 @@ export class TinymistEditor extends Component {
             });
 
             // Hide original textarea
-            this.editor.style.display = 'none';
+            this.editor.style.display = "none";
 
             // Store initial content
             this.previousContent = this.editor.value;
 
-            this.logInfo('CodeMirror editor initialized');
+            this.logInfo("CodeMirror editor initialized");
 
             // Connect to file sync WebSocket if token is available
             await this.initializeFileSyncClient();
 
-            // Test highlighting - add light blue highlight to line 17
-            setTimeout(() => {
-                this.addHighlights([{line: 17, start: 0, len: 10, type: "math"}]);
-                console.log('[Test] Added math highlight to line 17');
-            }, 1000);
+            this.flushPendingSemanticHighlights();
         } catch (error) {
-            console.error('Failed to initialize CodeMirror:', error);
+            console.error("Failed to initialize CodeMirror:", error);
             this.logError(`Failed to initialize CodeMirror editor: ${error}`);
             // Fall back to textarea if CodeMirror fails
-            this.editor.style.display = 'block';
-            this.editor.addEventListener('input', () => this.onInput());
+            this.editor.style.display = "block";
+            this.editor.addEventListener("input", () => this.onInput());
         }
     }
 
     handleFileSyncMessage(msg: any) {
         switch (msg.type) {
-            case 'fullState':
+            case "fullState":
                 // Update editor content if needed
-                if (this.editorView && msg.content !== this.editorView.state.doc.toString()) {
+                if (
+                    this.editorView &&
+                    msg.content !== this.editorView.state.doc.toString()
+                ) {
                     this.setText(msg.content);
-                    this.logInfo('[File Sync Module] Document synchronized from server');
+                    this.logInfo("[File Sync Module] Document synchronized from server");
                 }
                 break;
 
-            case 'error':
+            case "semanticTokens":
+                this.processSemanticTokens(msg.tokens || []);
+                break;
+
+            case "error":
                 this.logError(`[File Sync Module] Server error: ${msg.message}`);
+                break;
+
+            default:
+                console.warn("[File Sync Module] Unknown message type:", msg);
                 break;
         }
     }
 
     scheduleFallbackMode() {
-        if(!this.restartAllowed) {
+        if (!this.restartAllowed) {
             return;
         }
         // Clear any existing timeout
@@ -508,7 +596,7 @@ export class TinymistEditor extends Component {
     }
 
     enableFallbackMode() {
-        if(!this.restartAllowed) {
+        if (!this.restartAllowed) {
             return;
         }
         if (this.fallbackMode) {
@@ -516,8 +604,8 @@ export class TinymistEditor extends Component {
         }
 
         this.fallbackMode = true;
-        console.log('⚠ Entering fallback mode');
-        this.logWarning('Using fallback mode');
+        console.log("⚠ Entering fallback mode");
+        this.logWarning("Using fallback mode");
 
         // Clear the connection timeout
         if (this.wsConnectionTimeout) {
@@ -532,8 +620,8 @@ export class TinymistEditor extends Component {
         }
 
         this.fallbackMode = false;
-        console.log('Exiting fallback mode (using [File Sync Module])');
-        this.logSuccess('[File Sync Module] active');
+        console.log("Exiting fallback mode (using [File Sync Module])");
+        this.logSuccess("[File Sync Module] active");
 
         // Clear any pending fallback compilation since WebSocket handles changes
         if (this.fallbackCompiler) {
@@ -553,7 +641,11 @@ export class TinymistEditor extends Component {
      */
     checkPreviewServerHealth() {
         // Enable fallback mode if ANY socket is down
-        if (!this.controlConnected || !this.dataConnected || !this.fileSyncConnected) {
+        if (
+            !this.controlConnected ||
+            !this.dataConnected ||
+            !this.fileSyncConnected
+        ) {
             this.enableFallbackMode();
         }
 
@@ -564,7 +656,9 @@ export class TinymistEditor extends Component {
             // Start countdown if not already running
             if (!this.previewServerDownTimer && this.restartAllowed) {
                 this.previewServerDownTime = Date.now();
-                this.logWarning('[Preview Server] Both Control and Data planes down. Will attempt restart in 60 seconds...');
+                this.logWarning(
+                    "[Preview Server] Both Control and Data planes down. Will attempt restart in 60 seconds..."
+                );
 
                 this.previewServerDownTimer = setTimeout(() => {
                     this.attemptPreviewServerRestart();
@@ -576,7 +670,7 @@ export class TinymistEditor extends Component {
                 clearTimeout(this.previewServerDownTimer);
                 this.previewServerDownTimer = null;
                 this.previewServerDownTime = 0;
-                console.log('[Preview Server] Health recovered, restart cancelled');
+                console.log("[Preview Server] Health recovered, restart cancelled");
             }
         }
     }
@@ -589,37 +683,55 @@ export class TinymistEditor extends Component {
             return;
         }
         if (this.restartingPreviewServer) {
-            console.log('[Preview Server] Restart already in progress');
+            console.log("[Preview Server] Restart already in progress");
             return;
         }
 
         this.restartingPreviewServer = true;
-        this.logInfo('[Preview Server] Attempting restart with new ports...');
+        this.logInfo("[Preview Server] Attempting restart with new ports...");
 
         try {
             const pageId = this.$opts.pageId;
             if (!pageId) {
-                throw new Error('Page ID not found');
+                throw new Error("Page ID not found");
             }
 
             // Get current content
-            const content = this.editorView?.state.doc.toString() || this.editor.value;
+            const content =
+                this.editorView?.state.doc.toString() || this.editor.value;
 
             // Call restart endpoint
-            const response = await window.$http.post('/ajax/tinymist/start-preview', {
-                page_id: pageId,
-                content: content,
-                restart: true,
-                pid: this.previewServerInfo?.pid || 0,
-            }) as any;
+            const response = (await window.$http.post(
+                "/ajax/tinymist/start-preview",
+                {
+                    page_id: pageId,
+                    content: content,
+                    restart: true,
+                    pid: this.previewServerInfo?.pid || 0,
+                }
+            )) as any;
 
             const data = response.data || response;
 
-            if (data && typeof data === 'object' && 'success' in data) {
-                const result = data as { success: boolean; control_port?: number; data_port?: number; host?: string; error?: string; pid?: number };
+            if (data && typeof data === "object" && "success" in data) {
+                const result = data as {
+                    success: boolean;
+                    control_port?: number;
+                    data_port?: number;
+                    host?: string;
+                    error?: string;
+                    pid?: number;
+                };
 
-                if (result.success && result.control_port && result.data_port && result.host) {
-                    this.logSuccess(`[Preview Server] Restarted on ports ${result.control_port}/${result.data_port}`);
+                if (
+                    result.success &&
+                    result.control_port &&
+                    result.data_port &&
+                    result.host
+                ) {
+                    this.logSuccess(
+                        `[Preview Server] Restarted on ports ${result.control_port}/${result.data_port}`
+                    );
 
                     // Update port configuration
                     this.previewServerInfo = {
@@ -632,18 +744,17 @@ export class TinymistEditor extends Component {
                     // Reconnect Control and Data planes with new ports
                     await this.reconnectPreviewClients();
                 } else {
-                    throw new Error(result.error || 'Failed to restart preview server');
+                    throw new Error(result.error || "Failed to restart preview server");
                 }
             } else {
-                throw new Error('Invalid response from server');
+                throw new Error("Invalid response from server");
             }
-
         } catch (error) {
-            console.error('[Preview Server] Restart failed:', error);
-            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error("[Preview Server] Restart failed:", error);
+            const errorMessage =
+                error instanceof Error ? error.message : String(error);
             this.logError(`[Preview Server] Restart failed: ${errorMessage}`);
-            this.logWarning('[Preview Server] Continuing in fallback mode');
-
+            this.logWarning("[Preview Server] Continuing in fallback mode");
         } finally {
             this.restartingPreviewServer = false;
             this.previewServerDownTimer = null;
@@ -662,7 +773,7 @@ export class TinymistEditor extends Component {
             return;
         }
 
-        this.logInfo('[Preview Server] Reconnecting clients with new ports...');
+        this.logInfo("[Preview Server] Reconnecting clients with new ports...");
 
         try {
             // TODO: Disconnect/reconnect old clients
@@ -680,24 +791,24 @@ export class TinymistEditor extends Component {
             }
 
             // TODO: Many questions about this "wait for cleanup"
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise((resolve) => setTimeout(resolve, 500));
 
             // Reconnect with new ports
             await this.setupControl();
             await this.setupPreview();
 
-            this.logSuccess('[Preview Server] Clients reconnected');
-
+            this.logSuccess("[Preview Server] Clients reconnected");
         } catch (error) {
-            console.error('[Preview Server] Failed to reconnect clients:', error);
-            const errorMessage = error instanceof Error ? error.message : String(error);
+            console.error("[Preview Server] Failed to reconnect clients:", error);
+            const errorMessage =
+                error instanceof Error ? error.message : String(error);
             this.logError(`[Preview Server] Reconnection failed: ${errorMessage}`);
         }
     }
 
     sendChangesToServer(changes: any) {
         if (!this.fileSyncClient || !this.fileSyncClient.connected()) {
-            console.warn('[File Sync Module] not connected, file changes not synced');
+            console.warn("[File Sync Module] not connected, file changes not synced");
             return;
         }
 
@@ -707,36 +818,35 @@ export class TinymistEditor extends Component {
     setupListeners() {
         // Only add textarea listener if CodeMirror failed to initialize
         if (!this.editorView) {
-            this.editor.addEventListener('input', () => this.onInput());
+            this.editor.addEventListener("input", () => this.onInput());
         }
 
         // Button actions
-        this.elem.addEventListener('click', event => {
+        this.elem.addEventListener("click", (event) => {
             if (!event.target) return;
-            const button = (event.target as Element).closest('button[data-action]');
+            const button = (event.target as Element).closest("button[data-action]");
             if (button === null) return;
 
-            const action = button.getAttribute('data-action');
-            if (action === 'insertBold') this.insertMarkup('*', '*');
-            if (action === 'insertItalic') this.insertMarkup('_', '_');
-            if (action === 'insertMath') this.insertMarkup('$', '$');
-            if (action === 'insertHeading') this.insertHeading();
-            if (action === 'clearConsole') this.clearConsole();
+            const action = button.getAttribute("data-action");
+            if (action === "insertBold") this.insertMarkup("*", "*");
+            if (action === "insertItalic") this.insertMarkup("_", "_");
+            if (action === "insertMath") this.insertMarkup("$", "$");
+            if (action === "insertHeading") this.insertHeading();
+            if (action === "clearConsole") this.clearConsole();
         });
 
         // Clean up connections on page navigation
-        window.addEventListener('beforeunload', () => {
+        window.addEventListener("beforeunload", () => {
             this.destroy();
         });
 
         // Also listen to pagehide for better mobile support
-        window.addEventListener('pagehide', () => {
+        window.addEventListener("pagehide", () => {
             this.destroy();
         });
     }
 
     destroy() {
-
         this.restartAllowed = false;
 
         // Clear preview server monitoring timers
@@ -772,18 +882,18 @@ export class TinymistEditor extends Component {
         // Send stop-preview request (use sendBeacon for reliability during unload)
         if (this.$opts.pageId) {
             const data = JSON.stringify({ pid: this.previewServerInfo?.pid || 0 });
-            const blob = new Blob([data], { type: 'application/json' });
-            navigator.sendBeacon('/ajax/tinymist/stop-preview', blob);
+            const blob = new Blob([data], { type: "application/json" });
+            navigator.sendBeacon("/ajax/tinymist/stop-preview", blob);
         }
     }
 
     setupFormSubmitHandler() {
         // Find the form containing this editor
-        const form = this.elem.closest('form');
+        const form = this.elem.closest("form");
         if (!form) return;
 
         // Before form submit, sync CodeMirror content to textarea
-        form.addEventListener('submit', () => {
+        form.addEventListener("submit", () => {
             this.syncContentToTextarea();
         });
     }
@@ -804,7 +914,7 @@ export class TinymistEditor extends Component {
         }
 
         // Notify page editor of changes
-        window.$events.emit('editor-tinymist-change', '');
+        window.$events.emit("editor-tinymist-change", "");
     }
 
     onCursorPositionChange(state: any) {
@@ -820,16 +930,14 @@ export class TinymistEditor extends Component {
         // Send cursor position to control plane
         if (this.controlClient) {
             const pageId = this.$opts.pageId;
-            console.log('[Tinymist] Sending cursor position:', {
+            console.log("[Tinymist] Sending cursor position:", {
                 line: lineNumber,
                 character: character,
-                pos: pos
+                pos: pos,
             });
             this.controlClient.sendControlMessage({
-                event: 'changeCursorPosition',
-                filepath: `C:\\Users\\Ooo\\Desktop\\GitWork\\BookStack\\storage\\app\\tinymist\\page_${pageId
-
-                }.typ`, //`storage/app/tinymist/page_${pageId}.typ`,
+                event: "changeCursorPosition",
+                filepath: `C:\\Users\\Ooo\\Desktop\\GitWork\\BookStack\\storage\\app\\tinymist\\page_${pageId}.typ`, //`storage/app/tinymist/page_${pageId}.typ`,
                 line: lineNumber,
                 character: character,
             });
@@ -843,12 +951,12 @@ export class TinymistEditor extends Component {
 
         // Only compile in fallback mode (WebSocket + Tinymist preview handles compilation otherwise)
         if (!this.fallbackMode) {
-            console.log('[Typst] Skipping compile() - WebSocket sync active');
+            console.log("[Typst] Skipping compile() - WebSocket sync active");
             return;
         }
 
         if (!this.fallbackCompiler) {
-            console.error('[Typst] Fallback compiler not initialized');
+            console.error("[Typst] Fallback compiler not initialized");
             return;
         }
 
@@ -862,14 +970,15 @@ export class TinymistEditor extends Component {
         await this.fallbackCompiler.compile(source);
     }
 
-
     /**
      * Trigger linter update in CodeMirror
      */
     triggerLinting(): void {
         if (this.editorView && this.fallbackCompiler) {
             const diagnostics = this.fallbackCompiler.getDiagnostics();
-            this.editorView.dispatch(setDiagnostics(this.editorView.state, diagnostics));
+            this.editorView.dispatch(
+                setDiagnostics(this.editorView.state, diagnostics)
+            );
         }
     }
 
@@ -890,7 +999,7 @@ export class TinymistEditor extends Component {
         let hash = 0;
         for (let i = 0; i < str.length; i++) {
             const char = str.charCodeAt(i);
-            hash = ((hash << 5) - hash) + char;
+            hash = (hash << 5) - hash + char;
             hash = hash & hash; // Convert to 32-bit integer
         }
         return hash.toString();
@@ -901,32 +1010,34 @@ export class TinymistEditor extends Component {
     }
 
     logError(message: string) {
-        this.logMessage(message, 'error');
+        this.logMessage(message, "error");
     }
 
     logWarning(message: string) {
-        this.logMessage(message, 'warning');
+        this.logMessage(message, "warning");
     }
 
     logInfo(message: string) {
-        this.logMessage(message, 'info');
+        this.logMessage(message, "info");
     }
 
     logSuccess(message: string) {
-        this.logMessage(message, 'success');
+        this.logMessage(message, "success");
     }
 
     logErrors(errors: string[]) {
-        errors.forEach(err => this.logError(err));
+        errors.forEach((err) => this.logError(err));
         // Don't clear the SVG - keep last good preview visible
         // The errors are shown in the console which is visible below
     }
 
-    logMessage(message: string, type: 'error' | 'warning' | 'info' | 'success') {
+    logMessage(message: string, type: "error" | "warning" | "info" | "success") {
         const timestamp = new Date().toLocaleTimeString();
-        const messageDiv = document.createElement('div');
+        const messageDiv = document.createElement("div");
         messageDiv.className = `console-message ${type}`;
-        messageDiv.innerHTML = `<span class="text-muted">[${timestamp}]</span> ${this.escapeHtml(message)}`;
+        messageDiv.innerHTML = `<span class="text-muted">[${timestamp}]</span> ${this.escapeHtml(
+            message
+        )}`;
 
         this.console.appendChild(messageDiv);
 
@@ -935,11 +1046,12 @@ export class TinymistEditor extends Component {
     }
 
     clearConsole() {
-        this.console.innerHTML = '<div class="text-muted p-m text-small">Console cleared.</div>';
+        this.console.innerHTML =
+            '<div class="text-muted p-m text-small">Console cleared.</div>';
     }
 
     escapeHtml(text: string) {
-        const div = document.createElement('div');
+        const div = document.createElement("div");
         div.textContent = text;
         return div.innerHTML;
     }
@@ -955,8 +1067,15 @@ export class TinymistEditor extends Component {
             const replacement = before + selectedText + after;
 
             this.editorView.dispatch({
-                changes: { from: selection.from, to: selection.to, insert: replacement },
-                selection: { anchor: selection.from + before.length, head: selection.from + before.length + selectedText.length }
+                changes: {
+                    from: selection.from,
+                    to: selection.to,
+                    insert: replacement,
+                },
+                selection: {
+                    anchor: selection.from + before.length,
+                    head: selection.from + before.length + selectedText.length,
+                },
             });
             this.editorView.focus();
         } else {
@@ -965,7 +1084,7 @@ export class TinymistEditor extends Component {
             const selectedText = this.editor.value.substring(start, end);
             const replacement = before + selectedText + after;
 
-            this.editor.setRangeText(replacement, start, end, 'select');
+            this.editor.setRangeText(replacement, start, end, "select");
             this.editor.focus();
             this.onInput();
         }
@@ -979,11 +1098,14 @@ export class TinymistEditor extends Component {
             const state = this.editorView.state;
             const selection = state.selection.main;
             const before = state.doc.sliceString(0, selection.from);
-            const heading = (before.endsWith('\n') || before === '') ? '= Heading\n' : '\n= Heading\n';
+            const heading =
+                before.endsWith("\n") || before === ""
+                    ? "= Heading\n"
+                    : "\n= Heading\n";
 
             this.editorView.dispatch({
                 changes: { from: selection.from, insert: heading },
-                selection: { anchor: selection.from + heading.length - 1 }
+                selection: { anchor: selection.from + heading.length - 1 },
             });
             this.editorView.focus();
         } else {
@@ -991,9 +1113,13 @@ export class TinymistEditor extends Component {
             const before = this.editor.value.substring(0, start);
             const after = this.editor.value.substring(start);
 
-            const heading = (before.endsWith('\n') || before === '') ? '= Heading\n' : '\n= Heading\n';
+            const heading =
+                before.endsWith("\n") || before === ""
+                    ? "= Heading\n"
+                    : "\n= Heading\n";
             this.editor.value = before + heading + after;
-            this.editor.selectionStart = this.editor.selectionEnd = start + heading.length - 1;
+            this.editor.selectionStart = this.editor.selectionEnd =
+                start + heading.length - 1;
             this.editor.focus();
             this.onInput();
         }
@@ -1009,7 +1135,7 @@ export class TinymistEditor extends Component {
         return {
             tinymist: this.editorView
                 ? this.editorView.state.doc.toString()
-                : this.editor.value
+                : this.editor.value,
         };
     }
 
@@ -1019,7 +1145,11 @@ export class TinymistEditor extends Component {
     setText(content: string) {
         if (this.editorView) {
             this.editorView.dispatch({
-                changes: { from: 0, to: this.editorView.state.doc.length, insert: content }
+                changes: {
+                    from: 0,
+                    to: this.editorView.state.doc.length,
+                    insert: content,
+                },
             });
         } else {
             this.editor.value = content;
@@ -1048,6 +1178,131 @@ export class TinymistEditor extends Component {
         }
     }
 
+    private processSemanticTokens(
+        tokens: Array<{
+            line: number;
+            startChar: number;
+            length: number;
+            tokenType: string;
+            tokenModifiers?: string[];
+        }>
+    ) {
+        if (!Array.isArray(tokens)) {
+            return;
+        }
+
+        const highlights: HighlightRegion[] = [];
+
+        for (const token of tokens) {
+            if (!token) {
+                continue;
+            }
+
+            const { line, startChar, length, tokenType, tokenModifiers } = token;
+
+            if (
+                typeof line !== "number" ||
+                typeof startChar !== "number" ||
+                typeof length !== "number" ||
+                !Number.isFinite(length) ||
+                length <= 0
+            ) {
+                console.warn("[Semantic Tokens] Invalid token data:", token);
+                continue;
+            }
+
+            const resolvedType = this.resolveSemanticTokenType(
+                tokenType,
+                tokenModifiers
+            );
+            if (!resolvedType) {
+                console.warn(
+                    "[Semantic Tokens] unknown token type or modifiers:",
+                    token
+                );
+                continue;
+            }
+
+            highlights.push({
+                line: line + 1,
+                start: startChar,
+                len: length,
+                type: resolvedType,
+            });
+        }
+
+        this.renderSemanticHighlights(highlights);
+    }
+
+    private resolveSemanticTokenType(
+        tokenType: string,
+        modifiers?: string[]
+    ): string | null {
+        if (Array.isArray(modifiers)) {
+            // since LSP server legend reported math as a modifier, we check for it here
+            // TODO: consider using modifiers to avoid monotone math highlighting
+            console.warn("[Semantic Tokens] Math modifier", modifiers);
+            if (modifiers.includes("math")) {
+                // return "math";
+            }
+        }
+
+        if (!tokenType) {
+            return null;
+        }
+
+        if (tokenType === "text") {
+            return null;
+        }
+
+        if (highlightColors[tokenType]) {
+            return tokenType;
+        }
+
+        if (tokenType === "identifier" && highlightColors["variable"]) {
+            return "variable";
+        }
+
+        return null;
+    }
+
+    private renderSemanticHighlights(highlights: HighlightRegion[]): void {
+        if (!this.editorView) {
+            this.pendingSemanticHighlights = highlights;
+            return;
+        }
+
+        this.pendingSemanticHighlights = null;
+
+        if (!highlights.length) {
+            this.clearHighlights();
+            return;
+        }
+
+        this.addHighlights(highlights);
+    }
+
+    private flushPendingSemanticHighlights(): void {
+        if (!this.editorView) {
+            return;
+        }
+
+        if (this.pendingSemanticHighlights === null) {
+            return;
+        }
+
+        const highlights = this.pendingSemanticHighlights;
+        this.pendingSemanticHighlights = null;
+
+        if (!highlights.length) {
+            // not sure if we should allow clearing here
+            // this.clearHighlights();
+            return;
+        }
+
+        this.addHighlights(highlights);
+    }
+
     /**
      * Add highlights to the editor
      * @param regions Array of highlight regions
@@ -1055,12 +1310,12 @@ export class TinymistEditor extends Component {
      */
     addHighlights(regions: HighlightRegion[]) {
         if (!this.editorView) {
-            console.warn('[Highlight] Editor view not available');
+            console.warn("[Highlight] Editor view not available");
             return;
         }
 
         this.editorView.dispatch({
-            effects: addHighlightsEffect.of(regions)
+            effects: addHighlightsEffect.of(regions),
         });
     }
 
@@ -1069,12 +1324,12 @@ export class TinymistEditor extends Component {
      */
     clearHighlights() {
         if (!this.editorView) {
-            console.warn('[Highlight] Editor view not available');
+            console.warn("[Highlight] Editor view not available");
             return;
         }
 
         this.editorView.dispatch({
-            effects: clearHighlightsEffect.of(null)
+            effects: clearHighlightsEffect.of(null),
         });
     }
 

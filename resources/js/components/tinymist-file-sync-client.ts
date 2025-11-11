@@ -186,6 +186,10 @@ export class TinymistFileSyncClient {
                     this.docVersion = msg.docVersion;
                     break;
 
+                case 'semanticTokens':
+                    // Forward to editor for rendering
+                    break;
+
                 case 'error':
                     console.error('[File Sync Module] Server error:', msg);
                     this.notifyError(`[File Sync Module] Server error: ${msg.message}`);
