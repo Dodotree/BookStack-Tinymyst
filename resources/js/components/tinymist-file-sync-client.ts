@@ -184,10 +184,11 @@ export class TinymistFileSyncClient {
                 case 'fullState':
                     console.log('[File Sync Module] Received full state from server', { docVersion: msg.docVersion });
                     this.docVersion = msg.docVersion;
+                    this.notifyMessage(msg);
                     break;
 
                 case 'semanticTokens':
-                    // Forward to editor for rendering
+                    this.notifyMessage(msg);
                     break;
 
                 case 'error':
@@ -199,10 +200,6 @@ export class TinymistFileSyncClient {
                     console.warn('[File Sync Module] Unknown message type:', msg.type);
             }
 
-            // Notify parent component
-            if (this.onMessage) {
-                this.onMessage(msg);
-            }
         } catch (error) {
             console.error('[File Sync Module] Failed to parse WebSocket message:', error);
         }
@@ -387,6 +384,12 @@ export class TinymistFileSyncClient {
     private notifyConnectionState(connected: boolean): void {
         if (this.onConnectionStateChange) {
             this.onConnectionStateChange(connected);
+        }
+    }
+
+    private notifyMessage(message: any): void {
+        if (this.onMessage) {
+            this.onMessage(message);
         }
     }
 

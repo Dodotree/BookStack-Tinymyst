@@ -34,7 +34,7 @@ export class PreviewDataPlane {
     private connectionTimeout: ReturnType<typeof setTimeout> | null = null;
     private hasInitialDocument: boolean = false; // Track if we've received initial document
     private processingQueue: Promise<void> = Promise.resolve();
-    private lastSvg: string | null = null;
+    // private lastSvg: string | null = null;
     private cursorCircle: SVGCircleElement | null = null;
     private cursorParams: CursorParams = { textSelector: 'svg.typst-doc>g.typst-group', charIndex: 0, cx: 0, radius: 0 };
 
@@ -294,13 +294,13 @@ export class PreviewDataPlane {
                     }
 
                     console.log(`[Preview Data] Applying ${action} with ${payload.length} bytes (raw ${rawLength})...`);
-                    // TODO: try const diffResult =
-                    this.renderer!.manipulateData({
+                    // same as session.manipulateData
+                    const diffResult = this.renderer!.manipulateData({
                         renderSession: session,
                         action,
                         data: payload,
                     });
-                    console.log(`[Preview Data] Data applied successfully (raw ${rawLength})`);
+                    console.log(`[Preview Data] Data applied successfully (raw ${rawLength})`, diffResult);
 
                     if (action === 'reset') {
                         this.hasInitialDocument = true;
@@ -316,52 +316,55 @@ export class PreviewDataPlane {
                     // }
 
                     console.log('[Preview Data] Rendering to SVG...');
-                    const oldSvg = this.lastSvg ?? this.previewElement.innerHTML;
-                    const oldSvgLength = oldSvg ? oldSvg.length : 0;
+                    // const oldSvg = this.lastSvg ?? this.previewElement.innerHTML;
+                    // const oldSvgLength = oldSvg ? oldSvg.length : 0;
                     // const svg = await session.renderSvg({});
+
                     // defaults are all true, right now have no use for inline helper script
+                    // css needed to hide text overlays for copy/paste
                     const svg = await session.renderSvg({
-                        data_selection: { body: true, defs: true, css: false, js: false },
+                        data_selection: { body: true, defs: true, css: true, js: false },
                     });
-                    console.log('[Preview Data] SVG length:', svg.length, '(was:', oldSvgLength + ')');
+
+                    // console.log('[Preview Data] SVG length:', svg.length, '(was:', oldSvgLength + ')');
 
                     // Compare old and new SVG - look for ALL significant changes
-                    if (oldSvg && oldSvg !== svg) {
-                        const sizeDiff = svg.length - oldSvgLength;
-                        console.log(`[Preview Data] SVG size changed by ${sizeDiff} bytes`);
+                    // if (oldSvg && oldSvg !== svg) {
+                    //     const sizeDiff = svg.length - oldSvgLength;
+                    //     console.log(`[Preview Data] SVG size changed by ${sizeDiff} bytes`);
 
-                        const newGroups = (svg.match(/<g /g) || []).length;
-                        const oldGroups = (oldSvg.match(/<g /g) || []).length;
-                        if (newGroups !== oldGroups) {
-                            console.log(`[Preview Data] Group count changed: ${oldGroups} → ${newGroups}`);
-                        }
-                        // Walk through character diffs to capture multiple change pockets
-                        const maxDiffSegments = 5;
-                        let diffSegments = 0;
-                        const sharedLength = Math.min(oldSvg.length, svg.length);
-                        for (let i = 0; i < sharedLength && diffSegments < maxDiffSegments; i++) {
-                            if (oldSvg[i] !== svg[i]) {
-                                const pos = i;
-                                const oldSnippetStart = Math.max(0, pos - 120);
-                                const newSnippetStart = Math.max(0, pos - 120);
-                                const oldSnippetEnd = Math.min(oldSvg.length, pos + 120);
-                                const newSnippetEnd = Math.min(svg.length, pos + 120);
-                                console.log(`[Preview Data] Diff #${diffSegments + 1} near position ${pos}`);
-                                console.log('[Preview Data] Old snippet:', oldSvg.substring(oldSnippetStart, oldSnippetEnd));
-                                console.log('[Preview Data] New snippet:', svg.substring(newSnippetStart, newSnippetEnd));
-                                diffSegments++;
-                                i = pos + 120; // skip ahead to avoid spamming adjacent characters
-                            }
-                        }
+                    //     const newGroups = (svg.match(/<g /g) || []).length;
+                    //     const oldGroups = (oldSvg.match(/<g /g) || []).length;
+                    //     if (newGroups !== oldGroups) {
+                    //         console.log(`[Preview Data] Group count changed: ${oldGroups} → ${newGroups}`);
+                    //     }
+                    //     // Walk through character diffs to capture multiple change pockets
+                    //     const maxDiffSegments = 5;
+                    //     let diffSegments = 0;
+                    //     const sharedLength = Math.min(oldSvg.length, svg.length);
+                    //     for (let i = 0; i < sharedLength && diffSegments < maxDiffSegments; i++) {
+                    //         if (oldSvg[i] !== svg[i]) {
+                    //             const pos = i;
+                    //             const oldSnippetStart = Math.max(0, pos - 120);
+                    //             const newSnippetStart = Math.max(0, pos - 120);
+                    //             const oldSnippetEnd = Math.min(oldSvg.length, pos + 120);
+                    //             const newSnippetEnd = Math.min(svg.length, pos + 120);
+                    //             console.log(`[Preview Data] Diff #${diffSegments + 1} near position ${pos}`);
+                    //             console.log('[Preview Data] Old snippet:', oldSvg.substring(oldSnippetStart, oldSnippetEnd));
+                    //             console.log('[Preview Data] New snippet:', svg.substring(newSnippetStart, newSnippetEnd));
+                    //             diffSegments++;
+                    //             i = pos + 120; // skip ahead to avoid spamming adjacent characters
+                    //         }
+                    //     }
 
-                        if (diffSegments === 0 && oldSvg.length !== svg.length) {
-                            console.log('[Preview Data] No character diff in shared range; change likely at tail segment.');
-                        }
-                    }
+                    //     if (diffSegments === 0 && oldSvg.length !== svg.length) {
+                    //         console.log('[Preview Data] No character diff in shared range; change likely at tail segment.');
+                    //     }
+                    // }
 
                     this.previewElement.innerHTML = svg;
-                    const svgDoc = this.previewElement.querySelector('svg.typst-doc');
 
+                    // const svgDoc = this.previewElement.querySelector('svg.typst-doc');
                     // const helperCode = document.querySelector('svg.typst-doc script')?.textContent;
                     // it contains handleTypstLocation function and adds location.hash #loc-page-x-y
                     // if (helperCode && svgDoc) {

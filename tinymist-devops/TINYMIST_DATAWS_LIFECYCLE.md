@@ -517,17 +517,27 @@ const svgDiffData: SvgDiff = {
 };
 
 // Step 2: Pass diff to WASM module
+
+// what might work for initiation (didn't test it, but lint approves)
+                    await session.renderToSvg({
+                        container: this.previewElement,
+                        format: 'vector',
+                        artifactContent: payload
+                    })
+
+// does not return diffResult or anything
 const diffResult = this.renderSession.manipulateData({
   action: 'diff', // no, actions are "merge" or "reset"
-  diff: svgDiffData,
-  currentState: this.currentSvgElement.outerHTML,
+  diff: svgDiffData, // called data:
+  currentState: this.currentSvgElement.outerHTML, // no such option available
 });
-// Returns: { operations: DOMOperation[] }
+// Returns: { operations: DOMOperation[] } // No such thing, at least in js
 
 // Step 3: Apply DOM patches (update, insert, remove, replace operations)
 // This is not what is happening right now
 // Whole SVG gets re-rendered and inserted via innerHTML
 
+// since diffResult does not exist this does not exist
 for (const operation of diffResult.operations) {
   switch (operation.type) {
     case 'update':

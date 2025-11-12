@@ -24,6 +24,7 @@ interface HighlightRegion {
     start: number; // Character offset in line
     len: number; // Length of highlight
     type: string; // Highlight type (math, string, comment, etc.)
+    modifiers?: string[]; // Optional modifiers (strong, emph, etc.)
 }
 
 // Color mapping for highlight types (text colors, not backgrounds)
@@ -64,9 +65,15 @@ const highlightColors: Record<string, string> = {
     error: "#E74C3C", // Red for errors
     text: "#FFFFFF", // White for normal text
 };
-// public tokenModifiers = [
-//     "strong", "emph", "math", "readonly", "static", "defaultLibrary"
-// ];
+
+const tokenModifierStyles: Record<string, string> = {
+    strong: "font-weight: bold;",
+    emph: "font-style: italic;",
+    math: "background-color: #0b3049ff;",
+    readonly: "",
+    static: "",
+    defaultLibrary: "background-color: #333333;"
+};
 
 // StateEffect to add highlights
 const addHighlightsEffect = StateEffect.define<HighlightRegion[]>();
@@ -102,9 +109,22 @@ const highlightField = StateField.define<DecorationSet>({
 
                         if (from < to && from >= 0 && to <= doc.length) {
                             const color = highlightColors[region.type] || "#FFD700";
+                            const baseStyle = `color: ${color};`;
+                            const modifierStyle = (region.modifiers ?? [])
+                                .map((modifier) => tokenModifierStyles[modifier])
+                                .filter((style): style is string => Boolean(style?.trim()))
+                                .join(" ");
+                            const combinedStyle = modifierStyle
+                                ? `${baseStyle} ${modifierStyle}`
+                                : baseStyle;
+                            const classNames = [
+                                "tinymist-highlight",
+                                `tinymist-highlight-${region.type}`,
+                                ...(region.modifiers ?? []).map((modifier) => `tinymist-mod-${modifier}`),
+                            ].join(" ");
                             const mark = Decoration.mark({
-                                class: `tinymist-highlight-${region.type}`,
-                                attributes: { style: `color: ${color}; font-weight: 500;` },
+                                class: classNames,
+                                attributes: { style: combinedStyle },
                             });
                             builder.add(from, to, mark);
                         }
@@ -553,8 +573,8 @@ export class TinymistEditor extends Component {
 
     handleFileSyncMessage(msg: any) {
         switch (msg.type) {
+
             case "fullState":
-                // Update editor content if needed
                 if (
                     this.editorView &&
                     msg.content !== this.editorView.state.doc.toString()
@@ -566,14 +586,6 @@ export class TinymistEditor extends Component {
 
             case "semanticTokens":
                 this.processSemanticTokens(msg.tokens || []);
-                break;
-
-            case "error":
-                this.logError(`[File Sync Module] Server error: ${msg.message}`);
-                break;
-
-            default:
-                console.warn("[File Sync Module] Unknown message type:", msg);
                 break;
         }
     }
@@ -1216,10 +1228,7 @@ export class TinymistEditor extends Component {
                 tokenModifiers
             );
             if (!resolvedType) {
-                console.warn(
-                    "[Semantic Tokens] unknown token type or modifiers:",
-                    token
-                );
+                // Ignored "text" type or unresolvable type
                 continue;
             }
 
@@ -1228,6 +1237,14 @@ export class TinymistEditor extends Component {
                 start: startChar,
                 len: length,
                 type: resolvedType,
+                modifiers: Array.isArray(tokenModifiers) && tokenModifiers.length
+                    ? [...new Set(
+                          tokenModifiers.filter(
+                              (modifier): modifier is string =>
+                                  typeof modifier === "string" && modifier.length > 0
+                          )
+                      )]
+                    : undefined,
             });
         }
 
@@ -1238,14 +1255,6 @@ export class TinymistEditor extends Component {
         tokenType: string,
         modifiers?: string[]
     ): string | null {
-        if (Array.isArray(modifiers)) {
-            // since LSP server legend reported math as a modifier, we check for it here
-            // TODO: consider using modifiers to avoid monotone math highlighting
-            console.warn("[Semantic Tokens] Math modifier", modifiers);
-            if (modifiers.includes("math")) {
-                // return "math";
-            }
-        }
 
         if (!tokenType) {
             return null;
