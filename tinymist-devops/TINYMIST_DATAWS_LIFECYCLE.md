@@ -525,6 +525,9 @@ const diffResult = this.renderSession.manipulateData({
 // Returns: { operations: DOMOperation[] }
 
 // Step 3: Apply DOM patches (update, insert, remove, replace operations)
+// This is not what is happening right now
+// Whole SVG gets re-rendered and inserted via innerHTML
+
 for (const operation of diffResult.operations) {
   switch (operation.type) {
     case 'update':
@@ -551,6 +554,15 @@ for (const operation of diffResult.operations) {
 
 #### Linters approves of this
 
+`session.renderSvg` takes a `RenderSvgOptions` object (or the wider `RenderOptions<RenderSvgOptions>` union, though you normally just pass the base object when you already have a session).
+`window?`: Rect – clip the output to a rectangular window. Rect is `{ lo: { x, y }, hi: { x, y } }` in Typst document units (pt). Use it to render just a slice of the page stack.
+`data_selection?`: `{ body: boolean; defs: boolean; css: boolean; js: boolean }` – toggle which parts of the SVG payload you want back. All flags default to true:
+`body`: the <svg> body with page content.
+`defs`: gradients, glyph outlines, etc. inside <defs>.
+`css`: the injected <style> block.
+`js`: the inline helper script (the big Typst selection/highlight script).
+If you pass `renderSvg({})` you get the full document (all flags true, full bounds).
+
 ```js
                 // this is where the document is loaded into session
                 if (command === 'new') {
@@ -569,6 +581,45 @@ for (const operation of diffResult.operations) {
                     renderSession: this.session,
                     container: this.previewElement,
                 })
+
+      // This is what actually worked
+      const svg = await session.renderSvg({
+          data_selection: { body: true, defs: true, css: false, js: false },
+      });
+
+      // where session is obtained and kept as long as possible
+      private async ensureSession(): Promise<RenderSession> {
+        if (!this.renderer) {
+            throw new Error('Renderer not initialized');
+        }
+
+        if (this.session) {
+            return this.session;
+        }
+
+        if (!this.sessionPromise) {
+            console.log('[Preview Data] Creating persistent session');
+            this.sessionPromise = new Promise<RenderSession>((resolve, reject) => {
+                this.renderer!.runWithSession(async (session) => {
+                    this.session = session;
+                    this.hasInitialDocument = false;
+                    resolve(session);
+
+                    await new Promise<void>((res) => {
+                        this.sessionResolve = res;
+                    });
+                }).catch((err) => {
+                    this.session = null;
+                    this.sessionPromise = null;
+                    this.sessionResolve = null;
+                    reject(err);
+                });
+            });
+        }
+
+        return this.sessionPromise;
+    }
+
 ```
 
 ## Everything below is not easily accessible reality for browser, will see
@@ -718,7 +769,23 @@ switch (command) {
 
 #### cursor-paths
 
+You have to use file's absolute path to get it calculate the cursor
+Their path is different from the actual svg elements tree. They don't count
+data-tid wrappers and only count listed below elements as leaf on their tree
+Beware that inline helper script (if enabled) can alter document tree even more
+
 ```js
+
+        const kindMap: Record<number, string> = {
+            0: '.typst-text',  // g
+            1: '.typst-group', // g
+            2: '.typst-image', // ?
+            3: '.typst-shape', // path
+            4: '.typst-page',  // g
+            5: 'use' // theoretically .tsel (?), but actually "use" tag
+            // .tsel elements exist as bigger parent nodes?
+        };
+
 [
   [
     {"kind":4,"index":0,"fingerprint":""},   // page

@@ -294,6 +294,7 @@ export class PreviewDataPlane {
                     }
 
                     console.log(`[Preview Data] Applying ${action} with ${payload.length} bytes (raw ${rawLength})...`);
+                    // TODO: try const diffResult =
                     this.renderer!.manipulateData({
                         renderSession: session,
                         action,
@@ -317,7 +318,11 @@ export class PreviewDataPlane {
                     console.log('[Preview Data] Rendering to SVG...');
                     const oldSvg = this.lastSvg ?? this.previewElement.innerHTML;
                     const oldSvgLength = oldSvg ? oldSvg.length : 0;
-                    const svg = await session.renderSvg({});
+                    // const svg = await session.renderSvg({});
+                    // defaults are all true, right now have no use for inline helper script
+                    const svg = await session.renderSvg({
+                        data_selection: { body: true, defs: true, css: false, js: false },
+                    });
                     console.log('[Preview Data] SVG length:', svg.length, '(was:', oldSvgLength + ')');
 
                     // Compare old and new SVG - look for ALL significant changes
@@ -355,7 +360,19 @@ export class PreviewDataPlane {
                     }
 
                     this.previewElement.innerHTML = svg;
-                    this.showCursorAt(this.cursorParams.textSelector, this.cursorParams.charIndex);
+                    const svgDoc = this.previewElement.querySelector('svg.typst-doc');
+
+                    // const helperCode = document.querySelector('svg.typst-doc script')?.textContent;
+                    // it contains handleTypstLocation function and adds location.hash #loc-page-x-y
+                    // if (helperCode && svgDoc) {
+                    //     const run = document.createElement("script");
+                    //     run.textContent = helperCode;
+                    //     // document.head.append(run);
+                    //     svgDoc.append(run);
+                    //     // window.typstProcessSvg(svgDoc as SVGElement);
+                    // }
+
+                    this.showCursorAt();
                     this.lastSvg = svg;
                     console.log('[Preview Data] Render complete');
 
