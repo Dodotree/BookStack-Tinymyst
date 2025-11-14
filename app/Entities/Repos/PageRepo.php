@@ -187,12 +187,6 @@ class PageRepo
             $page->fill($input);
             $page->save();
 
-            // Write Tinymist storage file for preview server
-            if (!empty($input['tinymist'])) {
-                $manager = app(\BookStack\Entities\Tools\Tinymist\TinymistPreviewManager::class);
-                $manager->updateTinymistPreviewFile($page->id, $input['tinymist']);
-            }
-
             return $page;
         }
 
@@ -203,9 +197,6 @@ class PageRepo
         if (!empty($input['tinymist'])) {
             $draft->markdown = $input['tinymist'];
             $draft->html = '';
-            // Write Tinymist storage file for preview server
-            $manager = app(\BookStack\Entities\Tools\Tinymist\TinymistPreviewManager::class);
-            $manager->updateTinymistPreviewFile($page->id, $input['tinymist']);
         } elseif (!empty($input['markdown'])) {
             $draft->markdown = $input['markdown'];
             $draft->html = '';

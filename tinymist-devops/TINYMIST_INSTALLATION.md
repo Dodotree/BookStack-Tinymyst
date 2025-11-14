@@ -39,19 +39,6 @@ Only needed if users connect from different servers than where Tinymist runs.
 
 **File:** `/etc/nginx/sites-available/bookstack`
 
-```nginx
-server {
-    listen 80;
-    server_name bookstack.example.com;
-
-    # ... existing BookStack config ...
-
-    # Dynamic WebSocket proxy (pass through page-specific ports)
-    # This requires Nginx Plus or custom Lua scripting
-    # For simplicity, it's better to keep preview servers localhost-only
-}
-```
-
 ## Verification
 
 ```bash

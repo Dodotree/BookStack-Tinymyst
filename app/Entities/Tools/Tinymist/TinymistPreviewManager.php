@@ -230,6 +230,14 @@ class TinymistPreviewManager
             mkdir($directory, 0755, true);
         }
 
+        if (file_exists($filePath) && filesize($filePath) > 0) {
+            Log::debug("Tinymist preview file already exists and is not empty; skipping overwrite", [
+                'page_id' => $pageId,
+                'path' => $filePath,
+            ]);
+            return;
+        }
+
         file_put_contents($filePath, $content);
     }
 

@@ -1,146 +1,17 @@
 import { Component } from "./component";
-import {
-    EditorView,
-    Decoration,
-    DecorationSet,
-    ViewPlugin,
-    ViewUpdate,
-} from "@codemirror/view";
-import { StateEffect, StateField, RangeSetBuilder } from "@codemirror/state";
-import {
-    linter,
-    Diagnostic,
-    forceLinting,
-    setDiagnostics,
-} from "@codemirror/lint";
+import { EditorView } from "@codemirror/view";
+import { StateEffect } from "@codemirror/state";
+import { setDiagnostics } from "@codemirror/lint";
 import { PreviewControlPlane } from "./tinymist-preview-control";
 import { PreviewDataPlane } from "./tinymist-preview-renderer";
 import { TinymistFileSyncClient } from "./tinymist-file-sync-client";
 import { TinymistFallbackCompiler } from "./tinymist-fallback-compiler";
+import {
+    SemanticTokenProcessor,
+    highlightField,
+} from "../tinymist/editor/semantic_tokens";
 
-// Highlight region interface
-interface HighlightRegion {
-    line: number; // 1-based line number
-    start: number; // Character offset in line
-    len: number; // Length of highlight
-    type: string; // Highlight type (math, string, comment, etc.)
-    modifiers?: string[]; // Optional modifiers (strong, emph, etc.)
-}
 
-// Color mapping for highlight types (text colors, not backgrounds)
-const highlightColors: Record<string, string> = {
-    math: "#5DADE2", // Light blue for math
-    string: "#52BE80", // Green for strings
-    comment: "#808080", // Gray for comments
-    keyword: "#BB8FCE", // Purple for keywords
-    operator: "#E06C75", // Red for operators
-    number: "#D6863E", // Brown for numbers
-    function: "#5DADE2", // Blue for functions
-    method: "#5DADE2", // Blue for methods
-    macro: "#5DADE2", // Blue for macros
-    decorator: "#5DADE2", // Blue for decorators
-    type: "#56B6C2", // Cyan for types
-    class: "#56B6C2", // Cyan for classes
-    enum: "#56B6C2", // Cyan for enums
-    interface: "#56B6C2", // Cyan for interfaces
-    struct: "#56B6C2", // Cyan for structs
-    typeParameter: "#56B6C2", // Cyan for generic parameters
-    namespace: "#56B6C2", // Cyan for namespaces
-    variable: "#E5C07B", // Yellow for variables
-    property: "#E5C07B", // Yellow for properties
-    enumMember: "#E5C07B", // Yellow for enum members
-    parameter: "#E5C07B", // Yellow for parameters
-    punct: "#D19A66", // Orange for punctuation
-    bool: "#C678DD", // Pink for booleans
-    escape: "#E06C75", // Red for escape sequences
-    link: "#61AFEF", // Light blue for links
-    raw: "#E06C75", // Red for raw
-    label: "#E5C07B", // Yellow for labels
-    ref: "#61AFEF", // Light blue for references
-    heading: "#61AFEF", // Light blue for headings
-    marker: "#E06C75", // Red for list markers
-    term: "#E5C07B", // Yellow for list terms
-    delim: "#D19A66", // Orange for delimiters
-    pol: "#C678DD", // Pink for list interpolations
-    error: "#E74C3C", // Red for errors
-    text: "#FFFFFF", // White for normal text
-};
-
-const tokenModifierStyles: Record<string, string> = {
-    strong: "font-weight: bold;",
-    emph: "font-style: italic;",
-    math: "background-color: #0b3049ff;",
-    readonly: "",
-    static: "",
-    defaultLibrary: "background-color: #333333;"
-};
-
-// StateEffect to add highlights
-const addHighlightsEffect = StateEffect.define<HighlightRegion[]>();
-
-// StateEffect to clear highlights
-const clearHighlightsEffect = StateEffect.define();
-
-// StateField to store highlight decorations
-const highlightField = StateField.define<DecorationSet>({
-    create() {
-        return Decoration.none;
-    },
-    update(highlights, tr) {
-        // Map existing highlights through document changes
-        highlights = highlights.map(tr.changes);
-
-        for (const effect of tr.effects) {
-            if (effect.is(clearHighlightsEffect)) {
-                highlights = Decoration.none;
-            } else if (effect.is(addHighlightsEffect)) {
-                const builder = new RangeSetBuilder<Decoration>();
-                const doc = tr.state.doc;
-
-                for (const region of effect.value) {
-                    try {
-                        // Convert 1-based line to 0-based
-                        const lineNum = Math.max(0, region.line - 1);
-                        if (lineNum >= doc.lines) continue;
-
-                        const line = doc.line(lineNum + 1); // doc.line is 1-based
-                        const from = line.from + region.start;
-                        const to = Math.min(line.to, from + region.len);
-
-                        if (from < to && from >= 0 && to <= doc.length) {
-                            const color = highlightColors[region.type] || "#FFD700";
-                            const baseStyle = `color: ${color};`;
-                            const modifierStyle = (region.modifiers ?? [])
-                                .map((modifier) => tokenModifierStyles[modifier])
-                                .filter((style): style is string => Boolean(style?.trim()))
-                                .join(" ");
-                            const combinedStyle = modifierStyle
-                                ? `${baseStyle} ${modifierStyle}`
-                                : baseStyle;
-                            const classNames = [
-                                "tinymist-highlight",
-                                `tinymist-highlight-${region.type}`,
-                                ...(region.modifiers ?? []).map((modifier) => `tinymist-mod-${modifier}`),
-                            ].join(" ");
-                            const mark = Decoration.mark({
-                                class: classNames,
-                                attributes: { style: combinedStyle },
-                            });
-                            builder.add(from, to, mark);
-                        }
-                    } catch (e) {
-                        console.warn("[Highlight] Failed to add highlight:", region, e);
-                    }
-                }
-
-                highlights = builder.finish();
-            }
-        }
-
-        return highlights;
-    },
-    provide: (f) => EditorView.decorations.from(f),
-});
 
 export class TinymistEditor extends Component {
     elem!: HTMLElement;
@@ -165,6 +36,7 @@ export class TinymistEditor extends Component {
     private fallbackCompiler: TinymistFallbackCompiler | null = null;
     private fallbackMode: boolean = false;
     private wsConnectionTimeout: ReturnType<typeof setTimeout> | null = null;
+    private semanticTokens = new SemanticTokenProcessor();
 
     // Connection health monitoring
     private controlConnected: boolean = false;
@@ -174,7 +46,6 @@ export class TinymistEditor extends Component {
     private previewServerDownTimer: ReturnType<typeof setTimeout> | null = null;
     private restartAllowed: boolean = true;
     private restartingPreviewServer: boolean = false;
-    private pendingSemanticHighlights: HighlightRegion[] | null = null;
 
     async startPreviewServer() {
         // Check if preview was already started server-side
@@ -561,7 +432,8 @@ export class TinymistEditor extends Component {
             // Connect to file sync WebSocket if token is available
             await this.initializeFileSyncClient();
 
-            this.flushPendingSemanticHighlights();
+            this.semanticTokens.attachEditorView(this.editorView!);
+            this.semanticTokens.flushPendingHighlights();
         } catch (error) {
             console.error("Failed to initialize CodeMirror:", error);
             this.logError(`Failed to initialize CodeMirror editor: ${error}`);
@@ -585,7 +457,7 @@ export class TinymistEditor extends Component {
                 break;
 
             case "semanticTokens":
-                this.processSemanticTokens(msg.tokens || []);
+                this.semanticTokens.processSemanticTokens(msg.tokens || []);
                 break;
         }
     }
@@ -891,6 +763,9 @@ export class TinymistEditor extends Component {
             this.previewRenderer.dispose();
         }
 
+        this.semanticTokens.clearHighlights();
+        this.semanticTokens.detachEditorView();
+
         // Send stop-preview request (use sendBeacon for reliability during unload)
         if (this.$opts.pageId) {
             const data = JSON.stringify({ pid: this.previewServerInfo?.pid || 0 });
@@ -1190,162 +1065,4 @@ export class TinymistEditor extends Component {
         }
     }
 
-    private processSemanticTokens(
-        tokens: Array<{
-            line: number;
-            startChar: number;
-            length: number;
-            tokenType: string;
-            tokenModifiers?: string[];
-        }>
-    ) {
-        if (!Array.isArray(tokens)) {
-            return;
-        }
-
-        const highlights: HighlightRegion[] = [];
-
-        for (const token of tokens) {
-            if (!token) {
-                continue;
-            }
-
-            const { line, startChar, length, tokenType, tokenModifiers } = token;
-
-            if (
-                typeof line !== "number" ||
-                typeof startChar !== "number" ||
-                typeof length !== "number" ||
-                !Number.isFinite(length) ||
-                length <= 0
-            ) {
-                console.warn("[Semantic Tokens] Invalid token data:", token);
-                continue;
-            }
-
-            const resolvedType = this.resolveSemanticTokenType(
-                tokenType,
-                tokenModifiers
-            );
-            if (!resolvedType) {
-                // Ignored "text" type or unresolvable type
-                continue;
-            }
-
-            highlights.push({
-                line: line + 1,
-                start: startChar,
-                len: length,
-                type: resolvedType,
-                modifiers: Array.isArray(tokenModifiers) && tokenModifiers.length
-                    ? [...new Set(
-                          tokenModifiers.filter(
-                              (modifier): modifier is string =>
-                                  typeof modifier === "string" && modifier.length > 0
-                          )
-                      )]
-                    : undefined,
-            });
-        }
-
-        this.renderSemanticHighlights(highlights);
-    }
-
-    private resolveSemanticTokenType(
-        tokenType: string,
-        modifiers?: string[]
-    ): string | null {
-
-        if (!tokenType) {
-            return null;
-        }
-
-        if (tokenType === "text") {
-            return null;
-        }
-
-        if (highlightColors[tokenType]) {
-            return tokenType;
-        }
-
-        if (tokenType === "identifier" && highlightColors["variable"]) {
-            return "variable";
-        }
-
-        return null;
-    }
-
-    private renderSemanticHighlights(highlights: HighlightRegion[]): void {
-        if (!this.editorView) {
-            this.pendingSemanticHighlights = highlights;
-            return;
-        }
-
-        this.pendingSemanticHighlights = null;
-
-        if (!highlights.length) {
-            this.clearHighlights();
-            return;
-        }
-
-        this.addHighlights(highlights);
-    }
-
-    private flushPendingSemanticHighlights(): void {
-        if (!this.editorView) {
-            return;
-        }
-
-        if (this.pendingSemanticHighlights === null) {
-            return;
-        }
-
-        const highlights = this.pendingSemanticHighlights;
-        this.pendingSemanticHighlights = null;
-
-        if (!highlights.length) {
-            // not sure if we should allow clearing here
-            // this.clearHighlights();
-            return;
-        }
-
-        this.addHighlights(highlights);
-    }
-
-    /**
-     * Add highlights to the editor
-     * @param regions Array of highlight regions
-     * Example: addHighlights([{line: 17, start: 0, len: 10, type: "math"}])
-     */
-    addHighlights(regions: HighlightRegion[]) {
-        if (!this.editorView) {
-            console.warn("[Highlight] Editor view not available");
-            return;
-        }
-
-        this.editorView.dispatch({
-            effects: addHighlightsEffect.of(regions),
-        });
-    }
-
-    /**
-     * Clear all highlights from the editor
-     */
-    clearHighlights() {
-        if (!this.editorView) {
-            console.warn("[Highlight] Editor view not available");
-            return;
-        }
-
-        this.editorView.dispatch({
-            effects: clearHighlightsEffect.of(null),
-        });
-    }
-
-    /**
-     * Update highlight color mapping
-     */
-    static setHighlightColor(type: string, color: string) {
-        highlightColors[type] = color;
-    }
 }

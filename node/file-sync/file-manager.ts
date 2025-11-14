@@ -2,11 +2,6 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { ChangeSet, Text } from "@codemirror/state";
 
-export interface DocumentState {
-  content: string;
-  docVersion: number;
-}
-
 export class FileManager {
   private storageRoot: string;
 
@@ -17,11 +12,11 @@ export class FileManager {
   /**
    * Load document from disk
    */
-  loadDocument(pageId: number): DocumentState {
+  loadDocument(pageId: number): string {
     const filePath = this.getFilePath(pageId);
     try {
       const content = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
-      return { content, docVersion: 0 };
+      return content
     } catch (err) {
       console.error("Failed to read document", { pageId, err });
       throw new Error("DOC_READ_FAILED");
@@ -47,9 +42,10 @@ export class FileManager {
    */
   applyChanges(
     pageId: number,
-    currentContent: string,
     changeSetJson: unknown
   ): string {
+
+    const currentContent = this.loadDocument(pageId);
     const text = Text.of(currentContent.split("\n"));
 
     let changeSet: ChangeSet;

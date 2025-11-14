@@ -793,7 +793,7 @@ Beware that inline helper script (if enabled) can alter document tree even more
             3: '.typst-shape', // path
             4: '.typst-page',  // g
             5: 'use' // theoretically .tsel (?), but actually "use" tag
-            // .tsel elements exist as bigger parent nodes?
+            // .tsel elements are <h5:div> inside <foreignObject> for holding text for copy/paste
         };
 
 [

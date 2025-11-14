@@ -175,6 +175,7 @@ export class TinymistFileSyncClient {
             switch (msg.type) {
                 case 'pong':
                     // Heartbeat response
+                    console.log('[File Sync Module] Received pong');
                     break;
 
                 case 'ack':

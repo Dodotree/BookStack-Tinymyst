@@ -376,7 +376,7 @@ export class PreviewDataPlane {
                     // }
 
                     this.showCursorAt();
-                    this.lastSvg = svg;
+                    // this.lastSvg = svg;
                     console.log('[Preview Data] Render complete');
 
                 } catch (e: any) {
