@@ -1,4 +1,5 @@
 type ResponseData = Record<any, any>|string;
+const CSRF_RELOAD_FLAG = '__bookstackCsrfReloadPending';
 
 type RequestOptions = {
     params?: Record<string, string>,
@@ -14,6 +15,12 @@ type FormattedResponse = {
     statusText: string;
     url: string;
 };
+
+declare global {
+    interface Window {
+        __bookstackCsrfReloadPending?: boolean;
+    }
+}
 
 export class HttpError extends Error implements FormattedResponse {
 
@@ -104,6 +111,10 @@ export class HttpManager {
         };
 
         const response = await fetch(requestUrl, requestOptions);
+
+        if (response.status === 419) {
+            this.scheduleCsrfReload();
+        }
         const content = await this.getResponseContent(response) || '';
         const returnData: FormattedResponse = {
             data: content,
@@ -120,6 +131,16 @@ export class HttpManager {
         }
 
         return returnData;
+    }
+
+    protected scheduleCsrfReload(): void {
+        if (window[CSRF_RELOAD_FLAG]) {
+            return;
+        }
+
+        window[CSRF_RELOAD_FLAG] = true;
+        console.warn('[HTTP] CSRF token mismatch detected (419). Reloading to refresh session...');
+        setTimeout(() => window.location.reload(), 250);
     }
 
     /**

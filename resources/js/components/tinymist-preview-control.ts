@@ -1,6 +1,3 @@
-import { EditorView } from "@codemirror/view";
-import { Extension } from "@codemirror/state";
-
 type OutlineItem = {
     title: string;
     level: number;
@@ -11,6 +8,7 @@ type OutlineItem = {
 
 export class PreviewControlPlane {
     private controlWs: WebSocket | null = null;
+    private pageId: number;
     private fileUri: string;
     private maxReconnectAttempts: number = 5;
     private reconnectAttempts: number = 0;
@@ -19,33 +17,36 @@ export class PreviewControlPlane {
     private controlPort: number;
     private host: string;
 
-    private onConnectionStateChange?: (connected: boolean) => void;
-    private onCompileStatus: (kind: string, msg?: any) => void = () => {};
-    private onMessage?: (message: any) => void;
-    private onError?: (error: string) => void;
-
     constructor(
         pageId: number,
         content: string,
         host: string = "127.0.0.1", // provided directly from php template
         controlPort: number = 23627, // provided directly from php template
-        options?: {
-            onConnectionStateChange?: (connected: boolean) => void;
-            onCompileStatus: (kind: string, msg?: any) => void;
-            onMessage?: (message: any) => void;
-            onError?: (error: string) => void;
-        }
     ) {
-        this.fileUri = `file:///virtual/${pageId}.typ`;
+        this.pageId = pageId;
+        // TODO: replace on the server side with proper storage path
+        this.fileUri =`C:\\Users\\Ooo\\Desktop\\GitWork\\BookStack\\storage\\app\\tinymist\\page_${pageId}.typ`;
         this.host = host;
         this.controlPort = controlPort;
-        this.onConnectionStateChange = options?.onConnectionStateChange;
-        this.onCompileStatus = options?.onCompileStatus ?? (() => {});
-        this.onMessage = options?.onMessage;
-        this.onError = options?.onError;
+
+        this.handleSyncConnect = this.handleSyncConnect.bind(this);
+        this.sendControlMessage = this.sendControlMessage.bind(this);
+        this.disconnect = this.disconnect.bind(this);
+        window.$events.listen("tinymist-control-connect", this.handleSyncConnect)
+        window.$events.listen("tinymist-control", this.sendControlMessage);
+        window.$events.listen("tinymist-control-disconnect", this.disconnect)
     }
 
-    connect(): Promise<Extension> {
+    private async handleSyncConnect(): Promise<void> {
+        try {
+            await this.connect();
+        } catch (err) {
+            console.error("[Preview Control] Failed to connect:", err);
+            window.$events.emit("tinymist-console-log",{ type: "error", message: "[Preview Control] connection failed", details: err });
+        }
+    }
+
+    connect(): Promise<void> {
         return new Promise((resolve, reject) => {
             if (!this.reconnectAllowed) {
                 reject("[Preview Control] Reconnection not allowed");
@@ -66,30 +67,30 @@ export class PreviewControlPlane {
                         this.connectionTimeout = null;
                     }
 
-                    this.onConnectionStateChange?.(true);
-                    resolve([]);
+                    window.$events.emit("tinymist-status", { what: "control-plane-ws", connected: true });
+                    window.$events.emit("tinymist-console-log", { type: "success", message: "[Preview Control] connected" });
+                    resolve();
                 };
 
-                this.controlWs.onmessage = (event) => {
-                    const msg = JSON.parse(event.data);
+                this.controlWs.onmessage = (socketEvent) => {
+                    const msg = JSON.parse(socketEvent.data);
                     if (msg.event === 'compileStatus') {
-                        console.log(`[Preview Control] Debug status event:`, event);
+                        console.log(`[Preview Control] Compile status event:`, socketEvent);
                         this.onCompileStatus(msg.kind, msg);
                     } else if (msg.event === 'outline') {
                         this.onOutline(msg.items);
                     } else if (msg.event === 'syncEditorChanges') {
                         this.onSyncChanges(msg);
                     } else {
-                        console.warn(
-                            `[Preview Control] Unknown message: ${event.data}`
-                        );
-                        this.onMessage?.(event.data);
+                        console.warn(`[Preview Control] Unknown message: ${socketEvent.data}`);
+                        window.$events.emit("tinymist-console-log", { type: "warning", message: `[Preview Control] Unknown message: ${socketEvent.data}` });
                     }
                 };
 
                 this.controlWs.onerror = (error) => {
                     console.error("[Preview Control] WS error:", error);
-                    this.onError?.(error.toString());
+                    window.$events.emit("tinymist-status", { what: "control-plane-ws", connected: false });
+                    window.$events.emit("tinymist-console-log", { type: "error", message: "[Preview Control] Socket error", details: error });
                     reject(error);
                 };
 
@@ -97,7 +98,9 @@ export class PreviewControlPlane {
                     console.warn(
                         `[Preview Control] WS disconnected: code=${event.code}, reason=${event.reason}`
                     );
-                    this.onConnectionStateChange?.(false);
+                    window.$events.emit("tinymist-status", { what: "control-plane-ws", connected: false });
+                    window.$events.emit("tinymist-console-log", { type: "error", message: "[Preview Control] disconnected" });
+
                     const errCodes: Record<number, string> = {
                         1000: "Normal closure",
                         1001: "Going away",
@@ -106,14 +109,28 @@ export class PreviewControlPlane {
                     };
                     if (event.code !== 1000) {
                         this.handleReconnect();
-                    } else {
-                        reject(new Error(`Connection closed: ${event.code} - ${event.reason || errCodes[event.code] || 'Unknown reason'}`));
                     }
+                    reject(new Error(`Connection closed: ${event.code} - ${event.reason || errCodes[event.code] || 'Unknown reason'}`));
                 };
             } catch (error) {
+                window.$events.emit("tinymist-status", { what: "control-plane-ws", connected: false });
                 reject(error);
             }
         });
+    }
+
+    private onCompileStatus (kind: string, msg?: any) {
+        if (kind === "Compiling") {
+            window.$events.emit("tinymist-console-log",
+                { type: "info", message: "[Preview Control] Compiling..." });
+        } else if (kind === "CompileSuccess") {
+            window.$events.emit("tinymist-console-log",
+                { type: "success", message: "[Preview Control] Compilation successful" });
+        } else if (kind === "CompileError") {
+            window.$events.emit("tinymist-console-log",
+                { type: "error", message: "[Preview Control] Compilation failed" });
+            console.log("[Preview Control] Error:", msg);
+        }
     }
 
     private onSyncChanges(msg: any) {
@@ -131,13 +148,6 @@ export class PreviewControlPlane {
             return;
         }
 
-        //    "changeCursorPosition"
-        //    "panelScrollTo"
-        //    "panelScrollByPosition"
-        //    "sourceScrollBySpan"
-        //    "syncMemoryFiles"
-        //    "updateMemoryFiles"
-        //    "removeMemoryFiles"
         let msg;
 
         switch (message.event) {
@@ -165,7 +175,7 @@ export class PreviewControlPlane {
             case "panelScrollTo":
                 msg = {
                     event: message.event,
-                    filepath: message.filepath,
+                    filepath: this.fileUri, // absolute path unless memory file is
                     line: message.line,
                     character: message.character,
                 };
@@ -186,13 +196,19 @@ export class PreviewControlPlane {
                 break;
             default:
                 console.warn(`[Preview Control] Unknown control message event: ${message.event}`);
+                return;
         }
+
+        console.log(`[Preview Control] Sending Control Plane ${message.event}:`, msg);
         this.controlWs.send(JSON.stringify(msg));
     }
 
     private handleReconnect() {
         if (!this.reconnectAllowed) {
             return;
+        }
+        if (this.connectionTimeout) {
+            return; // Already scheduled
         }
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
             this.reconnectAttempts++;
@@ -220,8 +236,9 @@ export class PreviewControlPlane {
         }
         if (this.controlWs) {
             this.controlWs.close();
+            console.log("[Preview Control] Intentionally disconnected");
+            window.$events.emit("tinymist-status", { what: "control-plane-ws", connected: false });
         }
-        console.log("[Preview Control] Intentionally disconnected");
     }
 
     reconnect() {

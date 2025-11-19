@@ -225,10 +225,6 @@ async function requestSemanticTokens(
                     send(socket, message);
                 }
             }
-
-            console.log(
-                `[LSP] Sent ${decodedTokens.length} semantic tokens for page ${pageId}`
-            );
         }
     } catch (err) {
         console.error("[LSP] Error requesting semantic tokens:", err);
@@ -252,7 +248,7 @@ function processMessage(ctx: ConnectionContext, raw: RawData) {
 
     switch (msg.type) {
         case "ping":
-            send(ctx.socket, { type: "pong" }); // TODO: verify that WebSocketServer has built-in autoPong, default enabled
+            send(ctx.socket, { type: "pong" });
             return;
         case "changes":
             handleChanges(ctx, msg);

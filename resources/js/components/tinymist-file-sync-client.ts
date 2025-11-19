@@ -1,3 +1,5 @@
+import { c } from "../code/legacy-modes.mjs";
+
 /**
  * WebSocket client for real-time Typst file synchronization
  * Handles connection, authentication, token renewal, and change streaming
@@ -18,110 +20,118 @@ export class TinymistFileSyncClient {
     // State tracking
     private reconnectAllowed: boolean = true;
     private reconnectAttempts: number = 0;
-    private isConnected: boolean = false;
 
     // Callbacks
-    private onConnectionStateChange?: (connected: boolean) => void;
     private onMessage?: (message: any) => void;
-    private onError?: (error: string) => void;
 
     constructor(
         pageId: number,
         token: string,
         options?: {
-            onConnectionStateChange?: (connected: boolean) => void;
             onMessage?: (message: any) => void;
-            onError?: (error: string) => void;
         }
     ) {
         this.pageId = pageId;
         this.token = token;
 
         if (options) {
-            this.onConnectionStateChange = options.onConnectionStateChange;
             this.onMessage = options.onMessage;
-            this.onError = options.onError;
+        }
+
+        this.handleSyncConnect = this.handleSyncConnect.bind(this);
+        this.sendChanges = this.sendChanges.bind(this);
+        this.disconnect = this.disconnect.bind(this);
+        window.$events.listen("tinymist-sync-connect", this.handleSyncConnect);
+        window.$events.listen("tinymist-text-diff", this.sendChanges);
+        window.$events.listen("tinymist-sync-disconnect", this.disconnect);
+    }
+
+    private async handleSyncConnect(token?: string): Promise<void> {
+        try {
+            await this.connect(token);
+        } catch (err) {
+            console.error("[File Sync / LSP] Failed to connect:", err);
+            window.$events.emit("tinymist-console-log",{ type: "error", message: "[File Sync / LSP] connection failed", details: err });
         }
     }
 
     /**
      * Connect to the WebSocket server
      */
-    async connect(token?: string): Promise<boolean> {
-        if (token) {
-            this.token = token;
-        }
+    async connect(token?: string): Promise<void> {
+        return new Promise((resolve, reject) => {
+            if (!this.reconnectAllowed) {
+                reject("[File Sync / LSP] Connect: Reconnection not allowed");
+            }
 
-        if (!this.reconnectAllowed) {
-            this.notifyError("[File Sync Module] Reconnection not allowed");
-            return false;
-        }
+            if (token) {
+                this.token = token;
+            }
+            if (!this.token) {
+                reject("[File Sync / LSP] No token available");
+            }
+            // Decode JWT to get expiration time
+            this.decodeAndStoreTokenExpiry(this.token);
 
-        if (!this.token) {
-            this.notifyError('[File Sync Module] No token available');
-            return false;
-        }
+            try {
+                // Construct WebSocket URL from current page URL
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const host = window.location.hostname;
+                const port = 4000; // WebSocket server port
+                const wsUrl = `${protocol}//${host}:${port}?token=${encodeURIComponent(this.token)}`;
 
-        // Decode JWT to get expiration time
-        this.decodeAndStoreTokenExpiry(this.token);
+                console.log('[File Sync / LSP] Connecting to:', wsUrl.replace(this.token, 'TOKEN_HIDDEN'));
 
-        try {
-            // Construct WebSocket URL from current page URL
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const host = window.location.hostname;
-            const port = 4000; // WebSocket server port
-            const wsUrl = `${protocol}//${host}:${port}?token=${encodeURIComponent(this.token)}`;
+                this.scheduleConnectionTimeout();
 
-            console.log('[File Sync Module] Connecting to:', wsUrl.replace(this.token, 'TOKEN_HIDDEN'));
+                this.socket = new WebSocket(wsUrl);
 
-            // Schedule connection timeout (1 second)
-            this.scheduleConnectionTimeout();
+                this.socket.onopen = () => {
+                    this.reconnectAttempts = 0;
+                    this.clearConnectionTimeout();
+                    this.startHeartbeat();
+                    this.scheduleTokenRenewal();
 
-            this.socket = new WebSocket(wsUrl);
+                    console.log('[File Sync / LSP] WebSocket connected');
+                    window.$events.emit("tinymist-status", { what: "file-lsp-ws", connected: true });
+                    window.$events.emit("tinymist-console-log",{ type: "success", message: "[File Sync / LSP] connected" });
 
-            this.socket.onopen = () => {
-                console.log('[File Sync Module] WebSocket connected');
-                this.reconnectAttempts = 0;
-                this.isConnected = true;
+                    resolve();
+                };
 
-                this.clearConnectionTimeout();
-                this.notifyConnectionState(true);
+                this.socket.onmessage = (event) => {
+                    this.handleMessage(event.data);
+                };
 
-                // Start heartbeat
-                this.startHeartbeat();
+                this.socket.onerror = (error) => {
+                    console.error('[File Sync / LSP] WebSocket error:', error);
+                    window.$events.emit("tinymist-status", { what: "file-lsp-ws", connected: false });
+                    reject(error);
+                };
 
-                // Schedule token renewal before expiry
-                this.scheduleTokenRenewal();
-            };
+                this.socket.onclose = (event) => {
+                    console.log('[File Sync / LSP] WebSocket closed', { code: event.code, reason: event.reason });
+                    this.stopHeartbeat();
+                    window.$events.emit("tinymist-status", { what: "file-lsp-ws", connected: false });
 
-            this.socket.onmessage = (event) => {
-                this.handleMessage(event.data);
-            };
+                    const errCodes: Record<number, string> = {
+                        1000: "Normal closure",
+                        1001: "Going away",
+                        1006: "Abnormal closure (no close frame)",
+                        1011: "Internal server error",
+                    };
+                    if (event.code !== 1000) {
+                        this.scheduleReconnect()
+                    }
+                    reject(new Error(`Connection closed: ${event.code} - ${event.reason || errCodes[event.code] || 'Unknown reason'}`));
+                };
 
-            this.socket.onerror = (error) => {
-                console.error('[File Sync Module] WebSocket error:', error);
-                this.notifyError('[File Sync Module] connection error');
-            };
-
-            this.socket.onclose = (event) => {
-                console.log('[File Sync Module] WebSocket closed', { code: event.code, reason: event.reason });
-                this.isConnected = false;
-                this.stopHeartbeat();
-                this.notifyConnectionState(false);
-
-                // Only reconnect on abnormal closes (not user-initiated disconnects)
-                if (event.code !== 1000) {
-                    console.log('[File Sync Module] Reconnecting after abnormal close...');
-                    this.scheduleReconnect();
-                }
-            };
-
-            return true;
-        } catch (error) {
-            console.error('[File Sync Module] Failed to connect WebSocket:', error);
-            this.notifyError(`[File Sync Module] connection failed: ${error}`);
-            return false;
-        }
+                return true;
+            } catch (error) {
+                window.$events.emit("tinymist-status", { what: "file-lsp-ws", connected: false });
+                reject(error)
+            }
+        });
     }
 
     /**
@@ -129,7 +139,7 @@ export class TinymistFileSyncClient {
      */
     sendChanges(changes: any): void {
         if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-            console.warn('[File Sync Module] WebSocket not connected, changes not synced');
+            console.warn('[File Sync / LSP] WebSocket not connected, changes not synced');
             return;
         }
 
@@ -145,29 +155,6 @@ export class TinymistFileSyncClient {
         this.socket.send(JSON.stringify(message));
     }
 
-    /**
-     * Check if connected
-     */
-    connected(): boolean {
-        return this.isConnected && this.socket !== null && this.socket.readyState === WebSocket.OPEN;
-    }
-
-    /**
-     * Get current document version
-     */
-    getDocVersion(): number {
-        return this.docVersion;
-    }
-
-    /**
-     * Set document version (e.g., after receiving fullState from server)
-     */
-    setDocVersion(version: number): void {
-        this.docVersion = version;
-    }
-
-    // Private methods
-
     private handleMessage(data: string): void {
         try {
             const msg = JSON.parse(data);
@@ -175,15 +162,15 @@ export class TinymistFileSyncClient {
             switch (msg.type) {
                 case 'pong':
                     // Heartbeat response
-                    console.log('[File Sync Module] Received pong');
+                    console.log('[File Sync / LSP] Received pong');
                     break;
 
                 case 'ack':
-                    console.log('[File Sync Module] Change acknowledged', { docVersion: msg.docVersion });
+                    console.log('[File Sync / LSP] Change acknowledged', { docVersion: msg.docVersion });
                     break;
 
                 case 'fullState':
-                    console.log('[File Sync Module] Received full state from server', { docVersion: msg.docVersion });
+                    console.log('[File Sync / LSP] Received full state from server', { docVersion: msg.docVersion });
                     this.docVersion = msg.docVersion;
                     this.notifyMessage(msg);
                     break;
@@ -193,23 +180,22 @@ export class TinymistFileSyncClient {
                     break;
 
                 case 'error':
-                    console.error('[File Sync Module] Server error:', msg);
-                    this.notifyError(`[File Sync Module] Server error: ${msg.message}`);
+                    console.error('[File Sync / LSP] Server error:', msg);
+                    window.$events.emit("tinymist-console-log",{ type: "error", message: "[File Sync / LSP] Server error", details: msg });
                     break;
 
                 default:
-                    console.warn('[File Sync Module] Unknown message type:', msg.type);
+                    console.warn('[File Sync / LSP] Unknown message type:', msg.type);
             }
 
         } catch (error) {
-            console.error('[File Sync Module] Failed to parse WebSocket message:', error);
+            console.error('[File Sync / LSP] Failed to parse WebSocket message:', error);
         }
     }
 
     private startHeartbeat(): void {
-
         if (!this.reconnectAllowed) {
-            this.notifyError("[File Sync Module] Reconnection not allowed, heartbeat not started");
+            console.log("[File Sync / LSP] Heartbeat: Reconnection not allowed");
             return;
         }
 
@@ -234,13 +220,14 @@ export class TinymistFileSyncClient {
         }
 
         if (!this.reconnectAllowed) {
+            console.log("[File Sync / LSP] scheduleReconnect: Reconnection not allowed");
             return;
         }
 
         this.reconnectAttempts++;
         const delay = Math.min(5000 * Math.pow(1.5, this.reconnectAttempts - 1), 30000);
 
-        console.log(`[File Sync Module] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
+        console.log(`[File Sync / LSP] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`);
 
         this.reconnectTimeout = setTimeout(() => {
             this.reconnectTimeout = null;
@@ -250,16 +237,11 @@ export class TinymistFileSyncClient {
 
     private scheduleConnectionTimeout(): void {
         this.clearConnectionTimeout();
-
-        if (!this.reconnectAllowed) {
-            return;
-        }
-
         // Timeout after 1 second if connection doesn't succeed
         this.connectionTimeout = setTimeout(() => {
-            if (!this.isConnected) {
-                console.warn('[File Sync Module] WebSocket connection timeout');
-                this.notifyConnectionState(false);
+            if (this.socket === null || this.socket.readyState !== WebSocket.OPEN) {
+                console.warn('[File Sync / LSP] WebSocket connection timeout');
+                window.$events.emit("tinymist-status", { what: "file-lsp-ws", connected: false });
             }
         }, 1000);
     }
@@ -290,7 +272,7 @@ export class TinymistFileSyncClient {
             // JWT format: header.payload.signature
             const parts = token.split('.');
             if (parts.length !== 3) {
-                console.warn('[File Sync Module] Invalid JWT token format');
+                console.warn('[File Sync / LSP] Invalid JWT token format');
                 return;
             }
 
@@ -302,10 +284,10 @@ export class TinymistFileSyncClient {
             if (payloadObj.exp) {
                 this.tokenExpiry = payloadObj.exp;
                 const expiresIn = this.tokenExpiry - Math.floor(Date.now() / 1000);
-                console.log(`[File Sync Module] Token expires in ${expiresIn} seconds (${new Date(this.tokenExpiry * 1000).toLocaleTimeString()})`);
+                console.log(`[File Sync / LSP] Token expires in ${expiresIn} seconds (${new Date(this.tokenExpiry * 1000).toLocaleTimeString()})`);
             }
         } catch (error) {
-            console.error('[File Sync Module] Failed to decode token:', error);
+            console.error('[File Sync / LSP] Failed to decode token:', error);
         }
     }
 
@@ -313,11 +295,12 @@ export class TinymistFileSyncClient {
         this.clearTokenRenewalTimeout();
 
         if (!this.reconnectAllowed) {
+            console.log("[File Sync / LSP] scheduleTokenRenewal: Token renewal not allowed");
             return;
         }
 
         if (!this.tokenExpiry) {
-            console.warn('[File Sync Module] Token expiry not set, skipping renewal schedule');
+            console.warn('[File Sync / LSP] Token expiry not set, skipping renewal schedule');
             return;
         }
 
@@ -329,12 +312,12 @@ export class TinymistFileSyncClient {
         const renewIn = Math.max(0, expiresIn - renewalBuffer);
 
         if (renewIn <= 0) {
-            console.warn('[File Sync Module] Token already expired or about to expire, renewing immediately');
+            console.warn('[File Sync / LSP] Token already expired or about to expire, renewing immediately');
             this.renewToken();
             return;
         }
 
-        console.log(`[File Sync Module] Scheduling token renewal in ${renewIn} seconds`);
+        console.log(`[File Sync / LSP] Scheduling token renewal in ${renewIn} seconds`);
         this.tokenRenewalTimeout = setTimeout(() => {
             this.renewToken();
         }, renewIn * 1000);
@@ -343,11 +326,12 @@ export class TinymistFileSyncClient {
     private async renewToken(): Promise<void> {
 
         if (!this.reconnectAllowed) {
+            console.log("[File Sync / LSP] renewToken: Token renewal not allowed");
             return;
         }
 
         try {
-            console.log('[File Sync Module] Renewing WebSocket token...');
+            console.log('[File Sync / LSP] Renewing WebSocket token...');
             const response = await window.$http.post('/ajax/tinymist/renew-ws-token', {
                 page_id: this.pageId
             }) as any;
@@ -355,7 +339,7 @@ export class TinymistFileSyncClient {
             const data = response.data || response;
 
             if (data.success && data.token) {
-                console.log('[File Sync Module] Token renewed successfully');
+                console.log('[File Sync / LSP] Token renewed successfully');
 
                 // Update token locally
                 this.token = data.token;
@@ -363,7 +347,7 @@ export class TinymistFileSyncClient {
 
                 // Send token update to server if connected (no reconnection needed!)
                 if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-                    console.log('[File Sync Module] Sending token update to server');
+                    console.log('[File Sync / LSP] Sending token update to server');
                     this.socket.send(JSON.stringify({
                         type: 'updateToken',
                         token: data.token
@@ -373,30 +357,18 @@ export class TinymistFileSyncClient {
                 // Schedule next renewal
                 this.scheduleTokenRenewal();
             } else {
-                console.error('[File Sync Module] Token renewal failed:', data.error || 'Unknown error');
-                this.notifyError('[File Sync Module] Failed to renew authentication token');
+                console.error('[File Sync / LSP] Token renewal failed:', data.error || 'Unknown error');
+                window.$events.emit("tinymist-console-log",{ type: "error", message: "[File Sync / LSP] token renewal failed", details: data });
             }
         } catch (error) {
-            console.error('[File Sync Module] Token renewal request failed:', error);
-            this.notifyError('[File Sync Module] Failed to renew authentication token');
-        }
-    }
-
-    private notifyConnectionState(connected: boolean): void {
-        if (this.onConnectionStateChange) {
-            this.onConnectionStateChange(connected);
+            console.error('[File Sync / LSP] Token renewal request failed:', error);
+            window.$events.emit("tinymist-console-log",{ type: "error", message: "[File Sync / LSP] token renewal failed", details: error });
         }
     }
 
     private notifyMessage(message: any): void {
         if (this.onMessage) {
             this.onMessage(message);
-        }
-    }
-
-    private notifyError(message: string): void {
-        if (this.onError) {
-            this.onError(message);
         }
     }
 
@@ -415,10 +387,9 @@ export class TinymistFileSyncClient {
         if (this.socket) {
             this.socket.close(1000, 'Client disconnected');
             this.socket = null;
+            console.log("[File Sync / LSP] Intentionally disconnected");
+            window.$events.emit("tinymist-status", { what: "file-lsp-ws", connected: false });
         }
 
-        this.isConnected = false;
-        this.notifyConnectionState(false);
-        console.log("[File Sync Module] Intentionally disconnected");
     }
 }

@@ -89,22 +89,22 @@ The client needs to know where the Tinymist executable is located:
 
 - Check `%LOCALAPPDATA%\\tinymist\\tinymist.exe`
 - Check `%USERPROFILE%\\.cargo\\bin\\tinymist.exe`
-- Or set `TINYMIST_PATH` environment variable
+- Or set `TINYMIST_CLI_PATH` environment variable
 
 **Linux/Ubuntu:**
 
 - Check `~/.cargo/bin/tinymist`
 - Check `/usr/local/bin/tinymist`
-- Or set `TINYMIST_PATH` environment variable
+- Or set `TINYMIST_CLI_PATH` environment variable
 
 ### Environment Variables
 
 ```bash
 # Set custom Tinymist path
-export TINYMIST_PATH=/path/to/tinymist
+export TINYMIST_CLI_PATH=/path/to/tinymist
 
 # Or on Windows
-set TINYMIST_PATH=C:\\path\\to\\tinymist.exe
+set TINYMIST_CLI_PATH=C:\\path\\to\\tinymist.exe
 ```
 
 ## Auto-Restart Behavior

@@ -547,8 +547,8 @@ function getTinymistCommand(): string {
     const isWindows = platform() === "win32";
 
     // Check environment variable first
-    if (process.env.TINYMIST_PATH) {
-        const envPath = process.env.TINYMIST_PATH;
+    if (process.env.TINYMIST_CLI_PATH) {
+        const envPath = process.env.TINYMIST_CLI_PATH;
 
         // If it's a relative path, resolve it from project root
         const absolutePath = isAbsolute(envPath)
@@ -559,7 +559,7 @@ function getTinymistCommand(): string {
             console.log("[LSP Client] Using Tinymist from:", absolutePath);
             return absolutePath;
         } else {
-            console.warn("[LSP Client] TINYMIST_PATH not found:", absolutePath);
+            console.warn("[LSP Client] TINYMIST_CLI_PATH not found:", absolutePath);
         }
     }
 

@@ -303,14 +303,14 @@ Simple text commands sent from client to server.
 
 #### Cursor and Selection Messages
 
-##### `cursor,<position>`
+##### `cursor,<position>` never received it, don't know how to trigger
 
 - **Purpose**: Show cursor at specific document position
 - **Data**: Position string in format `"page x y"`
 - **Handler**: Displays cursor indicator and triggers viewport change
 - **Example**: `"1 100.5 200.0"`
 
-##### `cursor-paths,<json_paths>`
+##### `cursor-paths,<json_paths>` in reaction to Control Plane request changeCursorPosition
 
 - **Purpose**: Show cursor based on element paths in the document
 - **Data**: JSON array of element point arrays
@@ -336,7 +336,7 @@ Simple text commands sent from client to server.
   - JSON object: `{"rest": "auto", "image": "never"}`
 - **Handler**: Applies CSS classes for color inversion
 
-##### `outline,<outline_data>`
+##### `outline,<outline_data>` never seen in Data Plane
 
 - **Purpose**: Send document outline/table of contents
 - **Data**: Outline structure data
@@ -513,7 +513,7 @@ Partial Rendering:
 // Step 1: Parse binary SVG diff data (reflexo-vec2svg format)
 const svgDiffData: SvgDiff = {
   data: Array.from(payload),
-  encoding: 'reflexo-vec2svg-v1',
+  encoding: 'reflexo-vec2svg-v1', // not realistic, probably 'vector'
 };
 
 // Step 2: Pass diff to WASM module
@@ -569,9 +569,10 @@ for (const operation of diffResult.operations) {
 `data_selection?`: `{ body: boolean; defs: boolean; css: boolean; js: boolean }` – toggle which parts of the SVG payload you want back. All flags default to true:
 `body`: the <svg> body with page content.
 `defs`: gradients, glyph outlines, etc. inside <defs>.
-`css`: the injected <style> block.
+`css`: the injected <style> block, needed to hide debug elements, or include it on your page already
 `js`: the inline helper script (the big Typst selection/highlight script).
-If you pass `renderSvg({})` you get the full document (all flags true, full bounds).
+
+If you pass `renderSvg({})` you get the full document with js, css etc (all flags true, full bounds).
 
 ```js
                 // this is where the document is loaded into session
@@ -761,7 +762,7 @@ import { vec2svg } from 'reflexo-vec2svg';
 
 ## Key Features Demonstrated
 
-### Command Routing
+### Commands from decoded Data Plane reply
 
 ```typescript
 switch (command) {

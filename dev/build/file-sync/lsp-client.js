@@ -448,8 +448,8 @@ exports.LSPClient = LSPClient;
 function getTinymistCommand() {
     const isWindows = (0, os_1.platform)() === "win32";
     // Check environment variable first
-    if (process.env.TINYMIST_PATH) {
-        const envPath = process.env.TINYMIST_PATH;
+    if (process.env.TINYMIST_CLI_PATH) {
+        const envPath = process.env.TINYMIST_CLI_PATH;
         // If it's a relative path, resolve it from project root
         const absolutePath = (0, path_1.isAbsolute)(envPath)
             ? envPath
@@ -459,7 +459,7 @@ function getTinymistCommand() {
             return absolutePath;
         }
         else {
-            console.warn("[LSP Client] TINYMIST_PATH not found:", absolutePath);
+            console.warn("[LSP Client] TINYMIST_CLI_PATH not found:", absolutePath);
         }
     }
     // Try common locations

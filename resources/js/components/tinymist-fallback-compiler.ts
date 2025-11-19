@@ -1,55 +1,50 @@
 import { Diagnostic } from '@codemirror/lint';
-import { EditorView } from '@codemirror/view';
 
 /**
  * Fallback compiler for Typst when WebSocket sync is unavailable
  * Handles compilation via AJAX endpoint and diagnostic processing
  */
 export class TinymistFallbackCompiler {
+    private enabled: boolean = true;
     private compileTimer: ReturnType<typeof setTimeout> | null = null;
     private compileDelay: number;
     private compilationSequence: number = 0;
     private lastProcessedSequence: number = 0;
     private lastCompiledSource: string = '';
-    private lastGoodSvg: string = '';
-    private rawDiagnostics: any[] = [];
     private cachedDiagnostics: Diagnostic[] = [];
 
     // Callbacks
-    private onCompileStart?: () => void;
-    private onCompileSuccess?: (svg: string, diagnostics?: any[]) => void;
-    private onCompileError?: (errors: string[], diagnostics?: any[]) => void;
-    private onMessage?: (message: string, type: 'info' | 'success' | 'error' | 'warning') => void;
+    private getText: () => string;
 
     constructor(
         compileDelay: number = 800,
-        callbacks?: {
-            onCompileStart?: () => void;
-            onCompileSuccess?: (svg: string, diagnostics?: any[]) => void;
-            onCompileError?: (errors: string[], diagnostics?: any[]) => void;
-            onMessage?: (message: string, type: 'info' | 'success' | 'error' | 'warning') => void;
+        callbacks: {
+            getText: () => string;
         }
     ) {
         this.compileDelay = compileDelay;
+        this.getText = callbacks.getText;
 
-        if (callbacks) {
-            this.onCompileStart = callbacks.onCompileStart;
-            this.onCompileSuccess = callbacks.onCompileSuccess;
-            this.onCompileError = callbacks.onCompileError;
-            this.onMessage = callbacks.onMessage;
-        }
+        this.clear = this.clear.bind(this);
+        this.scheduleCompile = this.scheduleCompile.bind(this);
+        window.$events.listen("tinymist-fallback-clear", this.clear);
+        window.$events.listen("tinymist-fallback-enable", (enabled: boolean) => this.enabled = enabled);
+        window.$events.listen("editor-tinymist-change", this.scheduleCompile);
     }
 
     /**
      * Schedule a compilation with debouncing
+     * gets hammered on every input
      */
-    scheduleCompile(source: string): void {
+    scheduleCompile(): void {
+        if (!this.enabled) {
+            return;
+        }
         if (this.compileTimer) {
             clearTimeout(this.compileTimer);
         }
-
         this.compileTimer = setTimeout(() => {
-            this.compile(source);
+            this.compile();
         }, this.compileDelay);
     }
 
@@ -64,21 +59,37 @@ export class TinymistFallbackCompiler {
     }
 
     /**
+     * Clear all cached data
+     */
+    clear(): void {
+        this.enabled = false;
+        if (this.compileTimer) {
+            clearTimeout(this.compileTimer);
+            this.compileTimer = null;
+        }
+        this.lastCompiledSource = '';
+        this.cachedDiagnostics = [];
+        this.compilationSequence = 0;
+        this.lastProcessedSequence = 0;
+    }
+
+    /**
      * Compile Typst source to SVG
      */
-    async compile(source: string): Promise<void> {
+    async compile(): Promise<void> {
+        if (!this.enabled) {
+            return;
+        }
         // Increment compilation sequence to track order
         this.compilationSequence++;
         const thisCompilationSequence = this.compilationSequence;
-        console.log(`[Typst] Starting Typst compilation #${thisCompilationSequence} (fallback mode)`);
+        const source = this.getText();
 
-        this.notifyMessage('[Typst] Compiling...', 'info');
-        this.notifyCompileStart();
+        console.log(`[Typst] Starting Typst compilation #${thisCompilationSequence} (fallback mode)`);
+        window.$events.emit("tinymist-console-log",{ type: "info", message: "[Typst] Compiling..." });
 
         try {
-            const response = await window.$http.post('/ajax/tinymist/compile', {
-                source: source
-            });
+            const response = await window.$http.post('/ajax/tinymist/compile', {source});
 
             // Check if this response is stale (newer compilation already started OR finished)
             if (thisCompilationSequence <= this.lastProcessedSequence) {
@@ -91,10 +102,10 @@ export class TinymistFallbackCompiler {
             // Mark this as the last processed compilation
             this.lastProcessedSequence = thisCompilationSequence;
 
-            const respData = response && response.data;
-
             // Store the source that was compiled (for diagnostic position calculation)
             this.lastCompiledSource = source;
+
+            const respData = response && response.data;
 
             // Guard the shape of respData before accessing properties to avoid errors
             if (respData && typeof respData === 'object' && 'success' in respData) {
@@ -102,9 +113,7 @@ export class TinymistFallbackCompiler {
 
                 if (data.success) {
                     // Store and show SVG
-                    this.lastGoodSvg = data.svg || '';
-                    this.notifyMessage(`[Typst] Compiled successfully (${source.length} chars)`, 'success');
-                    this.notifyCompileSuccess(this.lastGoodSvg, data.diagnostics);
+                    window.$events.emit("tinymist-console-log",{ type: "success", message: `[Typst] Compiled successfully (${source.length} chars)` });
 
                     // Update cached diagnostics
                     if (data.diagnostics && data.diagnostics.length > 0) {
@@ -112,35 +121,29 @@ export class TinymistFallbackCompiler {
                     } else {
                         // Clear diagnostics on successful compilation with no errors
                         console.log('[Typst] Clearing diagnostics (success with no errors)');
-                        this.rawDiagnostics = [];
                         this.cachedDiagnostics = [];
+                        window.$events.emit("tinymist-diagnostics", []);
                     }
                 } else {
-                    // Keep last good SVG visible, update diagnostics
                     if (data.diagnostics && Array.isArray(data.diagnostics) && data.diagnostics.length > 0) {
                         this.updateDiagnostics(data.diagnostics, source);
-                        this.notifyCompileError([], data.diagnostics);
                     } else {
                         // No diagnostics parsed - log raw errors as fallback
-                        this.rawDiagnostics = [];
                         this.cachedDiagnostics = [];
-                        this.notifyCompileError(data.errors || []);
+                        data.errors?.forEach((error) =>  window.$events.emit("tinymist-console-log",{ type: "error", message: "[Typst] Compile Error", details: error }))
                     }
                 }
             } else if (typeof respData === 'string') {
                 // Server returned a plain string error/message
-                this.notifyMessage(respData, 'error');
-                this.notifyCompileError([respData]);
+                window.$events.emit("tinymist-console-log",{ type: "error", message: "[Typst] Server response", details: respData });
             } else {
                 // Unexpected response shape
                 console.error('[Typst] Unexpected compile response:', response);
-                this.notifyMessage('[Typst] Compilation failed: unexpected server response.', 'error');
-                this.notifyCompileError(['Unexpected server response']);
+                window.$events.emit("tinymist-console-log",{ type: "error", message: "[Typst] Unexpected server response.", details: response });
             }
         } catch (error) {
             console.error('[Typst] Compilation failed:', error);
-            this.notifyMessage('[Typst] Compilation failed. Check console for details.', 'error');
-            this.notifyCompileError([error instanceof Error ? error.message : String(error)]);
+            window.$events.emit("tinymist-console-log",{ type: "error", message: "[Typst] Compilation failed. Check console for details.", details: error });
         }
     }
 
@@ -149,15 +152,9 @@ export class TinymistFallbackCompiler {
      */
     updateDiagnostics(diagnostics: any[], sourceText: string): void {
         if (!Array.isArray(diagnostics)) {
-            this.rawDiagnostics = [];
             this.cachedDiagnostics = [];
             return;
         }
-
-        console.log('[Typst] Updating diagnostics:', diagnostics);
-
-        // Store raw diagnostics (line/column) for position recalculation
-        this.rawDiagnostics = diagnostics;
 
         // Calculate positions for CodeMirror
         this.cachedDiagnostics = diagnostics.map((diag: any) => {
@@ -173,42 +170,16 @@ export class TinymistFallbackCompiler {
         });
 
         console.log('[Typst] Cached diagnostics:', this.cachedDiagnostics);
+        window.$events.emit("tinymist-diagnostics", this.cachedDiagnostics);
 
         // Log diagnostics to console
         diagnostics.forEach(diag => {
             if (diag.severity === 'error') {
-                this.notifyMessage(`[Typst]Line ${diag.line}, Col ${diag.column}: ${diag.message}`, 'error');
+                window.$events.emit("tinymist-console-log",{ type: "error", message: `[Typst]Line ${diag.line}, Col ${diag.column}: ${diag.message}` });
             } else if (diag.severity === 'warning') {
-                this.notifyMessage(`[Typst] Line ${diag.line}, Col ${diag.column}: ${diag.message}`, 'warning');
+                window.$events.emit("tinymist-console-log",{ type: "warning", message: `[Typst] Line ${diag.line}, Col ${diag.column}: ${diag.message}` });
             }
         });
-    }
-
-    /**
-     * Get cached diagnostics for CodeMirror
-     */
-    getDiagnostics(): Diagnostic[] {
-        return this.cachedDiagnostics;
-    }
-
-    /**
-     * Get last successfully compiled SVG
-     */
-    getLastGoodSvg(): string {
-        return this.lastGoodSvg;
-    }
-
-    /**
-     * Clear all cached data
-     */
-    clear(): void {
-        this.cancelPending();
-        this.lastCompiledSource = '';
-        this.lastGoodSvg = '';
-        this.rawDiagnostics = [];
-        this.cachedDiagnostics = [];
-        this.compilationSequence = 0;
-        this.lastProcessedSequence = 0;
     }
 
     // Private helper methods
@@ -237,27 +208,4 @@ export class TinymistFallbackCompiler {
         return offset;
     }
 
-    private notifyCompileStart(): void {
-        if (this.onCompileStart) {
-            this.onCompileStart();
-        }
-    }
-
-    private notifyCompileSuccess(svg: string, diagnostics?: any[]): void {
-        if (this.onCompileSuccess) {
-            this.onCompileSuccess(svg, diagnostics);
-        }
-    }
-
-    private notifyCompileError(errors: string[], diagnostics?: any[]): void {
-        if (this.onCompileError) {
-            this.onCompileError(errors, diagnostics);
-        }
-    }
-
-    private notifyMessage(message: string, type: 'info' | 'success' | 'error' | 'warning'): void {
-        if (this.onMessage) {
-            this.onMessage(message, type);
-        }
-    }
 }

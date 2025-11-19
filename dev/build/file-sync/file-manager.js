@@ -16,7 +16,7 @@ class FileManager {
         const filePath = this.getFilePath(pageId);
         try {
             const content = (0, fs_1.existsSync)(filePath) ? (0, fs_1.readFileSync)(filePath, "utf8") : "";
-            return { content, docVersion: 0 };
+            return content;
         }
         catch (err) {
             console.error("Failed to read document", { pageId, err });
@@ -40,7 +40,8 @@ class FileManager {
     /**
      * Apply a changeset to document content
      */
-    applyChanges(pageId, currentContent, changeSetJson) {
+    applyChanges(pageId, changeSetJson) {
+        const currentContent = this.loadDocument(pageId);
         const text = state_1.Text.of(currentContent.split("\n"));
         let changeSet;
         try {

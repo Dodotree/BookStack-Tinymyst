@@ -20,7 +20,10 @@
     "postinstall": "node dev/build/download-typst.js && node dev/build/download-tinymist.js",
     "ws:dev": "ts-node-dev --respawn --transpile-only --project tsconfig.server.json node/file-sync/server.ts",
     "ws:build": "tsc --project tsconfig.server.json",
-    "ws:start": "node dev/build/file-sync/server.js"
+    "ws:start": "node dev/build/file-sync/server.js",
+    "preview:dev": "ts-node-dev --respawn --transpile-only --project tsconfig.server.json node/preview/preview-server.ts",
+    "preview:build": "tsc --project tsconfig.server.json",
+    "preview:start": "node dev/build/preview/preview-server.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.34.0",
