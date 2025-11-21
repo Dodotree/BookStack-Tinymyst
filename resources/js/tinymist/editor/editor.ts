@@ -2,8 +2,6 @@
 // Provides current content, emits change events, cursor position updates,
 // observes semantic highlighting and diagnostics events and renders them.
 
-import { EditorView } from "@codemirror/view";
-
 import {
     EditorView,
     keymap,
@@ -11,36 +9,38 @@ import {
     highlightActiveLineGutter,
     highlightActiveLine,
 } from "@codemirror/view";
+
 import { defaultKeymap } from "@codemirror/commands";
-import { EditorState, StateEffect } from "@codemirror/state";
+import { EditorState, StateEffect, Transaction } from "@codemirror/state";
 import { setDiagnostics } from "@codemirror/lint";
 
-export class TinymistEditor {
-    elem!: HTMLElement;
-    editor!: HTMLTextAreaElement;
-    editorView!: EditorView | null;
+import { SemanticTokenProcessor, highlightField } from "./semantic_tokens";
 
+
+export class TinymistEditorUI {
+    elem: HTMLElement;
+    editor: HTMLTextAreaElement;
+    editorView: EditorView | null = null;
     private semanticTokens = new SemanticTokenProcessor();
 
-    setup() {
-        console.log("[Tinymist Editor] setup() called");
+    constructor(elem: HTMLElement, editor: HTMLTextAreaElement) {
+        this.elem = elem;
+        this.editor = editor;
 
-        this.elem = this.$el;
-        this.editor = this.$refs.editor as HTMLTextAreaElement;
-
-        console.log("[Tinymist Editor] Elements found:", {
-            elem: !!this.elem,
-            editor: !!this.editor,
-        });
-
-        this.editorView = null;
+        this.updateDiagnostics = this.updateDiagnostics.bind(this);
+        this.syncFullStateFromServer = this.syncFullStateFromServer.bind(this);
+        window.$events.listen("tinymist-diagnostics", this.updateDiagnostics);
+        window.$events.listen("tinymist-sync-full-state", this.syncFullStateFromServer);
 
         this.setupCodeMirror();
+
+        // Setup event listeners
         this.setupListeners();
+
+        // Setup form submit handler to sync CodeMirror content to textarea
         this.setupFormSubmitHandler();
 
-        // Initial compilation
-        console.log("[Tinymist Editor] Triggering initial compile...");
+        this.semanticTokens.attachEditorView(this.editorView!);
     }
 
     async setupCodeMirror() {
@@ -55,20 +55,10 @@ export class TinymistEditor {
                     highlightField, // Add custom highlighting support
                     keymap.of(defaultKeymap),
                     EditorView.editable.of(true), // Make editor editable
-
                     EditorView.updateListener.of((update) => {
                         if (update.docChanged) {
-                            this.onInput();
-                            // Send changes to WebSocket server
-                            if (update.transactions.some((tr) => tr.docChanged)) {
-                                update.transactions.forEach((tr) => {
-                                    if (tr.changes && !tr.changes.empty) {
-                                        this.sendChangesToServer(tr.changes);
-                                    }
-                                });
-                            }
+                            this.onDocumentChange(update.transactions);
                         }
-
                         // Track cursor position changes
                         if (update.selectionSet) {
                             this.onCursorPositionChange(update.state);
@@ -86,28 +76,19 @@ export class TinymistEditor {
             // Hide original textarea
             this.editor.style.display = "none";
 
-            this.semanticTokens.attachEditorView(this.editorView!);
-            this.semanticTokens.flushPendingHighlights();
+            window.$events.emit("tinymist-console-log", { type: "info", message: "CodeMirror editor initialized" });
+
         } catch (error) {
             console.error("Failed to initialize CodeMirror:", error);
-            // Fall back to textarea if CodeMirror fails
-            this.editor.style.display = "block";
-            this.editor.addEventListener("input", () => this.onInput());
+            window.$events.emit("tinymist-console-log",
+                { type: "error", message: "Failed to initialize CodeMirror editor", details: error });
         }
-    }
-
-    sendChangesToServer(changes: any) {
-        if (!this.fileSyncClient || !this.fileSyncClient.connected()) {
-            console.warn("[File Sync / LSP] not connected, file changes not synced");
-            return;
-        }
-
-        this.fileSyncClient.sendChanges(changes);
     }
 
     setupListeners() {
-        // Only add textarea listener if CodeMirror failed to initialize
         if (!this.editorView) {
+            // Fall back to textarea if CodeMirror fails, otherwise onInput() called from CodeMirror update listener
+            this.editor.style.display = "block";
             this.editor.addEventListener("input", () => this.onInput());
         }
 
@@ -122,7 +103,7 @@ export class TinymistEditor {
             if (action === "insertItalic") this.insertMarkup("_", "_");
             if (action === "insertMath") this.insertMarkup("$", "$");
             if (action === "insertHeading") this.insertHeading();
-            if (action === "clearConsole") this.clearConsole();
+            if (action === "clearConsole") window.$events.emit("tinymist-console-clear");
         });
 
         // Clean up connections on page navigation
@@ -136,7 +117,6 @@ export class TinymistEditor {
         });
     }
 
-
     setupFormSubmitHandler() {
         // Find the form containing this editor
         const form = this.elem.closest("form");
@@ -148,65 +128,69 @@ export class TinymistEditor {
         });
     }
 
-    syncContentToTextarea() {
+    updateDiagnostics = (diagnostics: any[]) => {
+        if (this.editorView) {
+            this.editorView.dispatch(
+                setDiagnostics(this.editorView.state, diagnostics)
+            );
+        }
+    }
+
+    syncFullStateFromServer(content: string) {
+        if (content !== this.getText()) {
+            this.setText(content);
+            window.$events.emit("tinymist-console-log",
+                { type: "info", message: "[File Sync / LSP] Document synchronized from server" });
+        }
+    }
+
+    public syncContentToTextarea() {
         if (this.editorView) {
             const content = this.editorView.state.doc.toString();
             this.editor.value = content;
         }
+        return this.editor.value;
+    }
+
+    /**
+     * Get current editor content
+     */
+    public getText(): string {
+        if (this.editorView) {
+            return this.editorView.state.doc.toString();
+        }
+        return this.editor.value;
     }
 
     onInput() {
-        // Only compile in fallback mode (WebSocket handles changes otherwise)
-        if (this.fallbackMode && this.fallbackCompiler) {
-            const source = this.editorView?.state.doc.toString() || this.editor.value;
-            this.fallbackCompiler.scheduleCompile(source);
-        }
-
         // Notify page editor of changes
         window.$events.emit("editor-tinymist-change", "");
     }
 
+    onDocumentChange(transactions: readonly Transaction[]) {
+        this.onInput();
+        // Send changes to WebSocket server
+        if (transactions.some((tr) => tr.docChanged)) {
+            transactions.forEach((tr) => {
+                if (tr.changes && !tr.changes.empty) {
+                    window.$events.emit("tinymist-text-diff", tr.changes);
+                }
+            });
+        }
+    }
+
     onCursorPositionChange(state: any) {
-        // Get cursor position
-        const selection = state.selection.main;
-        const pos = selection.head;
-
-        // Convert position to line and character
+        // Get cursor position and line
+        const pos = state.selection.main.head;
         const line = state.doc.lineAt(pos);
-        const lineNumber = line.number - 1; // 0-indexed
-        const character = pos - line.from;
-
-        // Send cursor position to control plane
-        if (this.controlClient) {
-            const pageId = this.$opts.pageId;
-            console.log("[Tinymist] Sending cursor position:", {
-                line: lineNumber,
-                character: character,
-                pos: pos,
-            });
-            this.controlClient.sendControlMessage({
-                event: "changeCursorPosition",
-                filepath: `C:\\Users\\Ooo\\Desktop\\GitWork\\BookStack\\storage\\app\\tinymist\\page_${pageId}.typ`, //`storage/app/tinymist/page_${pageId}.typ`,
-                line: lineNumber,
-                character: character,
-            });
-        }
+        window.$events.emit("tinymist-control", {
+            event: "changeCursorPosition",
+            line: line.number - 1, // 0-indexed
+            character: pos - line.from,
+        });
     }
 
-    /**
-     * Simple string hash function for content comparison
-     */
-    hashString(str: string): string {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            const char = str.charCodeAt(i);
-            hash = (hash << 5) - hash + char;
-            hash = hash & hash; // Convert to 32-bit integer
-        }
-        return hash.toString();
-    }
-
-    /**
+        /**
      * Insert markup around selected text or at cursor position.
      */
     insertMarkup(before: string, after: string) {
@@ -276,30 +260,6 @@ export class TinymistEditor {
     }
 
     /**
-     * Get current editor content
-     */
-    getEditorContent(): string {
-        if (this.editorView) {
-            return this.editorView.state.doc.toString();
-        }
-        return this.editor.value;
-    }
-
-    /**
-     * Get content for saving (called by page-editor).
-     */
-    async getContent() {
-        // Sync CodeMirror content to textarea before returning
-        this.syncContentToTextarea();
-
-        return {
-            tinymist: this.editorView
-                ? this.editorView.state.doc.toString()
-                : this.editor.value,
-        };
-    }
-
-    /**
      * Set editor content.
      */
     setText(content: string) {
@@ -314,16 +274,6 @@ export class TinymistEditor {
         } else {
             this.editor.value = content;
         }
-        this.compile();
-    }
-
-    /**
-     * Get current text.
-     */
-    getText() {
-        return this.editorView
-            ? this.editorView.state.doc.toString()
-            : this.editor.value;
     }
 
     /**
@@ -337,4 +287,21 @@ export class TinymistEditor {
         }
     }
 
+    /**
+     * Simple string hash function for content comparison // unused now
+     */
+    hashString(str: string): string {
+        let hash = 0;
+        for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = (hash << 5) - hash + char;
+            hash = hash & hash; // Convert to 32-bit integer
+        }
+        return hash.toString();
+    }
+
+    destroy() {
+        this.semanticTokens.clearHighlights();
+        this.semanticTokens.detachEditorView();
+    }
 }

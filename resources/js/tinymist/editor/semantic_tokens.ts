@@ -153,6 +153,9 @@ export class SemanticTokenProcessor {
 
     constructor(editorView: EditorView | null = null) {
         this.editorView = editorView;
+
+        this.processSemanticTokens = this.processSemanticTokens.bind(this);
+        window.$events.listen("tinymist-lsp-semantic-tokens", this.processSemanticTokens);
     }
 
     attachEditorView(view: EditorView): void {

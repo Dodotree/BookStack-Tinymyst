@@ -3,6 +3,7 @@
 
 // it inserts red wavy underlines for errors as decorations
 // and reports to console if applicable
+// semantic highlights have to be translucent to not obscure the underlines
 
 import { EditorView, Decoration, DecorationSet } from "@codemirror/view";
 import { Diagnostic, setDiagnostics } from "@codemirror/lint";

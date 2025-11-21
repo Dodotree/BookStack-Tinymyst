@@ -54,7 +54,6 @@ class TinymistPreviewManager
                 'success' => true,
                 'status' => 'already_running',
             ];
-
         }
 
         // Ensure directory exists (file should be created by caller with actual content)
@@ -87,9 +86,12 @@ class TinymistPreviewManager
                     $tinymistPath,
                     'preview',
                     '--no-open',
-                    '--control-plane-host', $controlPlaneHost,
-                    '--data-plane-host', $dataPlaneHost,
-                    '--partial-rendering', 'true',
+                    '--control-plane-host',
+                    $controlPlaneHost,
+                    '--data-plane-host',
+                    $dataPlaneHost,
+                    '--partial-rendering',
+                    'true',
                     $relativePath,
                 ];
 
@@ -163,7 +165,6 @@ class TinymistPreviewManager
                 'status' => 'started',
                 'pid' => $pid,
             ];
-
         } catch (\Exception $e) {
             Log::error("Failed to start preview server for page {$pageId}", [
                 'error' => $e->getMessage(),
@@ -182,7 +183,6 @@ class TinymistPreviewManager
     public function stopPreviewServer(int $pid): bool
     {
         try {
-
             // Kill process by PID
             if (DIRECTORY_SEPARATOR === '\\') {
                 // Windows: use taskkill
@@ -206,7 +206,6 @@ class TinymistPreviewManager
 
             Log::info("Stopped preview server", ['pid' => $pid, 'killed' => $killed]);
             return true;
-
         } catch (\Exception $e) {
             Log::error("Failed to stop preview server", [
                 'error' => $e->getMessage(),
@@ -279,5 +278,4 @@ class TinymistPreviewManager
         }
         return true; // Port is available
     }
-
 }

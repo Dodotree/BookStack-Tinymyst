@@ -26,6 +26,5 @@ class TinymistServiceProvider extends ServiceProvider
         // }
 
         $this->app->make(TinymistPreviewManager::class);
-
     }
 }

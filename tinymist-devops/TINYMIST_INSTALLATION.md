@@ -407,3 +407,23 @@ Tinymist spawns websocket, it needs Winsock and throws The Windows error 10106 (
 
                 $tinymistCommand = implode(' ', $command);
 ```
+
+## Lint and test before push
+
+```bash
+# Run linting
+npm run lint
+
+# Run TypeScript checks
+npm run ts:lint
+
+# Run tests
+npm test
+
+composer lint
+
+# or php -l, all the mess to make it recursive
+find . -name '*.php' -print0 | xargs -0 -n1 php -l
+
+php artisan test
+```

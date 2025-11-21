@@ -1,20 +1,20 @@
 @push('body-end')
-    <script type="module" src="{{ versioned_asset('dist/tinymist.js') }}" nonce="{{ $cspNonce }}"></script>
+<script type="module" src="{{ versioned_asset('dist/tinymist.js') }}" nonce="{{ $cspNonce }}"></script>
 @endpush
 
 <div id="tinymist-editor"
-     component="tinymist-editor"
-     option:tinymist-editor:page-id="{{ $page->id }}"
-     option:tinymist-editor:use-web-socket="true"
-     option:tinymist-editor:host="{{ config('tinymist.preview_host', '127.0.0.1') }}"
-     @if(isset($tinymistPreview) && $tinymistPreview)
-     option:tinymist-editor:ws-token="{{ $tinymistPreview['ws_token'] }}"
-     option:tinymist-editor:control-port="{{ $tinymistPreview['control_port'] }}"
-     option:tinymist-editor:data-port="{{ $tinymistPreview['data_port'] }}"
-     option:tinymist-editor:pid="{{ $tinymistPreview['pid'] ?? 0 }}"
-     option:tinymist-editor:preview-started="true"
-     @endif
-     class="flex-container-row code-fill">
+    component="tinymist-editor"
+    option:tinymist-editor:page-id="{{ $page->id }}"
+    option:tinymist-editor:use-web-socket="true"
+    option:tinymist-editor:host="{{ config('tinymist.preview_host', '127.0.0.1') }}"
+    @if(isset($tinymistPreview) && $tinymistPreview)
+    option:tinymist-editor:ws-token="{{ $tinymistPreview['ws_token'] }}"
+    option:tinymist-editor:control-port="{{ $tinymistPreview['control_port'] }}"
+    option:tinymist-editor:data-port="{{ $tinymistPreview['data_port'] }}"
+    option:tinymist-editor:pid="{{ $tinymistPreview['pid'] ?? 0 }}"
+    option:tinymist-editor:preview-started="true"
+    @endif
+    class="flex-container-row code-fill">
 
     {{-- Left Side: Editor + Console --}}
     <div class="tinymist-left-column flex-container-column">
@@ -42,8 +42,8 @@
 
             <div class="flex flex-fill" dir="ltr">
                 <textarea id="tinymist-editor-input"
-                          refs="tinymist-editor@editor"
-                          @if($errors->has('tinymist')) class="text-neg" @endif
+                    refs="tinymist-editor@editor"
+                    @if($errors->has('tinymist')) class="text-neg" @endif
                           name="tinymist"
                           rows="20"
                           class="tinymist-source-editor"
@@ -68,7 +68,7 @@
             </div>
 
             <div refs="tinymist-editor@console"
-                 class="tinymist-console-content flex flex-fill">
+                class="tinymist-console-content flex flex-fill">
                 <div class="text-muted p-m text-small">Ready. Waiting for compilation...</div>
             </div>
         </div>
@@ -86,11 +86,11 @@
         </div>
 
         <div refs="tinymist-editor@preview"
-             class="tinymist-preview-content flex flex-fill">
+            class="tinymist-preview-content flex flex-fill">
             @if(isset($model) && !empty($model->html))
-                {!! $model->html !!}
+            {!! $model->html !!}
             @else
-                <div class="text-muted p-m">Loading preview...</div>
+            <div class="text-muted p-m">Loading preview...</div>
             @endif
         </div>
     </div>
@@ -196,7 +196,7 @@
     }
 
     /* Fix textarea wrapper to fill height */
-    .tinymist-editor-pane > .flex.flex-fill {
+    .tinymist-editor-pane>.flex.flex-fill {
         display: flex;
         flex-direction: column;
         flex: 1;
@@ -241,7 +241,8 @@
     }
 
     html.dark-mode .tinymist-editor-pane .cm-content {
-        caret-color: #ffffff; /* Bright white cursor */
+        caret-color: #ffffff;
+        /* Bright white cursor */
     }
 
     html.dark-mode .tinymist-editor-pane .cm-gutters {
@@ -295,7 +296,8 @@
 
     /* SVG output - fill panel width, scrollable height */
     .tinymist-preview-content svg {
-        width: 100%;        /* Fill available width */
+        width: 100%;
+        /* Fill available width */
         display: block;
         margin: 0;
     }
@@ -314,7 +316,8 @@
         font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', monospace;
         font-size: 12px;
         line-height: 1.5;
-        display: block; /* Override flex to show messages in rows */
+        display: block;
+        /* Override flex to show messages in rows */
     }
 
     html.dark-mode .tinymist-console-content {
@@ -324,18 +327,21 @@
 
     /* Console message types */
     .console-message {
-        display: block; /* Ensure each message is on its own row */
+        display: block;
+        /* Ensure each message is on its own row */
         padding: 6px 8px;
         margin: 4px 0;
         border-left: 3px solid transparent;
     }
 
     .console-message pre {
-        display: inline; /* Keep pre inline with timestamp */
+        display: inline;
+        /* Keep pre inline with timestamp */
         margin: 0;
         font-family: inherit;
         font-size: inherit;
-        white-space: pre-wrap; /* Preserve line breaks and wrap */
+        white-space: pre-wrap;
+        /* Preserve line breaks and wrap */
         word-wrap: break-word;
     }
 
@@ -430,5 +436,5 @@
 </style>
 
 @if($errors->has('tinymist'))
-    <div class="text-neg text-small">{{ $errors->first('tinymist') }}</div>
+<div class="text-neg text-small">{{ $errors->first('tinymist') }}</div>
 @endif

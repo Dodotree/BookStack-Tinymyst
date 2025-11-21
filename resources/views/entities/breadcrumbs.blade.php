@@ -23,7 +23,7 @@
         <?php $isEntity = ($crumb instanceof \BookStack\Entities\Models\Entity); ?>
 
         @if (is_null($crumb))
-            <?php continue; ?>
+            @continue
         @endif
         @if ($breadcrumbCount !== 0 && !$isEntity)
             <div class="separator">@icon('chevron-right')</div>

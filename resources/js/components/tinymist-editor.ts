@@ -1,24 +1,11 @@
 import { Component } from "./component";
 
-import {
-    EditorView,
-    keymap,
-    lineNumbers,
-    highlightActiveLineGutter,
-    highlightActiveLine,
-} from "@codemirror/view";
-import { defaultKeymap } from "@codemirror/commands";
-import { EditorState, StateEffect, Transaction } from "@codemirror/state";
-import { setDiagnostics } from "@codemirror/lint";
 
 import { PreviewControlPlane } from "./tinymist-preview-control";
 import { PreviewDataPlane } from "./tinymist-preview-renderer";
-import { TinymistFileSyncClient } from "./tinymist-file-sync-client";
-import { TinymistFallbackCompiler } from "./tinymist-fallback-compiler";
-import {
-    SemanticTokenProcessor,
-    highlightField,
-} from "../tinymist/editor/semantic_tokens";
+import { TinymistFileSyncClient } from "../tinymist/connections/sync_and_lsp";
+import { TinymistFallbackCompiler } from "../tinymist/connections/fallback";
+import { TinymistEditorUI } from "../tinymist/editor/editor";
 import { TinymistConsole } from "../tinymist/console";
 import { PreviewRenderer } from "../tinymist/preview/render";
 
@@ -26,20 +13,18 @@ import { PreviewRenderer } from "../tinymist/preview/render";
 export class TinymistEditor extends Component {
     elem!: HTMLElement;
     editor!: HTMLTextAreaElement;
-    editorView!: EditorView | null;
     preview!: HTMLElement;
     console!: HTMLElement;
+    getText!: () => string;
+    syncContentToTextarea!: () => string;
 
-    private controlClient: PreviewControlPlane | null = null;
-    private previewRenderer: PreviewDataPlane | null = null;
+
     private previewServerInfo: {
         controlPort: number;
         dataPort: number;
         host: string;
         pid: number;
     } | null = null;
-
-    private fileSyncClient: TinymistFileSyncClient | null = null;
 
     // Connection health monitoring
     private controlConnected: boolean = false;
@@ -49,8 +34,6 @@ export class TinymistEditor extends Component {
     private previewServerDownTimer: ReturnType<typeof setTimeout> | null = null;
     private restartAllowed: boolean = true;
     private restartingPreviewServer: boolean = false;
-
-    private semanticTokens = new SemanticTokenProcessor();
 
     async setupControl() {
         try {
@@ -81,7 +64,7 @@ export class TinymistEditor extends Component {
         } catch (error) {
             console.error("[Preview Control] setup failed:", error);
             window.$events.emit("tinymist-console-log",
-                { type: "error", message: "⚠ [Preview Control] connection failed: ", details: error } );
+                { type: "error", message: "⚠ [Preview Control] connection failed: ", details: error });
         }
     }
 
@@ -113,7 +96,8 @@ export class TinymistEditor extends Component {
         } catch (error) {
             console.error("[Preview Data] setup failed:", error);
             window.$events.emit("tinymist-console-log", {
-                    type: "error", message: "⚠ [Preview Data] initialization failed: ", details: error });
+                type: "error", message: "⚠ [Preview Data] initialization failed: ", details: error
+            });
         }
     }
 
@@ -137,30 +121,9 @@ export class TinymistEditor extends Component {
         new TinymistFileSyncClient(
             parseInt(pageId, 10),
             wsToken,
-            {
-                onMessage: (msg) => {
-                    switch (msg.type) {
-                        case "fullState":
-                            if (
-                                this.editorView &&
-                                msg.content !== this.getText()
-                            ) {
-                                this.setText(msg.content);
-                                window.$events.emit("tinymist-console-log",
-                                    { type: "info", message: "[File Sync / LSP] Document synchronized from server" });
-                            }
-                            break;
-
-                        case "semanticTokens":
-                            this.semanticTokens.processSemanticTokens(msg.tokens || []);
-                            break;
-                    }
-                }
-            }
         );
 
         window.$events.emit("tinymist-sync-connect", wsToken);
-
     }
 
     setup() {
@@ -168,17 +131,17 @@ export class TinymistEditor extends Component {
 
         this.elem = this.$el;
         this.editor = this.$refs.editor as HTMLTextAreaElement;
-        this.editorView = null; // not initialized yet
-        this.preview = this.$refs.preview;
-        this.getText = this.getText.bind(this);
+
+        const editorUI = new TinymistEditorUI(this.elem, this.editor);
+        this.getText = editorUI.getText.bind(editorUI);
+        this.syncContentToTextarea = editorUI.syncContentToTextarea.bind(editorUI);
 
         new TinymistConsole(this.$refs.console);
-        new TinymistFallbackCompiler(800, {getText: this.getText});
+        new TinymistFallbackCompiler(800, { getText: this.getText });
 
         console.log("[Tinymist Editor] Elements found:", {
             elem: !!this.elem,
             editor: !!this.editor,
-            preview: !!this.preview,
             console: !!this.$refs.console,
         });
         console.log(
@@ -187,19 +150,10 @@ export class TinymistEditor extends Component {
         );
 
         this.updateStatus = this.updateStatus.bind(this);
-        this.updateDiagnostics = this.updateDiagnostics.bind(this);
         window.$events.listen("tinymist-status", this.updateStatus);
-        window.$events.listen("tinymist-diagnostics", this.updateDiagnostics);
 
         this.setupPreviewSockets();
-        this.setupCodeMirror();
         this.setupFileSyncLSP();
-
-        // Setup event listeners
-        this.setupListeners();
-
-        // Setup form submit handler to sync CodeMirror content to textarea
-        this.setupFormSubmitHandler();
     }
 
     async setupPreviewSockets() {
@@ -219,105 +173,10 @@ export class TinymistEditor extends Component {
     async setupFileSyncLSP() {
         try {
             await this.initializeFileSyncClient();
-            this.semanticTokens.attachEditorView(this.editorView!);
-            this.semanticTokens.flushPendingHighlights();
         } catch (error) {
             console.error("Failed to initialize file sync LSP:", error);
             window.$events.emit("tinymist-console-log",
                 { type: "error", message: "Failed to initialize file sync LSP", details: error });
-        }
-    }
-
-    async setupCodeMirror() {
-        try {
-            // Create editor state
-            const startState = EditorState.create({
-                doc: this.editor.value,
-                extensions: [
-                    lineNumbers(), // Enable line numbers
-                    highlightActiveLineGutter(), // Highlight current line number in gutter
-                    highlightActiveLine(), // Highlight current line
-                    highlightField, // Add custom highlighting support
-                    keymap.of(defaultKeymap),
-                    EditorView.editable.of(true), // Make editor editable
-                    EditorView.updateListener.of((update) => {
-                        if (update.docChanged) {
-                            this.onDocumentChange(update.transactions);
-                        }
-                        // Track cursor position changes
-                        if (update.selectionSet) {
-                            this.onCursorPositionChange(update.state);
-                        }
-                    }),
-                ],
-            });
-
-            // Create editor view
-            this.editorView = new EditorView({
-                state: startState,
-                parent: this.editor.parentElement!,
-            });
-
-            // Hide original textarea
-            this.editor.style.display = "none";
-
-            window.$events.emit("tinymist-console-log", { type: "info", message: "CodeMirror editor initialized" });
-
-        } catch (error) {
-            console.error("Failed to initialize CodeMirror:", error);
-            window.$events.emit("tinymist-console-log",
-                { type: "error", message: "Failed to initialize CodeMirror editor", details: error });
-        }
-    }
-
-    setupListeners() {
-        if (!this.editorView) {
-            // Fall back to textarea if CodeMirror fails, otherwise onInput() called from CodeMirror update listener
-            this.editor.style.display = "block";
-            this.editor.addEventListener("input", () => this.onInput());
-        }
-
-        // Button actions
-        this.elem.addEventListener("click", (event) => {
-            if (!event.target) return;
-            const button = (event.target as Element).closest("button[data-action]");
-            if (button === null) return;
-
-            const action = button.getAttribute("data-action");
-            if (action === "insertBold") this.insertMarkup("*", "*");
-            if (action === "insertItalic") this.insertMarkup("_", "_");
-            if (action === "insertMath") this.insertMarkup("$", "$");
-            if (action === "insertHeading") this.insertHeading();
-            if (action === "clearConsole") window.$events.emit("tinymist-console-clear");
-        });
-
-        // Clean up connections on page navigation
-        window.addEventListener("beforeunload", () => {
-            this.destroy();
-        });
-
-        // Also listen to pagehide for better mobile support
-        window.addEventListener("pagehide", () => {
-            this.destroy();
-        });
-    }
-
-    setupFormSubmitHandler() {
-        // Find the form containing this editor
-        const form = this.elem.closest("form");
-        if (!form) return;
-
-        // Before form submit, sync CodeMirror content to textarea
-        form.addEventListener("submit", () => {
-            this.syncContentToTextarea();
-        });
-    }
-
-    updateDiagnostics = (diagnostics: any[]) => {
-        if (this.editorView) {
-            this.editorView.dispatch(
-                setDiagnostics(this.editorView.state, diagnostics)
-            );
         }
     }
 
@@ -583,163 +442,6 @@ export class TinymistEditor extends Component {
         }
     }
 
-    syncContentToTextarea() {
-        let content;
-        if (this.editorView) {
-            content = this.editorView.state.doc.toString();
-            this.editor.value = content;
-        }
-        return content;
-    }
-
-    /**
-     * Get current editor content
-     */
-    getText(): string {
-        if (this.editorView) {
-            return this.editorView.state.doc.toString();
-        }
-        return this.editor.value;
-    }
-
-    onInput() {
-        // Notify page editor of changes
-        window.$events.emit("editor-tinymist-change", "");
-    }
-
-    onDocumentChange(transactions: readonly Transaction[]) {
-        this.onInput();
-        // Send changes to WebSocket server
-        if (transactions.some((tr) => tr.docChanged)) {
-            transactions.forEach((tr) => {
-                if (tr.changes && !tr.changes.empty) {
-                    window.$events.emit("tinymist-text-diff", tr.changes);
-                }
-            });
-        }
-    }
-
-    onCursorPositionChange(state: any) {
-        // Get cursor position and line
-        const pos = state.selection.main.head;
-        const line = state.doc.lineAt(pos);
-        window.$events.emit("tinymist-control", {
-            event: "changeCursorPosition",
-            line: line.number - 1, // 0-indexed
-            character: pos - line.from,
-        });
-    }
-
-    /**
-     * Simple string hash function for content comparison
-     */
-    hashString(str: string): string {
-        let hash = 0;
-        for (let i = 0; i < str.length; i++) {
-            const char = str.charCodeAt(i);
-            hash = (hash << 5) - hash + char;
-            hash = hash & hash; // Convert to 32-bit integer
-        }
-        return hash.toString();
-    }
-
-    /**
-     * Insert markup around selected text or at cursor position.
-     */
-    insertMarkup(before: string, after: string) {
-        if (this.editorView) {
-            const state = this.editorView.state;
-            const selection = state.selection.main;
-            const selectedText = state.doc.sliceString(selection.from, selection.to);
-            const replacement = before + selectedText + after;
-
-            this.editorView.dispatch({
-                changes: {
-                    from: selection.from,
-                    to: selection.to,
-                    insert: replacement,
-                },
-                selection: {
-                    anchor: selection.from + before.length,
-                    head: selection.from + before.length + selectedText.length,
-                },
-            });
-            this.editorView.focus();
-        } else {
-            const start = this.editor.selectionStart;
-            const end = this.editor.selectionEnd;
-            const selectedText = this.editor.value.substring(start, end);
-            const replacement = before + selectedText + after;
-
-            this.editor.setRangeText(replacement, start, end, "select");
-            this.editor.focus();
-            this.onInput();
-        }
-    }
-
-    /**
-     * Insert heading at cursor position.
-     */
-    insertHeading() {
-        if (this.editorView) {
-            const state = this.editorView.state;
-            const selection = state.selection.main;
-            const before = state.doc.sliceString(0, selection.from);
-            const heading =
-                before.endsWith("\n") || before === ""
-                    ? "= Heading\n"
-                    : "\n= Heading\n";
-
-            this.editorView.dispatch({
-                changes: { from: selection.from, insert: heading },
-                selection: { anchor: selection.from + heading.length - 1 },
-            });
-            this.editorView.focus();
-        } else {
-            const start = this.editor.selectionStart;
-            const before = this.editor.value.substring(0, start);
-            const after = this.editor.value.substring(start);
-
-            const heading =
-                before.endsWith("\n") || before === ""
-                    ? "= Heading\n"
-                    : "\n= Heading\n";
-            this.editor.value = before + heading + after;
-            this.editor.selectionStart = this.editor.selectionEnd =
-                start + heading.length - 1;
-            this.editor.focus();
-            this.onInput();
-        }
-    }
-
-    /**
-     * Set editor content.
-     */
-    setText(content: string) {
-        if (this.editorView) {
-            this.editorView.dispatch({
-                changes: {
-                    from: 0,
-                    to: this.editorView.state.doc.length,
-                    insert: content,
-                },
-            });
-        } else {
-            this.editor.value = content;
-        }
-    }
-
-    /**
-     * Focus editor.
-     */
-    focus() {
-        if (this.editorView) {
-            this.editorView.focus();
-        } else {
-            this.editor.focus();
-        }
-    }
-
     /**
      * Get content for saving (called by page-editor).
      */
@@ -769,9 +471,6 @@ export class TinymistEditor extends Component {
         window.$events.emit("tinymist-sync-disconnect");
         window.$events.emit("tinymist-control-disconnect");
         window.$events.emit("tinymist-data-disconnect");
-
-        this.semanticTokens.clearHighlights();
-        this.semanticTokens.detachEditorView();
     }
 
 }

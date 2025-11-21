@@ -101,7 +101,6 @@ class TinymistController extends Controller
             $result = $manager->startPreviewServer($pageId, $restart, $pid);
 
             return response()->json($result);
-
         } catch (\Exception $e) {
             Log::error('Failed to start preview server', [
                 'page_id' => $pageId,
@@ -131,7 +130,6 @@ class TinymistController extends Controller
             $manager->stopPreviewServer($pid);
 
             return response()->json(['success' => true]);
-
         } catch (\Exception $e) {
             Log::error('Failed to stop preview server', [
                 'pid' => $pid,
@@ -194,7 +192,6 @@ class TinymistController extends Controller
                 'token' => $token,
                 'expires_at' => $payload['exp'],
             ]);
-
         } catch (\Exception $e) {
             Log::error('Failed to renew WebSocket token', [
                 'page_id' => $pageId,
