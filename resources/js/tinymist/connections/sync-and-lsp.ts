@@ -36,14 +36,14 @@
 export class TinymistFileSyncClient {
     private socket: WebSocket | null = null;
     private token: string = '';
-    private tokenExpiry: number = 0;
+    private tabToken: string = '';
+    private port: number = 4000;
     private pageId: number;
     private docVersion: number = 0;
 
     // Timers and intervals
     private pingInterval: ReturnType<typeof setInterval> | null = null;
     private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-    private tokenRenewalTimeout: ReturnType<typeof setTimeout> | null = null;
     private connectionTimeout: ReturnType<typeof setTimeout> | null = null;
 
     // State tracking
@@ -53,16 +53,21 @@ export class TinymistFileSyncClient {
     constructor(
         pageId: number,
         token: string,
+        tabToken: string,
     ) {
         this.pageId = pageId;
         this.token = token;
+        this.tabToken = tabToken;
 
         this.handleSyncConnect = this.handleSyncConnect.bind(this);
         this.sendChanges = this.sendChanges.bind(this);
         this.disconnect = this.disconnect.bind(this);
+        this.updateToken = this.updateToken.bind(this);
         window.$events.listen("tinymist-sync-connect", this.handleSyncConnect);
         window.$events.listen("tinymist-text-diff", this.sendChanges);
         window.$events.listen("tinymist-sync-disconnect", this.disconnect);
+        window.$events.listen("tinymist-all-disconnect", this.disconnect);
+        window.$events.listen("tinymist-token-renewed", this.updateToken);
     }
 
     private async handleSyncConnect(token?: string): Promise<void> {
@@ -89,15 +94,12 @@ export class TinymistFileSyncClient {
             if (!this.token) {
                 reject("[File Sync / LSP] No token available");
             }
-            // Decode JWT to get expiration time
-            this.decodeAndStoreTokenExpiry(this.token);
 
             try {
                 // Construct WebSocket URL from current page URL
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
                 const host = window.location.hostname;
-                const port = 4000; // WebSocket server port
-                const wsUrl = `${protocol}//${host}:${port}?token=${encodeURIComponent(this.token)}`;
+                const wsUrl = `${protocol}//${host}:${this.port}?token=${encodeURIComponent(this.token)}&tabToken=${encodeURIComponent(this.tabToken)}`;
 
                 console.log('[File Sync / LSP] Connecting to:', wsUrl.replace(this.token, 'TOKEN_HIDDEN'));
 
@@ -109,7 +111,6 @@ export class TinymistFileSyncClient {
                     this.reconnectAttempts = 0;
                     this.clearConnectionTimeout();
                     this.startHeartbeat();
-                    this.scheduleTokenRenewal();
 
                     console.log('[File Sync / LSP] WebSocket connected');
                     window.$events.emit("tinymist-status", { what: "file-lsp-ws", connected: true });
@@ -265,13 +266,6 @@ export class TinymistFileSyncClient {
         }, 1000);
     }
 
-    private clearTokenRenewalTimeout(): void {
-        if (this.tokenRenewalTimeout) {
-            clearTimeout(this.tokenRenewalTimeout);
-            this.tokenRenewalTimeout = null;
-        }
-    }
-
     private clearReconnectTimeout(): void {
         if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
@@ -286,102 +280,16 @@ export class TinymistFileSyncClient {
         }
     }
 
-    private decodeAndStoreTokenExpiry(token: string): void {
-        try {
-            // JWT format: header.payload.signature
-            const parts = token.split('.');
-            if (parts.length !== 3) {
-                console.warn('[File Sync / LSP] Invalid JWT token format');
-                return;
-            }
-
-            // Decode payload (base64url decode)
-            const payload = parts[1];
-            const decoded = atob(payload.replace(/-/g, '+').replace(/_/g, '/'));
-            const payloadObj = JSON.parse(decoded);
-
-            if (payloadObj.exp) {
-                this.tokenExpiry = payloadObj.exp;
-                const expiresIn = this.tokenExpiry - Math.floor(Date.now() / 1000);
-                console.log(`[File Sync / LSP] Token expires in ${expiresIn} seconds (${new Date(this.tokenExpiry * 1000).toLocaleTimeString()})`);
-            }
-        } catch (error) {
-            console.error('[File Sync / LSP] Failed to decode token:', error);
-        }
-    }
-
-    private scheduleTokenRenewal(): void {
-        this.clearTokenRenewalTimeout();
-
-        if (!this.reconnectAllowed) {
-            console.log("[File Sync / LSP] scheduleTokenRenewal: Token renewal not allowed");
-            return;
-        }
-
-        if (!this.tokenExpiry) {
-            console.warn('[File Sync / LSP] Token expiry not set, skipping renewal schedule');
-            return;
-        }
-
-        const now = Math.floor(Date.now() / 1000);
-        const expiresIn = this.tokenExpiry - now;
-
-        // Renew 60 seconds before expiry (or halfway through if token has less than 120s lifetime)
-        const renewalBuffer = Math.min(60, Math.floor(expiresIn / 2));
-        const renewIn = Math.max(0, expiresIn - renewalBuffer);
-
-        if (renewIn <= 0) {
-            console.warn('[File Sync / LSP] Token already expired or about to expire, renewing immediately');
-            this.renewToken();
-            return;
-        }
-
-        console.log(`[File Sync / LSP] Scheduling token renewal in ${renewIn} seconds`);
-        this.tokenRenewalTimeout = setTimeout(() => {
-            this.renewToken();
-        }, renewIn * 1000);
-    }
-
-    private async renewToken(): Promise<void> {
-
-        if (!this.reconnectAllowed) {
-            console.log("[File Sync / LSP] renewToken: Token renewal not allowed");
-            return;
-        }
-
-        try {
-            console.log('[File Sync / LSP] Renewing WebSocket token...');
-            const response = await window.$http.post('/ajax/tinymist/renew-ws-token', {
-                page_id: this.pageId
-            }) as any;
-
-            const data = response.data || response;
-
-            if (data.success && data.token) {
-                console.log('[File Sync / LSP] Token renewed successfully');
-
-                // Update token locally
-                this.token = data.token;
-                this.tokenExpiry = data.expires_at;
-
-                // Send token update to server if connected (no reconnection needed!)
-                if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-                    console.log('[File Sync / LSP] Sending token update to server');
-                    this.socket.send(JSON.stringify({
-                        type: 'updateToken',
-                        token: data.token
-                    }));
-                }
-
-                // Schedule next renewal
-                this.scheduleTokenRenewal();
-            } else {
-                console.error('[File Sync / LSP] Token renewal failed:', data.error || 'Unknown error');
-                window.$events.emit("tinymist-console-log",{ type: "error", message: "[File Sync / LSP] token renewal failed", details: data });
-            }
-        } catch (error) {
-            console.error('[File Sync / LSP] Token renewal request failed:', error);
-            window.$events.emit("tinymist-console-log",{ type: "error", message: "[File Sync / LSP] token renewal failed", details: error });
+    private updateToken(token: string): void {
+        if (!token) return;
+        this.token = token;
+        // Send token update to server if connected (no reconnection needed!)
+        if (this.socket && this.socket.readyState === WebSocket.OPEN) {
+            console.log('[File Sync / LSP] Sending token update to node server');
+            this.socket.send(JSON.stringify({
+                type: 'updateToken',
+                token: token
+            }));
         }
     }
 
@@ -395,7 +303,6 @@ export class TinymistFileSyncClient {
         this.stopHeartbeat();
         this.clearReconnectTimeout();
         this.clearConnectionTimeout();
-        this.clearTokenRenewalTimeout();
 
         if (this.socket) {
             this.socket.close(1000, 'Client disconnected');

@@ -224,6 +224,57 @@ nginx -t
 systemctl reload nginx
 ```
 
+### Run Node WebSocket services with PM2 (recommended)
+
+Tinymist uses two Node services:
+
+- File sync + LSP: port 4000
+- Preview bridge: port 4020
+
+#### Install PM2
+
+```bash
+sudo npm install -g pm2
+pm2 --version
+```
+
+#### Production mode (recommended)
+
+Build the Node services once, then run the built output:
+
+```bash
+cd /var/www/bookstack
+npm ci
+npm run ws:build
+npm run preview:build
+
+pm2 start npm --name tinymist-ws -- run ws:start
+pm2 start npm --name tinymist-preview -- run preview:start
+pm2 save
+pm2 startup systemd -u www-data --hp /var/www
+```
+
+#### Development mode (hot reload)
+
+```bash
+cd /var/www/bookstack
+pm2 start npm --name tinymist-ws-dev -- run ws:dev
+pm2 start npm --name tinymist-preview-dev -- run preview:dev
+```
+
+#### PM2 tips
+
+```bash
+pm2 list
+pm2 logs tinymist-ws
+pm2 logs tinymist-preview
+pm2 restart tinymist-ws tinymist-preview
+```
+
+#### Recommendation
+
+Keep both WebSocket services bound to localhost (127.0.0.1) and proxy via Nginx.
+
 Check renewal status:
 
 ``` sh

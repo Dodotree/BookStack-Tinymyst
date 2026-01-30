@@ -1,12 +1,33 @@
-import { config as loadEnv } from "dotenv";
+import { config } from "dotenv";
 import { createServer } from "http";
 import { existsSync } from "fs";
 import { join, resolve } from "path";
 import { URL } from "url";
 import { WebSocketServer, WebSocket, RawData } from "ws";
+
+import { verifyRequestToken, verifyNewToken, AuthToken } from "../token-helper";
 import { TinymistPreviewClient, PreviewClientOptions } from "./preview-client";
 
-loadEnv({ path: join(process.cwd(), ".env") });
+config({ path: join(process.cwd(), ".env") });
+
+interface BridgeSocket extends WebSocket {
+    pageId?: number;
+    isAlive: boolean;
+}
+
+// pageId -> PreviewSession
+type SessionMap = Map<number, PreviewSession>;
+
+type IncomingMessagePayload =
+    | { type: "ping" }
+    | {
+        type: "updateToken";
+        token: string;
+    }
+    | {
+        type: "current";
+        pageId: number;
+    };
 
 const BRIDGE_HOST = process.env.TINYMIST_PREVIEW_BRIDGE_HOST ?? "127.0.0.1";
 const BRIDGE_PORT = Number(process.env.TINYMIST_PREVIEW_BRIDGE_PORT ?? 4020);
@@ -28,16 +49,18 @@ const LOG_DIRECTORY = resolve(PROJECT_ROOT, "storage", "logs");
 const CONTROL_TAG = 0x43; // 'C'
 const DATA_TAG = 0x44; // 'D'
 
-interface BridgeSocket extends WebSocket {
-    pageId?: number;
-    isAlive: boolean;
-}
-
-type SessionMap = Map<number, PreviewSession>;
-
-type ManagerOptions = PreviewClientOptions & {
-    storageRoot: string;
-    idleTimeoutMs: number;
+const managerOptions: PreviewClientOptions = {
+    tinymistExecutable: TINYMIST_CLI_PATH,
+    projectRoot: PROJECT_ROOT,
+    storageRoot: STORAGE_ROOT,
+    logDir: LOG_DIRECTORY,
+    host: PREVIEW_HOST,
+    controlBasePort: CONTROL_BASE_PORT,
+    portScanAttempts: 200,
+    partialRendering: PARTIAL_RENDERING,
+    retryAttempts: 40,
+    retryDelayMs: 250,
+    idleTimeoutMs: IDLE_TIMEOUT_MS,
 };
 
 function defaultTinymistPath(): string {
@@ -94,7 +117,7 @@ class PreviewSession {
 
     constructor(
         private readonly pageId: number,
-        private readonly options: ManagerOptions,
+        private readonly options: PreviewClientOptions,
         private readonly remove: (pageId: number) => void
     ) {
         const filePath = join(options.storageRoot, `page_${pageId}.typ`);
@@ -102,23 +125,12 @@ class PreviewSession {
             throw new Error(`Typst document not found for page ${pageId} at ${filePath}`);
         }
 
-        const clientOptions: PreviewClientOptions = {
-            projectRoot: PROJECT_ROOT,
-            storageRoot: options.storageRoot,
-            logDir: LOG_DIRECTORY,
-            host: PREVIEW_HOST,
-            controlBasePort: options.controlBasePort,
-            tinymistExecutable: options.tinymistExecutable,
-            partialRendering: options.partialRendering,
-            portScanAttempts: options.portScanAttempts,
-            retryAttempts: options.retryAttempts,
-            retryDelayMs: options.retryDelayMs,
-        };
-
-        this.client = new TinymistPreviewClient(pageId, filePath, clientOptions);
+        this.client = new TinymistPreviewClient(pageId, filePath, { ...managerOptions });
 
         this.client.on("control-message", (payload) => this.broadcastPreview(payload));
         this.client.on("data-message", (payload) => this.broadcastPreview(payload));
+        this.client.on("control-error", (details) => this.broadcastStatus("control-error", details));
+        this.client.on("data-error", (details) => this.broadcastStatus("data-error", details));
         this.client.on("status", (status, details) => this.broadcastStatus(status, details));
         this.client.on("exit", (code, signal) => this.handleClientExit(code, signal));
 
@@ -214,9 +226,8 @@ class PreviewSession {
         this.remove(this.pageId);
     }
 
-    private broadcastStatus(status: string, details: any): void {
-        console.log(`[Preview Session ${this.pageId}] ${status}`, details ?? "");
-        const payload = JSON.stringify({ type: "bridge:preview-exit", pageId: this.pageId, details });
+
+    private broadcastPreview(payload: RawData | string): void {
         for (const browser of this.browsers) {
             if (browser.readyState === WebSocket.OPEN) {
                 browser.send(payload);
@@ -224,7 +235,9 @@ class PreviewSession {
         }
     }
 
-    private broadcastPreview(payload: RawData | string): void {
+    private broadcastStatus(status: string, details: any): void {
+        console.log(`[Preview Session ${this.pageId}] ${status}`, details ?? "");
+        const payload = JSON.stringify({ type: `bridge:${status}`, pageId: this.pageId, details });
         for (const browser of this.browsers) {
             if (browser.readyState === WebSocket.OPEN) {
                 browser.send(payload);
@@ -261,7 +274,7 @@ class PreviewSessionManager {
     private readonly sessions: SessionMap = new Map();
     private readonly pending: Map<number, Promise<PreviewSession>> = new Map();
 
-    constructor(private readonly options: ManagerOptions) {}
+    constructor(private readonly options: PreviewClientOptions) {}
 
     async getSession(pageId: number): Promise<PreviewSession> {
         const existing = this.sessions.get(pageId);
@@ -296,101 +309,96 @@ class PreviewSessionManager {
     }
 }
 
-const managerOptions: ManagerOptions = {
-    storageRoot: STORAGE_ROOT,
-    idleTimeoutMs: IDLE_TIMEOUT_MS,
-    projectRoot: PROJECT_ROOT,
-    logDir: LOG_DIRECTORY,
-    host: PREVIEW_HOST,
-    controlBasePort: CONTROL_BASE_PORT,
-    tinymistExecutable: TINYMIST_CLI_PATH,
-    partialRendering: PARTIAL_RENDERING,
-    portScanAttempts: 200,
-    retryAttempts: 40,
-    retryDelayMs: 250,
-};
+async function bootstrap() {
 
-const sessionManager = new PreviewSessionManager(managerOptions);
+    const sessionManager = new PreviewSessionManager(managerOptions);
 
-const server = createServer();
-const wss = new WebSocketServer({ server });
+    const server = createServer();
+    const wss = new WebSocketServer({ server });
 
-wss.on("connection", async (socket: WebSocket, request) => {
-    const client = socket as BridgeSocket;
-    client.isAlive = true;
-
-    client.on("pong", () => {
+    wss.on("connection", async (socket: WebSocket, request) => {
+        const client = socket as BridgeSocket;
         client.isAlive = true;
+
+        client.on("pong", () => {
+            client.isAlive = true;
+        });
+
+        try {
+            const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host}`);
+            const pageParam = requestUrl.searchParams.get("pageId");
+            if (!pageParam) {
+                socket.close(1008, "Missing pageId");
+                return;
+            }
+
+            const pageId = Number(pageParam);
+            if (!Number.isFinite(pageId) || pageId <= 0) {
+                socket.close(1008, "Invalid pageId");
+                return;
+            }
+
+            client.pageId = pageId;
+
+            const session = await sessionManager.getSession(pageId);
+            session.addBrowser(client);
+
+            socket.on("message", (data, isBinary) => {
+                try {
+                    session.handleBrowserMessage(client, data, isBinary);
+                } catch (error) {
+                    console.error(`[Preview Bridge] Failed to handle message for page ${pageId}`, error);
+                }
+            });
+
+            socket.on("close", () => {
+                session.removeBrowser(client);
+            });
+
+            socket.on("error", (error) => {
+                console.error(`[Preview Bridge] WebSocket error for page ${pageId}`, error);
+                session.removeBrowser(client);
+            });
+        } catch (error) {
+            console.error("[Preview Bridge] Connection error", error);
+            socket.close(1011, "Bridge error");
+        }
     });
 
-    try {
-        const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host}`);
-        const pageParam = requestUrl.searchParams.get("pageId");
-        if (!pageParam) {
-            socket.close(1008, "Missing pageId");
-            return;
-        }
-
-        const pageId = Number(pageParam);
-        if (!Number.isFinite(pageId) || pageId <= 0) {
-            socket.close(1008, "Invalid pageId");
-            return;
-        }
-
-        client.pageId = pageId;
-
-        const session = await sessionManager.getSession(pageId);
-        session.addBrowser(client);
-
-        socket.on("message", (data, isBinary) => {
-            try {
-                session.handleBrowserMessage(client, data, isBinary);
-            } catch (error) {
-                console.error(`[Preview Bridge] Failed to handle message for page ${pageId}`, error);
+    const heartbeat = setInterval(() => {
+        for (const socket of wss.clients) {
+            const client = socket as BridgeSocket;
+            if (!client.isAlive) {
+                socket.terminate();
+                continue;
             }
-        });
-
-        socket.on("close", () => {
-            session.removeBrowser(client);
-        });
-
-        socket.on("error", (error) => {
-            console.error(`[Preview Bridge] WebSocket error for page ${pageId}`, error);
-            session.removeBrowser(client);
-        });
-    } catch (error) {
-        console.error("[Preview Bridge] Connection error", error);
-        socket.close(1011, "Bridge error");
-    }
-});
-
-const heartbeat = setInterval(() => {
-    for (const socket of wss.clients) {
-        const client = socket as BridgeSocket;
-        if (!client.isAlive) {
-            socket.terminate();
-            continue;
+            client.isAlive = false;
+            try {
+                socket.ping();
+            } catch (error) {
+                console.error("[Preview Bridge] Failed to ping client", error);
+                socket.terminate();
+            }
         }
-        client.isAlive = false;
-        try {
-            socket.ping();
-        } catch (error) {
-            console.error("[Preview Bridge] Failed to ping client", error);
+    }, PING_INTERVAL_MS).unref();
+
+    server.listen(BRIDGE_PORT, BRIDGE_HOST, () => {
+        console.log(`Tinymist preview bridge listening on ${BRIDGE_HOST}:${BRIDGE_PORT}`);
+    });
+
+    process.on("SIGINT", async () => {
+        console.log("\n[Preview Bridge] Caught SIGINT, shutting down...");
+        heartbeat && clearInterval(heartbeat);
+        for (const socket of wss.clients) {
             socket.terminate();
         }
-    }
-}, PING_INTERVAL_MS).unref();
+        server.close();
+        process.exit(0);
+    });
+}
 
-server.listen(BRIDGE_PORT, BRIDGE_HOST, () => {
-    console.log(`Tinymist preview bridge listening on ${BRIDGE_HOST}:${BRIDGE_PORT}`);
+bootstrap().catch((error) => {
+    console.error("Failed to start preview bridge:", error);
+    process.exit(1);
 });
 
-process.on("SIGINT", async () => {
-    console.log("\n[Preview Bridge] Caught SIGINT, shutting down...");
-    heartbeat && clearInterval(heartbeat);
-    for (const socket of wss.clients) {
-        socket.terminate();
-    }
-    server.close();
-    process.exit(0);
-});

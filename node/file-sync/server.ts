@@ -2,10 +2,9 @@ import { config } from "dotenv";
 import { WebSocketServer, WebSocket, RawData } from "ws";
 import { createServer, IncomingMessage } from "http";
 import { join } from "path";
-import { URL } from "url";
-import jwt from "jsonwebtoken";
 import { FileManager } from "./file-manager";
 import { LSPClient } from "./lsp-client";
+import { verifyRequestToken, verifyNewToken, AuthToken } from "../token-helper";
 
 // Load .env file from project root
 config({ path: join(process.cwd(), ".env") });
@@ -18,11 +17,16 @@ type ConnectionContext = {
     lastSeen: number;
 };
 
-type AuthToken = {
-    user_id: number;
-    page_id: number;
-    exp: number;
-};
+// pageId -> TabSession
+type SessionMap = Map<number, TabSession>;
+interface TabSocket extends WebSocket {
+    pageId: number;
+    userId: number;
+    tabToken: string;
+    docVersion: number;
+    lastSeen: number;
+    isAlive: boolean;
+}
 
 type IncomingMessagePayload =
     | { type: "ping" }
@@ -69,14 +73,15 @@ type OutgoingMessagePayload =
         message: string;
     };
 
-const PORT = Number(process.env.FILE_WS_PORT ?? 4000);
+const PORT = Number(process.env.FILE_WS_PORT) ?? 4000;
 const HOST = process.env.FILE_WS_HOST ?? "127.0.0.1";
-const JWT_SECRET = process.env.TINYMIST_WS_SECRET ?? "dev-secret";
 const STORAGE_ROOT =
     process.env.TYPST_STORAGE_ROOT ??
     join(process.cwd(), "storage", "app", "tinymist");
+
 const HEARTBEAT_INTERVAL_MS = 20_000;
 const STALE_TIMEOUT_MS = 45_000;
+const IDLE_TIMEOUT_MS = 5 * 60_000; // 5 minutes
 
 const connections = new Map<WebSocket, ConnectionContext>();
 const fileManager = new FileManager(STORAGE_ROOT);
@@ -271,34 +276,9 @@ function handleTokenUpdate(
     msg: Extract<IncomingMessagePayload, { type: "updateToken" }>
 ) {
     try {
-        console.log("[File Sync] Token update request", {
-            pageId: ctx.pageId,
-            userId: ctx.userId,
-        });
-        const payload = verifyToken(msg.token);
-
-        // Verify it's for the same page
-        if (payload.page_id !== ctx.pageId) {
-            console.error("[File Sync] Token update failed: page mismatch", {
-                contextPageId: ctx.pageId,
-                tokenPageId: payload.page_id,
-            });
-            send(ctx.socket, {
-                type: "error",
-                code: "PAGE_MISMATCH",
-                message: "Token is for different page",
-            });
-            return;
-        }
-
+        const payload = verifyNewToken(msg.token, ctx.pageId);
         // Update context with new user ID (in case user changed)
         ctx.userId = payload.user_id;
-
-        console.log("[File Sync] Token updated successfully", {
-            pageId: ctx.pageId,
-            userId: ctx.userId,
-        });
-
         // Send acknowledgment
         send(ctx.socket, {
             type: "ack",
@@ -312,25 +292,6 @@ function handleTokenUpdate(
             code: "INVALID_TOKEN",
             message: "Token verification failed",
         });
-    }
-}
-
-function verifyToken(token: string): AuthToken {
-    try {
-        console.log("Verifying token:", {
-            token: token.substring(0, 20) + "...",
-            secretLength: JWT_SECRET.length,
-        });
-        const decoded = jwt.verify(token, JWT_SECRET) as AuthToken;
-        console.log("Token verified successfully:", {
-            user_id: decoded.user_id,
-            page_id: decoded.page_id,
-            exp: decoded.exp,
-        });
-        return decoded;
-    } catch (err) {
-        console.error("Token verification failed:", err);
-        throw new Error("INVALID_TOKEN");
     }
 }
 
@@ -352,39 +313,14 @@ function initSocketContext(
     socket: WebSocket,
     request: IncomingMessage
 ): ConnectionContext {
-    // Header remains mydomain.com
-    // as long as nginx block has "proxy_set_header Host $host";
-    // custom headers get stripped by some proxies
-    // unless explicitly preserved
-    // "proxy_set_header Sec-WebSocket-Protocol $http_sec_websocket_protocol;"
-    const protocol = request.headers["x-forwarded-proto"] ?? "http";
-    const url = new URL(
-        request.url ?? "/",
-        `${protocol}://${request.headers.host ?? "localhost"}`
-    );
-    const tokenParam =
-        url.searchParams.get("token") || request.headers["sec-websocket-protocol"];
-    console.log("Connection attempt:", {
-        url: request.url,
-        hasToken: !!tokenParam,
-    });
-
-    if (!tokenParam) {
-        console.error("No token provided");
-        socket.close(4401, "MISSING_TOKEN");
-        throw new Error("MISSING_TOKEN");
-    }
-
-    const token = Array.isArray(tokenParam) ? tokenParam[0] : tokenParam;
-    console.log("Extracted token:", token.substring(0, 30) + "...");
 
     let payload: AuthToken;
     try {
-        payload = verifyToken(token);
+        payload = verifyRequestToken(request);
     } catch (err) {
         console.error("Invalid token during connection", { err });
         socket.close(4401, "INVALID_TOKEN");
-        throw new Error("INVALID_TOKEN");
+        throw new Error("INVALID_TOKEN", {cause: err});
     }
 
     const latestContext = Array.from(connections.values()).reduce(
@@ -431,6 +367,132 @@ function pruneStaleConnections() {
             ws.close(4000, "Idle timeout");
             connections.delete(ws);
         }
+    }
+}
+
+function rawDataToString(data: RawData): string {
+    if (typeof data === "string") {
+        return data;
+    }
+    if (data instanceof Buffer) {
+        return data.toString();
+    }
+    if (data instanceof ArrayBuffer) {
+        return Buffer.from(data).toString();
+    }
+    if (Array.isArray(data)) {
+        return Buffer.concat(data).toString();
+    }
+    if (ArrayBuffer.isView(data)) {
+        const view = data as ArrayBufferView;
+        return Buffer.from(view.buffer, view.byteOffset, view.byteLength).toString();
+    }
+    return String(data);
+}
+
+class TabSession {
+    // private readonly client: TinymistPreviewClient;
+    private readonly browsers: Set<TabSocket> = new Set();
+    private idleTimer: NodeJS.Timeout | null = null;
+    private destroyed = false;
+
+    constructor(
+        private readonly pageId: number,
+        // private readonly options: PreviewClientOptions,
+        private readonly remove: (pageId: number) => void
+    ) {
+        // this.client = new TinymistPreviewClient(pageId, filePath, { ...managerOptions });
+        // this.readyPromise = this.client.start().then(() => undefined);
+    }
+
+    addBrowser(socket: TabSocket): void {
+        if (this.destroyed) {
+            throw new Error("Session has been destroyed");
+        }
+
+        this.browsers.add(socket);
+        this.clearIdleTimer();
+
+        if (socket.readyState === WebSocket.OPEN) {
+            // const payload = JSON.stringify({ type: "bridge:connected", pageId: this.pageId });
+            // socket.send(Buffer.concat([Buffer.from([CONTROL_TAG]), Buffer.from(payload, "utf8")]));
+        }
+    }
+
+    removeBrowser(socket: TabSocket): void {
+        this.browsers.delete(socket);
+        if (!this.destroyed && this.browsers.size === 0) {
+            this.scheduleIdleStop();
+        }
+    }
+
+    handleBrowserMessage(socket: TabSocket, data: RawData, isBinary: boolean): void {
+        try {
+            const json = rawDataToString(data);
+            const msg: IncomingMessagePayload = JSON.parse(json);
+            // Handle message...
+        } catch (err) {
+            send(socket, {
+                type: "error",
+                code: "BAD_JSON",
+                message: "Invalid JSON",
+            });
+        }
+    }
+
+    private broadcastSync(payload: RawData | string): void {
+        for (const browser of this.browsers) {
+            if (browser.readyState === WebSocket.OPEN) {
+                browser.send(payload);
+            }
+        }
+    }
+
+    private broadcastStatus(status: string, details: any): void {
+        console.log(`[Tab Session ${this.pageId}] ${status}`, details ?? "");
+        const payload = JSON.stringify({ type: `bridge:${status}`, pageId: this.pageId, details });
+        for (const browser of this.browsers) {
+            if (browser.readyState === WebSocket.OPEN) {
+                browser.send(payload);
+            }
+        }
+    }
+
+    private handleClientExit(code: number | null, signal: NodeJS.Signals | null): void {
+        const details = { code, signal };
+        console.warn(`[Tab Session ${this.pageId}] Tinymist exited ${details}`);
+        this.broadcastStatus('exit', details);
+        this.stop().catch((error) => console.error("Failed to stop after exit", error));
+    }
+
+    private scheduleIdleStop(): void {
+        if (IDLE_TIMEOUT_MS <= 0) {
+            return;
+        }
+        this.clearIdleTimer();
+        this.idleTimer = setTimeout(() => {
+            this.stop().catch((error) => console.error("Idle stop failed", error));
+        }, IDLE_TIMEOUT_MS).unref();
+    }
+
+    private clearIdleTimer(): void {
+        if (this.idleTimer) {
+            clearTimeout(this.idleTimer);
+            this.idleTimer = null;
+        }
+    }
+
+    async stop(): Promise<void> {
+        if (this.destroyed) {
+            return;
+        }
+        this.destroyed = true;
+        this.clearIdleTimer();
+        this.browsers.clear();
+
+        // remove file?
+
+        this.remove(this.pageId);
     }
 }
 
@@ -487,7 +549,17 @@ async function bootstrap() {
         console.log(`Typst file-sync WebSocket listening on ${HOST}:${PORT}`);
     });
 
-    setInterval(pruneStaleConnections, HEARTBEAT_INTERVAL_MS);
+    const heartbeat = setInterval(pruneStaleConnections, HEARTBEAT_INTERVAL_MS).unref();
+
+    process.on("SIGINT", async () => {
+        console.log("\n[File sync LSP] Caught SIGINT, shutting down...");
+        heartbeat && clearInterval(heartbeat);
+        for (const socket of wss.clients) {
+            socket.terminate();
+        }
+        server.close();
+        process.exit(0);
+    });
 }
 
 /**

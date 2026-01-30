@@ -7,16 +7,17 @@ import { setTimeout as delay } from "timers/promises";
 import WebSocket, { RawData } from "ws";
 
 export type PreviewClientOptions = {
-    projectRoot?: string;
-    storageRoot?: string;
+    tinymistExecutable: string;
+    projectRoot: string;
+    storageRoot: string;
     logDir?: string;
     host?: string;
     controlBasePort: number;
     portScanAttempts?: number;
-    tinymistExecutable: string;
     partialRendering?: boolean;
     retryAttempts?: number;
     retryDelayMs?: number;
+    idleTimeoutMs?: number;
     autoCurrentRequest?: boolean;
     autoCursorUpdates?: boolean;
 };
@@ -143,6 +144,7 @@ export class TinymistPreviewClient extends EventEmitter {
             retryDelayMs: options.retryDelayMs ?? 250,
             autoCurrentRequest: options.autoCurrentRequest ?? true,
             autoCursorUpdates: options.autoCursorUpdates ?? true,
+            idleTimeoutMs: options.idleTimeoutMs ?? 300000,
         };
     }
 
@@ -265,7 +267,7 @@ export class TinymistPreviewClient extends EventEmitter {
                 });
 
                 socket.on("close", (code, reason) => {
-                    this.emit("status", `${kind}-socket-closed`, {
+                    this.emit("status", `${kind}-closed`, {
                         code,
                         reason: reason.toString(),
                     });
@@ -277,10 +279,10 @@ export class TinymistPreviewClient extends EventEmitter {
                     this.dataSocket = socket;
                 }
 
-                this.emit("status", `${kind}-socket-open`, { attempt });
+                this.emit("status", `${kind}-open`, { attempt });
                 return;
             } catch (error) {
-                this.emit("status", `${kind}-socket-retry`, {
+                this.emit("status", `${kind}-retry`, {
                     attempt,
                     maxAttempts,
                     error: error instanceof Error ? error.message : String(error),

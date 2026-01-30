@@ -3,7 +3,8 @@ import { Component } from "./component";
 
 import { PreviewControlPlane } from "./tinymist-preview-control";
 import { PreviewDataPlane } from "./tinymist-preview-renderer";
-import { TinymistFileSyncClient } from "../tinymist/connections/sync_and_lsp";
+import { TinymistTokenManager } from "../tinymist/connections/token-manager";
+import { TinymistFileSyncClient } from "../tinymist/connections/sync-and-lsp";
 import { TinymistFallbackCompiler } from "../tinymist/connections/fallback";
 import { TinymistEditorUI } from "../tinymist/editor/editor";
 import { TinymistConsole } from "../tinymist/console";
@@ -18,6 +19,7 @@ export class TinymistEditor extends Component {
     getText!: () => string;
     syncContentToTextarea!: () => string;
 
+    private tabToken: string = this.createTabToken();
 
     private previewServerInfo: {
         controlPort: number;
@@ -121,9 +123,20 @@ export class TinymistEditor extends Component {
         new TinymistFileSyncClient(
             parseInt(pageId, 10),
             wsToken,
+            this.tabToken
         );
 
         window.$events.emit("tinymist-sync-connect", wsToken);
+    }
+
+    private createTabToken(): string {
+        const rand = crypto.getRandomValues(new Uint32Array(2));
+        return [
+            this.$opts.pageId,
+            Date.now().toString(36),
+            rand[0].toString(36),
+            rand[1].toString(36).slice(0, 4),
+        ].join("-");
     }
 
     setup() {
@@ -131,13 +144,6 @@ export class TinymistEditor extends Component {
 
         this.elem = this.$el;
         this.editor = this.$refs.editor as HTMLTextAreaElement;
-
-        const editorUI = new TinymistEditorUI(this.elem, this.editor);
-        this.getText = editorUI.getText.bind(editorUI);
-        this.syncContentToTextarea = editorUI.syncContentToTextarea.bind(editorUI);
-
-        new TinymistConsole(this.$refs.console);
-        new TinymistFallbackCompiler(800, { getText: this.getText });
 
         console.log("[Tinymist Editor] Elements found:", {
             elem: !!this.elem,
@@ -148,6 +154,14 @@ export class TinymistEditor extends Component {
             "[Tinymist Editor] Initial content length:",
             this.editor.value.length
         );
+
+        const editorUI = new TinymistEditorUI(this.elem, this.editor);
+        this.getText = editorUI.getText.bind(editorUI);
+        this.syncContentToTextarea = editorUI.syncContentToTextarea.bind(editorUI);
+
+        new TinymistConsole(this.$refs.console);
+        new TinymistFallbackCompiler(800, { getText: this.getText });
+        new TinymistTokenManager(this.$opts.pageId, this.$opts.wsToken);
 
         this.updateStatus = this.updateStatus.bind(this);
         window.$events.listen("tinymist-status", this.updateStatus);
@@ -189,6 +203,9 @@ export class TinymistEditor extends Component {
                 this.dataConnected = status.connected;
                 break;
             case "file-lsp-ws":
+                this.fileSyncConnected = status.connected;
+                break;
+            case "preview-ws":
                 this.fileSyncConnected = status.connected;
                 break;
         }

@@ -28,6 +28,9 @@ export class PreviewRenderer {
     private previewElement: HTMLElement;
     private hasInitialDocument: boolean = false; // Track if we've received initial document
     private processingQueue: Promise<void> = Promise.resolve();
+    private cursorInitialized: boolean = false;
+    private recovering: boolean = false;
+    private recoveryAttempts: number = 0;
 
 
     constructor(
@@ -72,7 +75,10 @@ export class PreviewRenderer {
                 getModule: () => renderModule, // Returns Uint8Array from esbuild WASM plugin
             });
 
-            new PreviewCursor(this.previewElement);
+            if (!this.cursorInitialized) {
+                new PreviewCursor(this.previewElement);
+                this.cursorInitialized = true;
+            }
 
             console.log("[Preview WASM] typst-ts-renderer initialized");
 
@@ -162,9 +168,10 @@ export class PreviewRenderer {
 
                 console.log('[Preview WASM] Rendering to SVG...');
                 // defaults are all true, right now have no use for inline helper script
-                // css needed to hide text overlays for copy/paste, could be simple session.renderSvg({});
+                // css needed to hide text overlays for copy/paste, now css included in page editor blade
+                // could be simple session.renderSvg({});
                 const svg = await session.renderSvg({
-                    data_selection: { body: true, defs: true, css: true, js: false },
+                    data_selection: { body: true, defs: true, css: false, js: false },
                 });
 
                 this.previewElement.innerHTML = svg;
@@ -196,11 +203,14 @@ export class PreviewRenderer {
                         </p>
                     </div>
                 `;
+                await this.recoverRenderer(e);
             }
 
     }
 
     dispose() {
+        this.hasInitialDocument = false;
+        this.processingQueue = Promise.resolve();
         if (this.sessionResolve) {
             this.sessionResolve();
             this.sessionResolve = null;
@@ -211,6 +221,39 @@ export class PreviewRenderer {
         this.renderer = null;
 
         console.log("[Preview WASM] Renderer disposed");
+    }
+
+    private async recoverRenderer(error: Error): Promise<void> {
+        if (this.recovering) {
+            console.warn("[Preview WASM] Recovery already in progress, skipping additional request");
+            return;
+        }
+
+        this.recovering = true;
+        this.recoveryAttempts += 1;
+
+        window.$events.emit("tinymist-console-log", {
+            type: "warning",
+            message: `[Preview WASM] Renderer failed (${error.message ?? error}). Restarting session...`,
+        });
+
+        try {
+            this.dispose();
+            await this.initialize();
+            window.$events.emit("tinymist-console-log", {
+                type: "success",
+                message: "[Preview WASM] Renderer session restarted",
+            });
+        } catch (restartError) {
+            console.error("[Preview WASM] Recovery failed:", restartError);
+            window.$events.emit("tinymist-console-log", {
+                type: "error",
+                message: "[Preview WASM] Renderer recovery failed",
+                details: restartError,
+            });
+        } finally {
+            this.recovering = false;
+        }
     }
 
 }

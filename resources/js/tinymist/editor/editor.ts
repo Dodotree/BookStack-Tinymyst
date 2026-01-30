@@ -14,7 +14,7 @@ import { defaultKeymap } from "@codemirror/commands";
 import { EditorState, StateEffect, Transaction } from "@codemirror/state";
 import { setDiagnostics } from "@codemirror/lint";
 
-import { SemanticTokenProcessor, highlightField } from "./semantic_tokens";
+import { SemanticTokenProcessor, highlightField } from "./semantic-tokens";
 
 
 export class TinymistEditorUI {

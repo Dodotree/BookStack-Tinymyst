@@ -34,3 +34,4 @@ phpstan.neon
 esbuild-meta.json
 .phpactor.json
 /*.zip
+dev/build/*

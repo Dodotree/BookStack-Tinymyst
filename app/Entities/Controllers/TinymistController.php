@@ -8,7 +8,6 @@ use BookStack\Entities\Tools\Tinymist\TinymistService;
 use BookStack\Http\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 
 class TinymistController extends Controller
 {
@@ -93,9 +92,6 @@ class TinymistController extends Controller
         $pid = $request->input('pid', 0);
 
         try {
-            // Get the page
-            $page = Page::findOrFail($pageId);
-
             $manager = app(TinymistPreviewManager::class);
             $manager->updateTinymistPreviewFile($pageId, $content);
             $result = $manager->startPreviewServer($pageId, $restart, $pid);
@@ -162,35 +158,13 @@ class TinymistController extends Controller
             // Check if user has edit permission
             $this->checkOwnablePermission('page-update', $page);
 
-            // Generate new token
-            $userId = user()->id;
-            $secret = config('tinymist.ws_token_secret');
-            $ttl = config('tinymist.ws_token_ttl', 900);
-
-            if (!$secret) {
-                throw new \Exception('WebSocket token secret not configured');
-            }
-
-            $issuedAt = time();
-            $payload = [
-                'user_id' => $userId,
-                'page_id' => $pageId,
-                'iat' => $issuedAt,
-                'exp' => $issuedAt + max($ttl, 60),
-            ];
-
-            // Encode JWT token (HS256)
-            $header = ['alg' => 'HS256', 'typ' => 'JWT'];
-            $headerEncoded = $this->base64UrlEncode(json_encode($header));
-            $payloadEncoded = $this->base64UrlEncode(json_encode($payload));
-            $signature = hash_hmac('sha256', "$headerEncoded.$payloadEncoded", $secret, true);
-            $signatureEncoded = $this->base64UrlEncode($signature);
-            $token = "$headerEncoded.$payloadEncoded.$signatureEncoded";
+            $manager = app(TinymistPreviewManager::class);
+            $token = $manager->generateTinymistWsToken($page);
 
             return response()->json([
                 'success' => true,
-                'token' => $token,
-                'expires_at' => $payload['exp'],
+                'token' => $token['ws_token'],
+                'expires_at' => $token['expires_at'],
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to renew WebSocket token', [
@@ -204,13 +178,5 @@ class TinymistController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
-    }
-
-    /**
-     * Base64 URL-safe encode
-     */
-    protected function base64UrlEncode(string $data): string
-    {
-        return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
     }
 }

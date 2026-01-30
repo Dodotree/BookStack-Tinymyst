@@ -34,6 +34,7 @@ export class TinymistFallbackCompiler {
         this.clear = this.clear.bind(this);
         this.scheduleCompile = this.scheduleCompile.bind(this);
         window.$events.listen("tinymist-fallback-clear", this.clear);
+        window.$events.listen("tinymist-all-disconnect", this.clear);
         window.$events.listen("tinymist-fallback-enable", (enabled: boolean) => this.enabled = enabled);
         window.$events.listen("editor-tinymist-change", this.scheduleCompile);
     }
