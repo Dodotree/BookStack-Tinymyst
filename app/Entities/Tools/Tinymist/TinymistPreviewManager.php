@@ -180,6 +180,7 @@ class TinymistPreviewManager
                     escapeshellarg($logFile)
                 );
 
+                /** @var \Illuminate\Process\InvokedProcess $process */
                 $process = Process::path(base_path())->start($tinymistCommand);
             }
 
@@ -198,8 +199,8 @@ class TinymistPreviewManager
                 $processInfo['pid'] = $status['pid'];
                 $pid = $status['pid'];
             } elseif ($process) {
-                // Unix Symfony Process
-                $processInfo['process_running'] = $process->isRunning();
+                // Unix Laravel InvokedProcess
+                $processInfo['process_running'] = $process->running();
                 $processInfo['pid'] = $process->getPid();
                 $pid = $process->getPid();
             }
