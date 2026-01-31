@@ -172,7 +172,7 @@ class TinymistPreviewManager
             } else {
                 // Unix: use nohup with log file
                 $tinymistCommand = sprintf(
-                    'nohup %s preview --no-open --control-plane-host "%s" --data-plane-host "%s" --partial-rendering true "%s" > %s 2>&1 &',
+                    'nohup %s preview --no-open --control-plane-host "%s" --data-plane-host "%s" --partial-rendering true %s > %s 2>&1 &',
                     escapeshellarg($tinymistPath),
                     $controlPlaneHost,
                     $dataPlaneHost,
