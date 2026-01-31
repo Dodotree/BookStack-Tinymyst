@@ -201,8 +201,8 @@ class TinymistPreviewManager
             } elseif ($process) {
                 // Unix Laravel InvokedProcess
                 $processInfo['process_running'] = $process->running();
-                $processInfo['pid'] = $process->getPid();
-                $pid = $process->getPid();
+                $pid = $process->id();
+                $processInfo['pid'] = $pid;
             }
 
             Log::info("Starting tinymist preview", [
