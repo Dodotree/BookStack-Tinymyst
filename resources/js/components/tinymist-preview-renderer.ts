@@ -1,114 +1,37 @@
 export class PreviewDataPlane {
-    private dataWs: WebSocket | null = null;
-    private dataPort: number;
-    private host: string;
-    private maxReconnectAttempts: number = 5;
-    private reconnectAttempts: number = 0;
-    private reconnectAllowed: boolean = true;
-    private connectionTimeout: ReturnType<typeof setTimeout> | null = null;
     private processingQueue: Promise<void> = Promise.resolve();
 
-    constructor(
-        // previewElement: HTMLElement,
-        host: string = "127.0.0.1", // provided directly from php template
-        dataPort: number = 23625,    // provided directly from php template
-    ) {
-        this.host = host;
-        this.dataPort = dataPort;
-
-        this.handleSyncConnect = this.handleSyncConnect.bind(this);
-        this.dispose = this.dispose.bind(this);
-        window.$events.listen("tinymist-data-connect", this.handleSyncConnect)
-        window.$events.listen("tinymist-data-disconnect", this.dispose);
+    constructor() {
+        this.handleBridgeDataMessage = this.handleBridgeDataMessage.bind(this);
+        this.handleConnected = this.handleConnected.bind(this);
+        this.handleDisconnected = this.handleDisconnected.bind(this);
+        window.$events.listen("tinymist-preview-data-message", this.handleBridgeDataMessage);
+        window.$events.listen("tinymist-preview-data-connected", this.handleConnected);
+        window.$events.listen("tinymist-preview-data-disconnected", this.handleDisconnected);
     }
 
-    private async handleSyncConnect(): Promise<void> {
-        try {
-            await this.connectDataPlane();
-        } catch (err) {
-            console.error("[Preview Data] Failed to connect:", err);
-            window.$events.emit("tinymist-console-log", { type: "error", message: "[Preview Data] connection failed", details: err });
+    private handleBridgeDataMessage(msg: Uint8Array): void {
+        if (Boolean((window as any)?.tinymistPreviewDebug)) {
+            console.log("[Preview Data] Data message", { bytes: msg.byteLength });
         }
+        this.processingQueue = this.processingQueue
+            .then(async () => {
+                await this.handleBinaryMessage(msg);
+            })
+            .catch((err) => {
+                console.error("[Preview Data] Failed to process message:", err);
+            });
     }
 
-    connectDataPlane(): Promise<void> {
-        return new Promise((resolve, reject) => {
-            if (!this.reconnectAllowed) {
-                reject("[Preview Data] Reconnection not allowed");
-            }
-            try {
-                const wsUrl = `ws://${this.host}:${this.dataPort}`;
-                this.dataWs = new WebSocket(wsUrl);
-                this.dataWs.binaryType = "arraybuffer";
+    private handleConnected(): void {
+        window.$events.emit("tinymist-status", { what: "data-plane-ws", connected: true });
+        window.$events.emit("tinymist-console-log", { type: "success", message: "[Preview Data] connected" });
+        window.$events.emit("tinymist-preview-send-data", "current");
+    }
 
-                this.dataWs.onopen = () => {
-                    this.reconnectAttempts = 0;
-                    if (this.connectionTimeout) {
-                        clearTimeout(this.connectionTimeout);
-                        this.connectionTimeout = null;
-                    }
-                    console.log(`[Preview Data] Connected to Tinymist data plane at ${wsUrl}`);
-                    window.$events.emit("tinymist-status", { what: "data-plane-ws", connected: true });
-                    window.$events.emit("tinymist-console-log", { type: "success", message: "[Preview Data] connected" });
-                    // Request current document
-                    this.dataWs?.send("current");
-                    resolve();
-                };
-
-                this.dataWs.onmessage = (event) => {
-                    const data = event.data;
-                    this.processingQueue = this.processingQueue
-                        .then(async () => {
-                            console.log("[Preview Data] Data plane message received", event);
-
-                            if (data instanceof ArrayBuffer) {
-                                await this.handleBinaryMessage(new Uint8Array(data));
-                            } else if (data instanceof Blob) {
-                                // should not happen if binaryType is specified as arraybuffer
-                                console.log("[Preview Data] Data plane message blob data:", data);
-                                const buffer = await data.arrayBuffer();
-                                await this.handleBinaryMessage(new Uint8Array(buffer));
-                            } else if (typeof data === "string") {
-                                // should not happen if binaryType is specified as arraybuffer
-                                console.log("[Preview Data] Data plane message string data:", data);
-                            } else {
-                                console.warn("[Preview Data] Data plane message unknown type:", data);
-                            }
-                        })
-                        .catch((err) => {
-                            console.error("[Preview Data] Failed to process message:", err);
-                        });
-                };
-
-                this.dataWs.onerror = (error) => {
-                    console.error("[Preview Data] Data plane error:", error);
-                    window.$events.emit("tinymist-status", { what: "data-plane-ws", connected: false });
-                    window.$events.emit("tinymist-console-log", { type: "error", message: "[Preview Data] Socket error", details: error });
-                    reject(error);
-                };
-
-                this.dataWs.onclose = (event) => {
-                    const errCodes: Record<number, string> = {
-                        1000: "Normal closure",
-                        1001: "Going away",
-                        1006: "Abnormal closure (no close frame)",
-                        1011: "Internal server error",
-                    };
-                    console.warn(
-                        `[Preview Data] Data plane closed: code=${event.code}(${errCodes[event.code] || "Unknown"}), reason=${event.reason}`
-                    );
-                    window.$events.emit("tinymist-status", { what: "data-plane-ws", connected: false });
-                    window.$events.emit("tinymist-console-log", { type: "error", message: "[Preview Data] disconnected" });
-                    if (event.code !== 1000) {
-                        this.handleReconnect();
-                    }
-                    reject(new Error(`Connection closed: ${event.code} - ${event.reason || errCodes[event.code] || 'Unknown reason'}`));
-                };
-
-            } catch (error) {
-                reject(error);
-            }
-        });
+    private handleDisconnected(): void {
+        window.$events.emit("tinymist-status", { what: "data-plane-ws", connected: false });
+        window.$events.emit("tinymist-console-log", { type: "error", message: "[Preview Data] disconnected" });
     }
 
     private async handleBinaryMessage(msg: Uint8Array) {
@@ -199,46 +122,8 @@ export class PreviewDataPlane {
         }
     }
 
-    private handleReconnect() {
-        if (!this.reconnectAllowed) {
-            return;
-        }
-        if (this.connectionTimeout) {
-            return; // Already scheduled
-        }
-        if (this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.reconnectAttempts++;
-            console.log(
-                `[Preview Data] Reconnecting... Attempt ${this.reconnectAttempts}`
-            );
-
-            this.connectionTimeout = setTimeout(() => {
-                this.connectDataPlane().catch((err) => {
-                    console.error("[Preview Data] Reconnection failed:", err);
-                });
-            }, 1000 * this.reconnectAttempts);
-        } else {
-            console.error(
-                "[Preview Data] Max reconnection attempts reached"
-            );
-        }
-    }
-
     dispose() {
-        // Prevent reconnect attempts
-        this.reconnectAllowed = false;
-
-        if (this.connectionTimeout) {
-            clearTimeout(this.connectionTimeout);
-            this.connectionTimeout = null;
-        }
-
-        if (this.dataWs) {
-            this.dataWs.close();
-            this.dataWs = null;
-            window.$events.emit("tinymist-status", { what: "data-plane-ws", connected: false });
-        }
-
+        window.$events.emit("tinymist-preview-send-data", JSON.stringify({ type: "disconnect" }));
         console.log("[Preview Data] disposed");
     }
 

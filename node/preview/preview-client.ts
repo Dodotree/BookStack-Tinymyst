@@ -392,11 +392,19 @@ export class TinymistPreviewClient extends EventEmitter {
         this.controlSocket.send(message);
     }
 
+    isControlReady(): boolean {
+        return !!this.controlSocket && this.controlSocket.readyState === WebSocket.OPEN;
+    }
+
     sendData(message: string | Buffer): void {
         if (!this.dataSocket || this.dataSocket.readyState !== WebSocket.OPEN) {
             throw new Error("Data socket is not ready");
         }
         this.dataSocket.send(message);
+    }
+
+    isDataReady(): boolean {
+        return !!this.dataSocket && this.dataSocket.readyState === WebSocket.OPEN;
     }
 
     // Automating cursor requests on successful data messages

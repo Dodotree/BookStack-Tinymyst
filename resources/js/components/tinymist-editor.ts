@@ -1,10 +1,11 @@
 import { Component } from "./component";
 
 
-import { PreviewControlPlane } from "./tinymist-preview-control";
-import { PreviewDataPlane } from "./tinymist-preview-renderer";
 import { TinymistTokenManager } from "../tinymist/connections/token-manager";
 import { TinymistFileSyncClient } from "../tinymist/connections/sync-and-lsp";
+import { PreviewBridgeClient } from "../tinymist/connections/preview-ws";
+import { PreviewControlPlane } from "./tinymist-preview-control";
+import { PreviewDataPlane } from "./tinymist-preview-renderer";
 import { TinymistFallbackCompiler } from "../tinymist/connections/fallback";
 import { TinymistEditorUI } from "../tinymist/editor/editor";
 import { TinymistConsole } from "../tinymist/console";
@@ -28,6 +29,9 @@ export class TinymistEditor extends Component {
         pid: number;
     } | null = null;
 
+    private previewBridgeClient: PreviewBridgeClient | null = null;
+    private previewControlPlane: PreviewControlPlane | null = null;
+
     // Connection health monitoring
     private controlConnected: boolean = false;
     private dataConnected: boolean = false;
@@ -50,18 +54,28 @@ export class TinymistEditor extends Component {
                 throw new Error("[Preview Control] not started");
             }
 
-            // Get initial content from textarea (before CodeMirror is created)
-            const content = this.editor.value || "";
+            const wsToken = this.$opts.wsToken as string;
+            if (!wsToken) {
+                throw new Error("[Preview Control] WS token not found, cannot connect preview bridge");
+            }
 
-            // Initialize Control client with custom port and message handler
-            new PreviewControlPlane(
-                parseInt(pageId, 10),
-                content,
-                this.previewServerInfo.host,
-                this.previewServerInfo.controlPort
-            );
-            // await this.controlClient.connect();
-            window.$events.emit("tinymist-control-connect");
+            if (!this.previewBridgeClient) {
+                this.previewBridgeClient = new PreviewBridgeClient(
+                    parseInt(pageId, 10),
+                    wsToken
+                );
+            }
+
+            if (!this.previewControlPlane) {
+                this.previewControlPlane = new PreviewControlPlane(
+                    parseInt(pageId, 10),
+                    this.getText(),
+                    this.previewServerInfo.host,
+                    this.previewServerInfo.controlPort
+                );
+            }
+
+            window.$events.emit("tinymist-preview-connect", wsToken);
 
         } catch (error) {
             console.error("[Preview Control] setup failed:", error);
@@ -84,15 +98,8 @@ export class TinymistEditor extends Component {
                 throw new Error("[Preview Data] not started");
             }
 
-            // Initialize preview renderer with custom port
-            new PreviewDataPlane(
-                this.previewServerInfo.host,
-                this.previewServerInfo.dataPort
-            );
-
+            new PreviewDataPlane();
             new PreviewRenderer(previewElement);
-
-            window.$events.emit("tinymist-data-connect");
             window.$events.emit("tinymist-wasm-init");
 
         } catch (error) {
@@ -206,7 +213,8 @@ export class TinymistEditor extends Component {
                 this.fileSyncConnected = status.connected;
                 break;
             case "preview-ws":
-                this.fileSyncConnected = status.connected;
+                this.controlConnected = status.connected;
+                this.dataConnected = status.connected;
                 break;
         }
         this.checkConnectionHealth();
@@ -440,8 +448,7 @@ export class TinymistEditor extends Component {
             // But do not dispose/recreate completely
             // I doubt they can be garbage connected and this is unnecessary overhead
 
-            window.$events.emit("tinymist-control-disconnect");
-            window.$events.emit("tinymist-data-disconnect");
+            window.$events.emit("tinymist-preview-disconnect");
 
             // TODO: Many questions about this "wait for cleanup"
             await new Promise((resolve) => setTimeout(resolve, 500));
@@ -486,8 +493,7 @@ export class TinymistEditor extends Component {
         // Close WebSocket connections
         window.$events.emit("tinymist-fallback-enable", false);
         window.$events.emit("tinymist-sync-disconnect");
-        window.$events.emit("tinymist-control-disconnect");
-        window.$events.emit("tinymist-data-disconnect");
+        window.$events.emit("tinymist-preview-disconnect");
     }
 
 }

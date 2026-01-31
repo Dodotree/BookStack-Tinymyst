@@ -98,8 +98,13 @@ export class TinymistFileSyncClient {
             try {
                 // Construct WebSocket URL from current page URL
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const host = window.location.hostname;
-                const wsUrl = `${protocol}//${host}:${this.port}?token=${encodeURIComponent(this.token)}&tabToken=${encodeURIComponent(this.tabToken)}`;
+                const hostname = window.location.hostname;
+                const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
+                const hostWithPort = window.location.host;
+                const baseUrl = isLocal
+                    ? `${protocol}//${hostname}:${this.port}`
+                    : `${protocol}//${hostWithPort}/ws/tinymist/file-sync/`;
+                const wsUrl = `${baseUrl}?token=${encodeURIComponent(this.token)}&tabToken=${encodeURIComponent(this.tabToken)}`;
 
                 console.log('[File Sync / LSP] Connecting to:', wsUrl.replace(this.token, 'TOKEN_HIDDEN'));
 

@@ -12,6 +12,7 @@ config({ path: join(process.cwd(), ".env") });
 
 interface BridgeSocket extends WebSocket {
     pageId?: number;
+    authToken?: AuthToken;
     isAlive: boolean;
 }
 
@@ -48,6 +49,7 @@ const LOG_DIRECTORY = resolve(PROJECT_ROOT, "storage", "logs");
 
 const CONTROL_TAG = 0x43; // 'C'
 const DATA_TAG = 0x44; // 'D'
+const FILEPATH_PLACEHOLDER = "__TINYMIST_FILE__";
 
 const managerOptions: PreviewClientOptions = {
     tinymistExecutable: TINYMIST_CLI_PATH,
@@ -190,17 +192,30 @@ class PreviewSession {
         const text = buffer.toString();
 
         if (!isBinary && (buffer[0] === 0x7b || text.trim().startsWith("{"))) {
-            this.client.sendControl(text);
+            if (!this.client.isControlReady()) {
+                return;
+            }
+            const encodedPath = JSON.stringify(this.client.filePath).slice(1, -1);
+            const updatedText = text.includes(FILEPATH_PLACEHOLDER)
+                ? text.split(FILEPATH_PLACEHOLDER).join(encodedPath)
+                : text;
+            this.client.sendControl(updatedText);
             return;
         }
 
         if (isBinary) {
+            if (!this.client.isDataReady()) {
+                return;
+            }
             if (Buffer.isBuffer(data)) {
                 this.client.sendData(data);
             } else {
                 this.client.sendData(buffer);
             }
         } else {
+            if (!this.client.isDataReady()) {
+                return;
+            }
             this.client.sendData(text);
         }
     }
@@ -325,26 +340,51 @@ async function bootstrap() {
         });
 
         try {
-            const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host}`);
-            const pageParam = requestUrl.searchParams.get("pageId");
-            if (!pageParam) {
+
+            let tokenPayload: AuthToken | null = null;
+            try {
+                tokenPayload = verifyRequestToken(request);
+            } catch (error) {
+                tokenPayload = null;
+            }
+
+            const pageId = tokenPayload?.page_id;
+
+            if (!pageId || !Number.isFinite(pageId)) {
                 socket.close(1008, "Missing pageId");
                 return;
             }
 
-            const pageId = Number(pageParam);
-            if (!Number.isFinite(pageId) || pageId <= 0) {
-                socket.close(1008, "Invalid pageId");
+            if (tokenPayload && tokenPayload.page_id !== pageId) {
+                socket.close(1008, "PageId mismatch");
                 return;
             }
 
             client.pageId = pageId;
+            client.authToken = tokenPayload ?? undefined;
 
             const session = await sessionManager.getSession(pageId);
             session.addBrowser(client);
 
             socket.on("message", (data, isBinary) => {
                 try {
+                    if (!isBinary) {
+                        const text = rawDataToString(data);
+                        if (text.trim().startsWith("{")) {
+                            const payload = JSON.parse(text) as IncomingMessagePayload;
+                            if (payload.type === "ping") {
+                                socket.send(JSON.stringify({ type: "pong" }));
+                                return;
+                            }
+                            if (payload.type === "updateToken") {
+                                const refreshed = verifyNewToken(payload.token, pageId);
+                                client.authToken = refreshed;
+                                socket.send(JSON.stringify({ type: "tokenUpdated", exp: refreshed.exp }));
+                                return;
+                            }
+                        }
+                    }
+
                     session.handleBrowserMessage(client, data, isBinary);
                 } catch (error) {
                     console.error(`[Preview Bridge] Failed to handle message for page ${pageId}`, error);

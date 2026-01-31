@@ -1,11 +1,12 @@
 // One websocket with both Control and Data Plane messages
 // On the backend preview_server bridges both planes
 
-export class TinymistPreviewClient {
+export class PreviewBridgeClient {
     private socket: WebSocket | null = null;
     private token: string = '';
     private port: number = 4020;
     private pageId: number;
+    private path: string = '/ws/tinymist/preview/';
 
     // Timers and intervals
     private pingInterval: ReturnType<typeof setInterval> | null = null;
@@ -15,6 +16,9 @@ export class TinymistPreviewClient {
     // State tracking
     private reconnectAllowed: boolean = true;
     private reconnectAttempts: number = 0;
+    private isDebugEnabled(): boolean {
+        return Boolean((window as any)?.tinymistPreviewDebug);
+    }
 
     constructor(
         pageId: number,
@@ -26,10 +30,14 @@ export class TinymistPreviewClient {
         this.handleSyncConnect = this.handleSyncConnect.bind(this);
         this.disconnect = this.disconnect.bind(this);
         this.updateToken = this.updateToken.bind(this);
+        this.handleOutgoingControl = this.handleOutgoingControl.bind(this);
+        this.handleOutgoingData = this.handleOutgoingData.bind(this);
         window.$events.listen("tinymist-preview-connect", this.handleSyncConnect);
         window.$events.listen("tinymist-preview-disconnect", this.disconnect);
         window.$events.listen("tinymist-all-disconnect", this.disconnect);
         window.$events.listen("tinymist-token-renewed", this.updateToken);
+        window.$events.listen("tinymist-preview-send-control", this.handleOutgoingControl);
+        window.$events.listen("tinymist-preview-send-data", this.handleOutgoingData);
     }
 
     private async handleSyncConnect(token?: string): Promise<void> {
@@ -60,14 +68,24 @@ export class TinymistPreviewClient {
             try {
                 // Construct WebSocket URL from current page URL
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const host = window.location.hostname;
-                const wsUrl = `${protocol}//${host}:${this.port}?token=${encodeURIComponent(this.token)}`;
+                const hostname = window.location.hostname;
+                const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
+                const hostWithPort = window.location.host;
+                const baseUrl = isLocal
+                    ? `${protocol}//${hostname}:${this.port}`
+                    : `${protocol}//${hostWithPort}${this.path}`;
+                const wsUrl = `${baseUrl}?token=${encodeURIComponent(this.token)}`;
 
                 console.log('[Preview WS] Connecting to:', wsUrl.replace(this.token, 'TOKEN_HIDDEN'));
 
                 this.scheduleConnectionTimeout();
 
                 this.socket = new WebSocket(wsUrl);
+                // It only affects binary frames. text messages stay strings (double check?)
+                this.socket.binaryType = "arraybuffer";
+                if (this.isDebugEnabled()) {
+                    console.log("[Preview WS] Socket created", { wsUrl: wsUrl.replace(this.token, "TOKEN_HIDDEN") });
+                }
 
                 this.socket.onopen = () => {
                     this.reconnectAttempts = 0;
@@ -76,6 +94,8 @@ export class TinymistPreviewClient {
 
                     console.log('[Preview WS] WebSocket connected');
                     window.$events.emit("tinymist-status", { what: "preview-ws", connected: true });
+                    window.$events.emit("tinymist-preview-control-connected");
+                    window.$events.emit("tinymist-preview-data-connected");
                     window.$events.emit("tinymist-console-log",{ type: "success", message: "[Preview WS] connected" });
 
                     resolve();
@@ -83,11 +103,18 @@ export class TinymistPreviewClient {
 
                 this.socket.onmessage = (event) => {
                     this.handleMessage(event.data);
+                                    if (this.isDebugEnabled()) {
+                                        const kind = typeof event.data;
+                                        const size = event.data instanceof ArrayBuffer ? event.data.byteLength : undefined;
+                                        console.log("[Preview WS] Message received", { kind, size });
+                                    }
                 };
 
                 this.socket.onerror = (error) => {
                     console.error('[Preview WS] WebSocket error:', error);
                     window.$events.emit("tinymist-status", { what: "preview-ws", connected: false });
+                    window.$events.emit("tinymist-preview-control-disconnected");
+                    window.$events.emit("tinymist-preview-data-disconnected");
                     reject(error);
                 };
 
@@ -117,19 +144,54 @@ export class TinymistPreviewClient {
     }
 
     private handleMessage(data: any): void {
+        const forwardControl = (payload: string) => {
+            if (this.isDebugEnabled()) {
+                console.log("[Preview WS] Forwarding control message", { length: payload.length });
+            }
+            window.$events.emit("tinymist-preview-control-message", payload);
+        };
+
+        const forwardData = (buffer: ArrayBuffer) => {
+            if (this.isDebugEnabled()) {
+                console.log("[Preview WS] Forwarding data message", { bytes: buffer.byteLength });
+            }
+            window.$events.emit("tinymist-preview-data-message", new Uint8Array(buffer));
+        };
+
         // Check data type
         if (data instanceof ArrayBuffer) {
-            console.log("[Preview WS] Data plane message array buffer data:", data);
-            // await this.handleBinaryMessage(new Uint8Array(data));
+            const bytes = new Uint8Array(data);
+            if (bytes.length === 0) {
+                return;
+            }
+
+            // Some control-plane messages arrive as binary buffers (JSON strings)
+            if (bytes[0] === 0x7b) {
+                const text = new TextDecoder().decode(bytes);
+                forwardControl(text);
+                return;
+            }
+
+            forwardData(data);
         } else if (data instanceof Blob) {
-            console.log("[Preview WS] Data plane message blob data:", data);
-            // const buffer = await data.arrayBuffer();
-            // await this.handleBinaryMessage(new Uint8Array(buffer));
+            data.arrayBuffer().then((buffer) => {
+                const bytes = new Uint8Array(buffer);
+                if (bytes.length === 0) {
+                    return;
+                }
+
+                if (bytes[0] === 0x7b) {
+                    const text = new TextDecoder().decode(bytes);
+                    forwardControl(text);
+                    return;
+                }
+
+                forwardData(buffer);
+            });
         } else if (typeof data === "string") {
-            // Check if first symbol is '{' to determine if JSON
-            console.log("[Preview WS] Data plane message string data:", data);
+            forwardControl(data);
         } else {
-            console.warn("[Preview WS] Data plane message unknown type:", data);
+            console.warn("[Preview WS] Message unknown type:", data);
         }
     }
 
@@ -198,6 +260,27 @@ export class TinymistPreviewClient {
                 token: token
             }));
         }
+    }
+
+    private handleOutgoingControl(message: string): void {
+        if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+            return;
+        }
+        if (this.isDebugEnabled()) {
+            console.log("[Preview WS] Sending control message", { length: message.length });
+        }
+        this.socket.send(message);
+    }
+
+    private handleOutgoingData(message: string | Uint8Array): void {
+        if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+            return;
+        }
+        if (this.isDebugEnabled()) {
+            const bytes = typeof message === "string" ? message.length : message.byteLength;
+            console.log("[Preview WS] Sending data message", { bytes });
+        }
+        this.socket.send(message);
     }
 
     private clearReconnectTimeout(): void {
