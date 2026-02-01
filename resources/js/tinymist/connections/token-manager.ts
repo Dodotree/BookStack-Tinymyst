@@ -11,15 +11,29 @@ export class TinymistTokenManager {
 
     private tokenRenewalTimeout: ReturnType<typeof setTimeout> | null = null;
 
-    constructor(pageId: number, token: string) {
-        this.token = token;
+    constructor(pageId: number, token?: string) {
+        this.token = token ?? null;
         this.pageId = pageId;
-        this.decodeAndStoreTokenExpiry(token);
+        if (token) {
+            this.decodeAndStoreTokenExpiry(token);
+        }
 
         this.disconnect = this.disconnect.bind(this);
         window.$events.listen("tinymist-all-disconnect", this.disconnect);
 
+        if (token) {
+            this.scheduleTokenRenewal();
+        }
+    }
+
+    public setToken(token: string): void {
+        if (!token) {
+            return;
+        }
+        this.token = token;
+        this.decodeAndStoreTokenExpiry(token);
         this.scheduleTokenRenewal();
+        window.$events.emit("tinymist-token-renewed", this.token as string);
     }
 
     private decodeAndStoreTokenExpiry(token: string): void {

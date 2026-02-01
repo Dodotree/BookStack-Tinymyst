@@ -3,6 +3,7 @@ import { createServer } from "http";
 import { existsSync } from "fs";
 import { join, resolve } from "path";
 import { URL } from "url";
+import { exec } from "child_process";
 import { WebSocketServer, WebSocket, RawData } from "ws";
 
 import { verifyRequestToken, verifyNewToken, AuthToken } from "../token-helper";
@@ -25,6 +26,7 @@ type IncomingMessagePayload =
         type: "updateToken";
         token: string;
     }
+    | { type: "restartPreview" }
     | {
         type: "current";
         pageId: number;
@@ -47,8 +49,6 @@ const PROJECT_ROOT = process.cwd();
 const STORAGE_ROOT = resolve(PROJECT_ROOT, "storage", "app", "tinymist");
 const LOG_DIRECTORY = resolve(PROJECT_ROOT, "storage", "logs");
 
-const CONTROL_TAG = 0x43; // 'C'
-const DATA_TAG = 0x44; // 'D'
 const FILEPATH_PLACEHOLDER = "__TINYMIST_FILE__";
 
 const managerOptions: PreviewClientOptions = {
@@ -108,6 +108,75 @@ function rawDataToString(data: RawData): string {
         return Buffer.from(view.buffer, view.byteOffset, view.byteLength).toString();
     }
     return String(data);
+}
+
+function execCommand(command: string): Promise<string> {
+    return new Promise((resolveExec, rejectExec) => {
+        exec(command, { windowsHide: true }, (error, stdout, stderr) => {
+            if (error) {
+                rejectExec(error);
+                return;
+            }
+            if (stderr && stderr.trim().length > 0) {
+                resolveExec(stdout);
+                return;
+            }
+            resolveExec(stdout);
+        });
+    });
+}
+
+async function cleanupOrphanedPreviewProcesses(): Promise<void> {
+    try {
+        if (process.platform === "win32") {
+            const output = await execCommand("powershell -NoProfile -Command \"Get-CimInstance Win32_Process -Filter \\\"name='tinymist.exe'\\\" | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress\"");
+            if (!output.trim()) {
+                return;
+            }
+            const items = JSON.parse(output);
+            const processes = Array.isArray(items) ? items : [items];
+            for (const proc of processes) {
+                const cmd: string = proc.CommandLine || "";
+                if (!cmd.toLowerCase().includes("preview")) {
+                    continue;
+                }
+                const pid = Number(proc.ProcessId);
+                if (Number.isFinite(pid) && pid > 0) {
+                    try {
+                        await execCommand(`taskkill /F /PID ${pid}`);
+                        console.log(`[Preview Bridge] Cleaned orphan tinymist preview process ${pid}`);
+                    } catch (error) {
+                        console.warn(`[Preview Bridge] Failed to kill tinymist preview process ${pid}`, error);
+                    }
+                }
+            }
+            return;
+        }
+
+        const output = await execCommand("ps -Ao pid=,args=");
+        const lines = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+        for (const line of lines) {
+            if (!line.includes("tinymist") || !line.includes("preview")) {
+                continue;
+            }
+            const spaceIndex = line.indexOf(" ");
+            if (spaceIndex === -1) {
+                continue;
+            }
+            const pid = Number(line.slice(0, spaceIndex).trim());
+            if (!Number.isFinite(pid) || pid <= 0) {
+                continue;
+            }
+            try {
+                await execCommand(`kill -9 ${pid}`);
+                console.log(`[Preview Bridge] Cleaned orphan tinymist preview process ${pid}`);
+            } catch (error) {
+                console.warn(`[Preview Bridge] Failed to kill tinymist preview process ${pid}`, error);
+            }
+        }
+    } catch (error) {
+        console.warn("[Preview Bridge] Failed to cleanup orphaned preview processes", error);
+    }
 }
 
 class PreviewSession {
@@ -172,8 +241,12 @@ class PreviewSession {
 
         if (socket.readyState === WebSocket.OPEN) {
             const payload = JSON.stringify({ type: "bridge:connected", pageId: this.pageId });
-            socket.send(Buffer.concat([Buffer.from([CONTROL_TAG]), Buffer.from(payload, "utf8")]));
+            socket.send(payload);
         }
+    }
+
+    getPorts(): { controlPort: number; dataPort: number } | null {
+        return this.client.getInfo().ports;
     }
 
     removeBrowser(socket: BridgeSocket): void {
@@ -317,6 +390,37 @@ class PreviewSessionManager {
         this.sessions.delete(pageId);
     }
 
+    async stopAll(): Promise<void> {
+        const sessions = Array.from(this.sessions.values());
+        for (const session of sessions) {
+            await session.stop().catch((error) => {
+                console.error("[Preview Bridge] Failed to stop session", error);
+            });
+        }
+        this.sessions.clear();
+    }
+
+    async restartSession(pageId: number): Promise<PreviewSession> {
+        const existing = this.sessions.get(pageId);
+        let nextControlBase = this.options.controlBasePort;
+        if (existing) {
+            const ports = existing.getPorts();
+            if (ports?.controlPort) {
+                nextControlBase = ports.controlPort + 2;
+            }
+            await existing.stop();
+        }
+
+        const session = new PreviewSession(
+            pageId,
+            { ...this.options, controlBasePort: nextControlBase },
+            (id) => this.removeSession(id)
+        );
+        await session.ready(SESSION_READY_TIMEOUT_MS);
+        this.sessions.set(pageId, session);
+        return session;
+    }
+
     private async createSession(pageId: number): Promise<PreviewSession> {
         const session = new PreviewSession(pageId, this.options, (id) => this.removeSession(id));
         await session.ready(SESSION_READY_TIMEOUT_MS);
@@ -325,6 +429,8 @@ class PreviewSessionManager {
 }
 
 async function bootstrap() {
+
+    await cleanupOrphanedPreviewProcesses();
 
     const sessionManager = new PreviewSessionManager(managerOptions);
 
@@ -363,10 +469,10 @@ async function bootstrap() {
             client.pageId = pageId;
             client.authToken = tokenPayload ?? undefined;
 
-            const session = await sessionManager.getSession(pageId);
+            let session = await sessionManager.getSession(pageId);
             session.addBrowser(client);
 
-            socket.on("message", (data, isBinary) => {
+            socket.on("message", async (data, isBinary) => {
                 try {
                     if (!isBinary) {
                         const text = rawDataToString(data);
@@ -380,6 +486,12 @@ async function bootstrap() {
                                 const refreshed = verifyNewToken(payload.token, pageId);
                                 client.authToken = refreshed;
                                 socket.send(JSON.stringify({ type: "tokenUpdated", exp: refreshed.exp }));
+                                return;
+                            }
+                            if (payload.type === "restartPreview") {
+                                session = await sessionManager.restartSession(pageId);
+                                session.addBrowser(client);
+                                socket.send(JSON.stringify({ type: "previewRestarted" }));
                                 return;
                             }
                         }
@@ -426,14 +538,36 @@ async function bootstrap() {
         console.log(`Tinymist preview bridge listening on ${BRIDGE_HOST}:${BRIDGE_PORT}`);
     });
 
-    process.on("SIGINT", async () => {
-        console.log("\n[Preview Bridge] Caught SIGINT, shutting down...");
+    const shutdown = async (reason: string) => {
+        console.log(`\n[Preview Bridge] Shutting down (${reason})...`);
         heartbeat && clearInterval(heartbeat);
         for (const socket of wss.clients) {
             socket.terminate();
         }
+        await sessionManager.stopAll();
         server.close();
+    };
+
+    process.on("SIGINT", async () => {
+        await shutdown("SIGINT");
         process.exit(0);
+    });
+
+    process.on("SIGTERM", async () => {
+        await shutdown("SIGTERM");
+        process.exit(0);
+    });
+
+    process.on("uncaughtException", async (error) => {
+        console.error("[Preview Bridge] Uncaught exception", error);
+        await shutdown("uncaughtException");
+        process.exit(1);
+    });
+
+    process.on("unhandledRejection", async (reason) => {
+        console.error("[Preview Bridge] Unhandled rejection", reason);
+        await shutdown("unhandledRejection");
+        process.exit(1);
     });
 }
 

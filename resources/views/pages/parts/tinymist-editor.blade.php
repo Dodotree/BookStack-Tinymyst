@@ -6,13 +6,10 @@
     component="tinymist-editor"
     option:tinymist-editor:page-id="{{ $page->id }}"
     option:tinymist-editor:use-web-socket="true"
-    option:tinymist-editor:host="{{ config('tinymist.preview_host', '127.0.0.1') }}"
     @if(isset($tinymistPreview) && $tinymistPreview)
+        @if(!empty($tinymistPreview['ws_token']))
     option:tinymist-editor:ws-token="{{ $tinymistPreview['ws_token'] }}"
-    option:tinymist-editor:control-port="{{ $tinymistPreview['control_port'] }}"
-    option:tinymist-editor:data-port="{{ $tinymistPreview['data_port'] }}"
-    option:tinymist-editor:pid="{{ $tinymistPreview['pid'] ?? 0 }}"
-    option:tinymist-editor:preview-started="true"
+        @endif
     @endif
     class="flex-container-row code-fill">
 

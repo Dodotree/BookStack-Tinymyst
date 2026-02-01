@@ -93,10 +93,15 @@ class TinymistController extends Controller
 
         try {
             $manager = app(TinymistPreviewManager::class);
+            $page = Page::query()->findOrFail($pageId);
+            $token = $manager->generateTinymistWsToken($page);
             $manager->updateTinymistPreviewFile($pageId, $content);
-            $result = $manager->startPreviewServer($pageId, $restart, $pid);
 
-            return response()->json($result);
+            return response()->json([
+                'success' => true,
+                'status' => 'token_ready',
+                'ws_token' => $token['ws_token'] ?? null,
+            ]);
         } catch (\Exception $e) {
             Log::error('Failed to start preview server', [
                 'page_id' => $pageId,

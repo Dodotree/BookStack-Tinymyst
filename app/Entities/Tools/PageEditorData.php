@@ -138,22 +138,10 @@ class PageEditorData
             ]);
 
             $manager->updateTinymistPreviewFile($pageId, $content);
-
-            // Start preview server
-            $result = $manager->startPreviewServer($pageId);
-
-            if ($result['success'] ?? false) {
-                return [
-                    'ws_token' => $token['ws_token'],
-                    'control_port' => $result['control_port'],
-                    'data_port' => $result['data_port'],
-                    'host' => $result['host'],
-                    'status' => $result['status'] ?? 'started',
-                    'pid' => $result['pid'] ?? 0,
-                ];
-            }
-
-            return null;
+            return [
+                'ws_token' => $token['ws_token'],
+                'status' => 'token_ready',
+            ];
         } catch (\Exception $e) {
             // Log error but don't fail page load
             \Illuminate\Support\Facades\Log::error('Failed to start Tinymist preview', [

@@ -7,20 +7,9 @@ type OutlineItem = {
 };
 
 export class PreviewControlPlane {
-    private pageId: number;
-    private controlPort: number;
-    private host: string;
     private static readonly FILEPATH_PLACEHOLDER = "__TINYMIST_FILE__";
 
-    constructor(
-        pageId: number,
-        content: string,
-        host: string = "127.0.0.1", // provided directly from php template
-        controlPort: number = 23627, // provided directly from php template
-    ) {
-        this.pageId = pageId;
-        this.host = host;
-        this.controlPort = controlPort;
+    constructor() {
 
         this.sendControlMessage = this.sendControlMessage.bind(this);
         this.disconnect = this.disconnect.bind(this);
@@ -50,7 +39,7 @@ export class PreviewControlPlane {
         }
         try {
             const msg = JSON.parse(raw);
-            if (msg.type === 'pong' || msg.type === 'tokenUpdated') {
+            if (msg.type === 'pong' || msg.type === 'tokenUpdated' || msg.type === 'previewRestarted') {
                 return;
             }
             if (msg.event === 'compileStatus') {
