@@ -104,6 +104,7 @@ export class TinymistEditorUI {
             if (action === "insertMath") this.insertMarkup("$", "$");
             if (action === "insertHeading") this.insertHeading();
             if (action === "clearConsole") window.$events.emit("tinymist-console-clear");
+            if (action === "toggleConsole") this.toggleConsole(button as HTMLButtonElement);
         });
 
         // Clean up connections on page navigation
@@ -188,6 +189,19 @@ export class TinymistEditorUI {
             line: line.number - 1, // 0-indexed
             character: pos - line.from,
         });
+    }
+
+    private toggleConsole(button?: HTMLButtonElement) {
+        const collapsed = this.elem.classList.toggle("tinymist-console-collapsed");
+        if (button) {
+            button.setAttribute("aria-expanded", (!collapsed).toString());
+            button.setAttribute("title", collapsed ? "Expand Console" : "Collapse Console");
+        }
+
+        const consoleContent = this.elem.querySelector(".tinymist-console-content") as HTMLElement | null;
+        if (consoleContent) {
+            consoleContent.setAttribute("aria-hidden", collapsed ? "true" : "false");
+        }
     }
 
         /**

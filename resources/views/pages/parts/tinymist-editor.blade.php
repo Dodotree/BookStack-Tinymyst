@@ -52,12 +52,15 @@
         <div class="tinymist-panel-divider-horizontal"></div>
 
         {{-- Console Panel --}}
-        <div class="tinymist-console-panel flex-container-column">
+        <div id="tinymist-console-panel" class="tinymist-console-panel flex-container-column">
             <div class="editor-toolbar flex-container-row items-stretch justify-space-between">
                 <div class="editor-toolbar-label text-mono bold px-m py-xs">
                     <span>{{ trans('entities.pages_tinymist_console') ?? 'Console' }}</span>
                 </div>
                 <div class="buttons flex-container-row items-stretch">
+                    <button class="text-button" type="button" data-action="toggleConsole" title="Collapse Console" aria-expanded="true" aria-controls="tinymist-console-panel">
+                        @icon('chevron-down')
+                    </button>
                     <button class="text-button" type="button" data-action="clearConsole" title="Clear Console">
                         @icon('delete')
                     </button>
@@ -144,6 +147,19 @@
         flex-direction: column;
         position: relative;
         overflow: hidden;
+    }
+
+    #tinymist-editor.tinymist-console-collapsed .tinymist-console-panel {
+        flex: 0 0 auto;
+        min-height: 0;
+    }
+
+    #tinymist-editor.tinymist-console-collapsed .tinymist-console-content {
+        display: none;
+    }
+
+    #tinymist-editor.tinymist-console-collapsed .tinymist-panel-divider-horizontal {
+        display: none;
     }
 
     html.dark-mode .tinymist-console-panel {
@@ -320,6 +336,14 @@
     html.dark-mode .tinymist-console-content {
         background-color: #1a1a1a;
         color: #ddd;
+    }
+
+    .tinymist-console-panel button[data-action="toggleConsole"] svg {
+        transition: transform 0.15s ease-in-out;
+    }
+
+    #tinymist-editor.tinymist-console-collapsed .tinymist-console-panel button[data-action="toggleConsole"] svg {
+        transform: rotate(180deg);
     }
 
     /* Console message types */
