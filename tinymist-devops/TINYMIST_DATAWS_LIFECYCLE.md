@@ -525,10 +525,10 @@ const svgDiffData: SvgDiff = {
                         artifactContent: payload
                     })
 
-// does not return diffResult or anything
+// does not return diffResult or anything, other things also were wrong:
 const diffResult = this.renderSession.manipulateData({
-  action: 'diff', // no, actions are "merge" or "reset"
-  diff: svgDiffData, // called data:
+  action: 'diff', // no, actions actually are "merge" or "reset"
+  diff: svgDiffData, // called data: not diff:
   currentState: this.currentSvgElement.outerHTML, // no such option available
 });
 // Returns: { operations: DOMOperation[] } // No such thing, at least in js

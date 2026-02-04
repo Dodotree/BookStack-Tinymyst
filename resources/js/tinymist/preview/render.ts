@@ -26,7 +26,7 @@ export class PreviewRenderer {
     private sessionPromise: Promise<RenderSession> | null = null;
     private sessionResolve: (() => void) | null = null;
     private previewElement: HTMLElement;
-    private hasInitialDocument: boolean = false; // Track if we've received initial document
+    private hasInitialDocument: boolean = false; // Track if we've received initial document to decide if "reset" instead of "merge" is needed
     private processingQueue: Promise<void> = Promise.resolve();
     private cursorInitialized: boolean = false;
     private recovering: boolean = false;
@@ -135,7 +135,7 @@ export class PreviewRenderer {
 
             try {
                 const isDiff = command === 'diff-v1';
-                let action: 'reset' | 'merge' = command === 'new' ? 'reset' : 'merge';
+                let action: 'reset' | 'merge' = command === 'new' ? 'reset' : 'merge'; // 'merge' or 'reset'
 
                 const session = await this.ensureSession();
 
@@ -151,12 +151,14 @@ export class PreviewRenderer {
                     action,
                     data: payload,
                 });
+
                 console.log("[Preview WASM] Data applied successfully, diffResult:", diffResult);
 
                 if (action === 'reset') {
                     this.hasInitialDocument = true;
                 }
 
+                // Always comes as an empty array?
                 // try {
                 //     const customData = await this.renderer!.getCustomV1({
                 //         renderSession: session,

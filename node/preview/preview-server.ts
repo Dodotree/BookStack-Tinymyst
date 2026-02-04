@@ -186,12 +186,36 @@ class PreviewSession {
     private idleTimer: NodeJS.Timeout | null = null;
     private destroyed = false;
 
+
+    private describePayload(data: RawData, isBinary?: boolean): string {
+        const buffer = rawDataToBuffer(data);
+        const length = buffer.length;
+
+        if (isBinary || Buffer.isBuffer(data) || data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
+            const commaIndex = buffer.indexOf(44);
+            const command = buffer.toString("utf8");
+            if (commaIndex !== -1) {
+                const payloadLength = Math.max(0, length - (commaIndex + 1));
+                return `binary command=${command} raw=${length} payload=${payloadLength}`;
+            }
+            return `binary command=${command} raw=${length}`;
+        }
+
+        const text = typeof data === "string" ? data : rawDataToString(data);
+        return `text length=${text.length} value=${text}`;
+    }
+
+    private logMessage(direction: "incoming" | "outgoing", data: RawData, isBinary?: boolean): void {
+        const info = this.describePayload(data, isBinary);
+        console.log(`[Preview Session ${this.pageId}] ${direction}: ${info}`);
+    }
+
     constructor(
         private readonly pageId: number,
         private readonly options: PreviewClientOptions,
         private readonly remove: (pageId: number) => void
     ) {
-        const filePath = join(options.storageRoot, `page_${pageId}.typ`);
+        const filePath = resolve(join(options.storageRoot, `page_${pageId}.typ`));
         if (!existsSync(filePath)) {
             throw new Error(`Typst document not found for page ${pageId} at ${filePath}`);
         }
@@ -257,6 +281,7 @@ class PreviewSession {
     }
 
     handleBrowserMessage(socket: BridgeSocket, data: RawData, isBinary: boolean): void {
+        this.logMessage("incoming", data, isBinary);
         const buffer = rawDataToBuffer(data);
         if (buffer.length === 0) {
             return;
@@ -316,6 +341,7 @@ class PreviewSession {
 
 
     private broadcastPreview(payload: RawData | string): void {
+        this.logMessage("outgoing", payload);
         for (const browser of this.browsers) {
             if (browser.readyState === WebSocket.OPEN) {
                 browser.send(payload);

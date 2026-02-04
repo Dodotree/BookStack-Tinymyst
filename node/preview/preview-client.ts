@@ -184,6 +184,11 @@ export class TinymistPreviewClient extends EventEmitter {
         }
 
         this.emit("status", "ready", { pageId: this.pageId, ports });
+        if (this.options.autoCurrentRequest) {
+            // It should wait not only for open, but also for already rendered first frame
+            this.sendData("current");
+            this.emit("status", "auto-current-request-sent");
+        }
         return ports;
     }
 
@@ -232,11 +237,6 @@ export class TinymistPreviewClient extends EventEmitter {
                         this.emit("control-message", data);
                     });
                 } else {
-                    if (this.options.autoCurrentRequest) {
-                        socket.on("open", () => {
-                            socket.send('current');
-                        });
-                    }
                     socket.on("message", (data) => {
                         this.emit("data-message", data);
                         if (this.options.autoCursorUpdates && data instanceof Uint8Array && this.isNewOrDiff(data)) {
@@ -253,7 +253,7 @@ export class TinymistPreviewClient extends EventEmitter {
                             // and reasonable time expectations might help here
                             const msg = {
                                 event: "changeCursorPosition",
-                                filepath: '',
+                                filepath: this.filePath,
                                 line: 0,
                                 character: 0,
                             };
@@ -324,7 +324,8 @@ export class TinymistPreviewClient extends EventEmitter {
             args.push("--partial-rendering", "true");
         }
 
-        args.push(relativeFilePath);
+        // args.push(relativeFilePath);
+        args.push(this.filePath);
 
         const child = spawn(tinymistExecutable, args, {
             cwd: projectRoot,
