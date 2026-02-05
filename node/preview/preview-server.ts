@@ -206,8 +206,8 @@ class PreviewSession {
     }
 
     private logMessage(direction: "incoming" | "outgoing", data: RawData, isBinary?: boolean): void {
-        const info = this.describePayload(data, isBinary);
-        console.log(`[Preview Session ${this.pageId}] ${direction}: ${info}`);
+        // const info = this.describePayload(data, isBinary);
+        // console.log(`[Preview Session ${this.pageId}] ${direction}: ${info}`);
     }
 
     constructor(
