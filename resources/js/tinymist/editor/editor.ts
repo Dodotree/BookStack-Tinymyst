@@ -22,6 +22,7 @@ export class TinymistEditorUI {
     editor: HTMLTextAreaElement;
     editorView: EditorView | null = null;
     private semanticTokens = new SemanticTokenProcessor();
+    private previewPanEnabled = false;
 
     constructor(elem: HTMLElement, editor: HTMLTextAreaElement) {
         this.elem = elem;
@@ -105,6 +106,10 @@ export class TinymistEditorUI {
             if (action === "insertHeading") this.insertHeading();
             if (action === "clearConsole") window.$events.emit("tinymist-console-clear");
             if (action === "toggleConsole") this.toggleConsole(button as HTMLButtonElement);
+            if (action === "previewZoomIn") window.$events.emit("tinymist-preview-zoom-in");
+            if (action === "previewZoomOut") window.$events.emit("tinymist-preview-zoom-out");
+            if (action === "previewZoomReset") window.$events.emit("tinymist-preview-zoom-reset");
+            if (action === "previewPanToggle") this.togglePreviewPan(button as HTMLButtonElement);
         });
 
         // Clean up connections on page navigation
@@ -202,6 +207,15 @@ export class TinymistEditorUI {
         if (consoleContent) {
             consoleContent.setAttribute("aria-hidden", collapsed ? "true" : "false");
         }
+    }
+
+    private togglePreviewPan(button?: HTMLButtonElement) {
+        this.previewPanEnabled = !this.previewPanEnabled;
+        if (button) {
+            button.setAttribute("aria-pressed", this.previewPanEnabled.toString());
+            button.setAttribute("title", this.previewPanEnabled ? "Disable Hand Tool" : "Enable Hand Tool");
+        }
+        window.$events.emit("tinymist-preview-pan-toggle", { enabled: this.previewPanEnabled });
     }
 
         /**

@@ -79,9 +79,23 @@
 
     {{-- Right Side: Preview (full height) --}}
     <div class="tinymist-preview-pane flex-container-column">
-        <div class="editor-toolbar">
+        <div class="editor-toolbar flex-container-row items-stretch justify-space-between">
             <div class="editor-toolbar-label text-mono bold px-m py-xs">
                 <span>{{ trans('entities.pages_tinymist_preview') ?? 'Live Preview' }}</span>
+            </div>
+            <div class="buttons flex-container-row items-stretch">
+                <button class="text-button" type="button" data-action="previewZoomOut" title="Zoom Out">
+                    @icon('zoom-out')
+                </button>
+                <button class="text-button" type="button" data-action="previewZoomIn" title="Zoom In">
+                    @icon('zoom-in')
+                </button>
+                <button class="text-button" type="button" data-action="previewZoomReset" title="Reset Zoom">
+                    @icon('zoom-1')
+                </button>
+                <button class="text-button" type="button" data-action="previewPanToggle" title="Enable Hand Tool" aria-pressed="false">
+                    @icon('hand')
+                </button>
             </div>
         </div>
 
@@ -307,9 +321,18 @@
         pointer-events: none;
     }
 
+    .tinymist-preview-content.tinymist-preview-pan-enabled {
+        cursor: grab;
+    }
+
+    .tinymist-preview-content.tinymist-preview-panning {
+        cursor: grabbing;
+    }
+
     /* SVG output - fill panel width, scrollable height */
     .tinymist-preview-content svg {
         width: 100%;
+        max-width: none;
         /* Fill available width */
         display: block;
         margin: 0;

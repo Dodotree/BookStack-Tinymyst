@@ -31,6 +31,18 @@ export class PreviewRenderer {
     private cursorInitialized: boolean = false;
     private recovering: boolean = false;
     private recoveryAttempts: number = 0;
+    private zoomLevel = 1;
+    private readonly zoomStep = 0.1;
+    private readonly zoomMin = 0.25;
+    private readonly zoomMax = 3;
+    private baseSvgWidth: number | null = null;
+    private baseSvgHeight: number | null = null;
+    private panEnabled = false;
+    private isPanning = false;
+    private panStartX = 0;
+    private panStartY = 0;
+    private panStartScrollLeft = 0;
+    private panStartScrollTop = 0;
 
 
     constructor(
@@ -41,10 +53,26 @@ export class PreviewRenderer {
         this.handleSyncInit = this.handleSyncInit.bind(this);
         this.dispose = this.dispose.bind(this);
         this.handleSyncMessage = this.handleSyncMessage.bind(this);
+        this.handleZoomIn = this.handleZoomIn.bind(this);
+        this.handleZoomOut = this.handleZoomOut.bind(this);
+        this.handleZoomReset = this.handleZoomReset.bind(this);
+        this.handlePanToggle = this.handlePanToggle.bind(this);
+        this.handlePanMouseDown = this.handlePanMouseDown.bind(this);
+        this.handlePanMouseMove = this.handlePanMouseMove.bind(this);
+        this.handlePanMouseUp = this.handlePanMouseUp.bind(this);
         window.$events.listen("tinymist-wasm-init", this.handleSyncInit)
         window.$events.listen("tinymist-wasm-dispose", this.dispose);
 
         window.$events.listen("tinymist-data-binary", this.handleSyncMessage);
+        window.$events.listen("tinymist-preview-zoom-in", this.handleZoomIn);
+        window.$events.listen("tinymist-preview-zoom-out", this.handleZoomOut);
+        window.$events.listen("tinymist-preview-zoom-reset", this.handleZoomReset);
+        window.$events.listen("tinymist-preview-pan-toggle", this.handlePanToggle);
+
+        this.previewElement.addEventListener("mousedown", this.handlePanMouseDown);
+        this.previewElement.addEventListener("mousemove", this.handlePanMouseMove);
+        this.previewElement.addEventListener("mouseup", this.handlePanMouseUp);
+        this.previewElement.addEventListener("mouseleave", this.handlePanMouseUp);
     }
 
     private async handleSyncInit(): Promise<void> {
@@ -177,6 +205,9 @@ export class PreviewRenderer {
                 });
 
                 this.previewElement.innerHTML = svg;
+                this.baseSvgWidth = null;
+                this.baseSvgHeight = null;
+                this.applyZoomToSvg();
 
                 // const svgDoc = this.previewElement.querySelector('svg.typst-doc');
                 // const helperCode = document.querySelector('svg.typst-doc script')?.textContent;
@@ -223,6 +254,92 @@ export class PreviewRenderer {
         this.renderer = null;
 
         console.log("[Preview WASM] Renderer disposed");
+    }
+
+    private handleZoomIn(): void {
+        this.setZoom(this.zoomLevel + this.zoomStep);
+    }
+
+    private handleZoomOut(): void {
+        this.setZoom(this.zoomLevel - this.zoomStep);
+    }
+
+    private handleZoomReset(): void {
+        this.setZoom(1);
+    }
+
+    private handlePanToggle({ enabled }: { enabled: boolean }): void {
+        this.panEnabled = enabled;
+        if (!enabled) {
+            this.stopPanning();
+        }
+        this.previewElement.classList.toggle("tinymist-preview-pan-enabled", enabled);
+    }
+
+    private setZoom(level: number): void {
+        const clamped = Math.min(this.zoomMax, Math.max(this.zoomMin, Number(level)));
+        this.zoomLevel = Number(clamped.toFixed(2));
+        this.applyZoomToSvg();
+    }
+
+    private applyZoomToSvg(): void {
+        const svg = this.previewElement.querySelector("svg") as SVGElement | null;
+        if (!svg) {
+            return;
+        }
+
+        if (this.baseSvgWidth === null || this.baseSvgHeight === null) {
+            const rect = svg.getBoundingClientRect();
+            const fallbackWidth = svg.clientWidth || rect.width;
+            const fallbackHeight = svg.clientHeight || rect.height;
+            this.baseSvgWidth = fallbackWidth || 0;
+            this.baseSvgHeight = fallbackHeight || 0;
+        }
+
+        const width = (this.baseSvgWidth || 0) * this.zoomLevel;
+        const height = (this.baseSvgHeight || 0) * this.zoomLevel;
+        svg.style.width = `${Math.max(1, width)}px`;
+        svg.style.height = `${Math.max(1, height)}px`;
+        svg.style.maxWidth = "none";
+    }
+
+    private handlePanMouseDown(event: MouseEvent): void {
+        if (!this.panEnabled || event.button !== 0) {
+            return;
+        }
+
+        this.isPanning = true;
+        this.panStartX = event.clientX;
+        this.panStartY = event.clientY;
+        this.panStartScrollLeft = this.previewElement.scrollLeft;
+        this.panStartScrollTop = this.previewElement.scrollTop;
+        this.previewElement.classList.add("tinymist-preview-panning");
+        event.preventDefault();
+    }
+
+    private handlePanMouseMove(event: MouseEvent): void {
+        if (!this.isPanning) {
+            return;
+        }
+
+        const dx = event.clientX - this.panStartX;
+        const dy = event.clientY - this.panStartY;
+        this.previewElement.scrollLeft = this.panStartScrollLeft - dx;
+        this.previewElement.scrollTop = this.panStartScrollTop - dy;
+        event.preventDefault();
+    }
+
+    private handlePanMouseUp(): void {
+        if (!this.isPanning) {
+            return;
+        }
+
+        this.stopPanning();
+    }
+
+    private stopPanning(): void {
+        this.isPanning = false;
+        this.previewElement.classList.remove("tinymist-preview-panning");
     }
 
     private async recoverRenderer(error: Error): Promise<void> {
