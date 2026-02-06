@@ -32,53 +32,45 @@ const tokenModifiers = [
     "strong", "emph", "math", "readonly", "static", "defaultLibrary"
 ];
 
-// Color mapping for highlight types (text colors, not backgrounds)
-const highlightColors: Record<string, string> = {
-    math: "#5DADE2", // Light blue for math
-    string: "#52BE80", // Green for strings
-    comment: "#808080", // Gray for comments
-    keyword: "#BB8FCE", // Purple for keywords
-    operator: "#E06C75", // Red for operators
-    number: "#D6863E", // Brown for numbers
-    function: "#5DADE2", // Blue for functions
-    method: "#5DADE2", // Blue for methods
-    macro: "#5DADE2", // Blue for macros
-    decorator: "#5DADE2", // Blue for decorators
-    type: "#56B6C2", // Cyan for types
-    class: "#56B6C2", // Cyan for classes
-    enum: "#56B6C2", // Cyan for enums
-    interface: "#56B6C2", // Cyan for interfaces
-    struct: "#56B6C2", // Cyan for structs
-    typeParameter: "#56B6C2", // Cyan for generic parameters
-    namespace: "#56B6C2", // Cyan for namespaces
-    variable: "#E5C07B", // Yellow for variables
-    property: "#E5C07B", // Yellow for properties
-    enumMember: "#E5C07B", // Yellow for enum members
-    parameter: "#E5C07B", // Yellow for parameters
-    punct: "#D19A66", // Orange for punctuation
-    bool: "#C678DD", // Pink for booleans
-    escape: "#E06C75", // Red for escape sequences
-    link: "#61AFEF", // Light blue for links
-    raw: "#E06C75", // Red for raw
-    label: "#E5C07B", // Yellow for labels
-    ref: "#61AFEF", // Light blue for references
-    heading: "#61AFEF", // Light blue for headings
-    marker: "#E06C75", // Red for list markers
-    term: "#E5C07B", // Yellow for list terms
-    delim: "#D19A66", // Orange for delimiters
-    pol: "#C678DD", // Pink for list interpolations
-    error: "#E74C3C", // Red for errors
-    text: "#FFFFFF", // White for normal text
-};
-
-const tokenModifierStyles: Record<string, string> = {
-    strong: "font-weight: bold;",
-    emph: "font-style: italic;",
-    math: "background-color: #0b3049ff;",
-    readonly: "pointer-events: none; opacity: 0.6;",
-    static: "background-color: #333355;",
-    defaultLibrary: "background-color: #333333;"
-};
+// Styling is provided via CSS classes (tinymist-highlight-* and tinymist-mod-*)
+// Keep token keys to validate CSS coverage.
+const highlightColors = [
+    "math",
+    "string",
+    "comment",
+    "keyword",
+    "operator",
+    "number",
+    "function",
+    "method",
+    "macro",
+    "decorator",
+    "type",
+    "class",
+    "enum",
+    "interface",
+    "struct",
+    "typeParameter",
+    "namespace",
+    "variable",
+    "property",
+    "enumMember",
+    "parameter",
+    "punct",
+    "bool",
+    "escape",
+    "link",
+    "raw",
+    "label",
+    "ref",
+    "heading",
+    "marker",
+    "term",
+    "delim",
+    "pol",
+    "error",
+    "text",
+];
 
 // StateEffect to add highlights
 const addHighlightsEffect = StateEffect.define<HighlightRegion[]>();
@@ -107,15 +99,6 @@ function buildDecorationEntries(
             const to = Math.min(line.to, from + region.len);
 
             if (from < to && from >= 0 && to <= doc.length) {
-                const color = highlightColors[region.type] || "#FFD700";
-                const baseStyle = `color: ${color};`;
-                const modifierStyle = (region.modifiers ?? [])
-                    .map((modifier) => tokenModifierStyles[modifier])
-                    .filter((style): style is string => Boolean(style?.trim()))
-                    .join(" ");
-                const combinedStyle = modifierStyle
-                    ? `${baseStyle} ${modifierStyle}`
-                    : baseStyle;
                 const classNames = [
                     "tinymist-highlight",
                     `tinymist-highlight-${region.type}`,
@@ -123,7 +106,6 @@ function buildDecorationEntries(
                 ].join(" ");
                 const mark = Decoration.mark({
                     class: classNames,
-                    attributes: { style: combinedStyle },
                 });
                 entries.push({ from, to, mark, region });
             }
@@ -260,22 +242,15 @@ export class SemanticTokenProcessor {
 
     private resolveSemanticTokenType(tokenType: string): string | null {
 
-        if (!tokenType) {
+        if (!tokenType || tokenType === "text") {
             return null;
         }
-
-        if (tokenType === "text") {
-            return null;
-        }
-
-        if (highlightColors[tokenType]) {
-            return tokenType;
-        }
-
-        if (tokenType === "identifier" && highlightColors["variable"]) {
+        if (tokenType === "identifier") {
             return "variable";
         }
-
+        if (highlightColors.includes(tokenType)) {
+            return tokenType;
+        }
         return null;
     }
 
@@ -386,13 +361,6 @@ export class SemanticTokenProcessor {
         this.editorView.dispatch({
             effects: clearHighlightsEffect.of(null),
         });
-    }
-
-    /**
-     * Update highlight color mapping
-     */
-    static setHighlightColor(type: string, color: string) {
-        highlightColors[type] = color;
     }
 
     /**

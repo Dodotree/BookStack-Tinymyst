@@ -429,6 +429,50 @@
         border-left-color: #66bb6a;
     }
 
+    /* Semantic token highlighting (Tinymist) */
+    .tinymist-highlight { color: inherit; }
+    .tinymist-highlight-comment { color: #808080; }
+    .tinymist-highlight-string { color: #52BE80; }
+    .tinymist-highlight-keyword { color: #BB8FCE; }
+    .tinymist-highlight-operator { color: #E06C75; }
+    .tinymist-highlight-number { color: #D6863E; }
+    .tinymist-highlight-function,
+    .tinymist-highlight-method,
+    .tinymist-highlight-macro,
+    .tinymist-highlight-decorator { color: #5DADE2; }
+    .tinymist-highlight-type,
+    .tinymist-highlight-class,
+    .tinymist-highlight-enum,
+    .tinymist-highlight-interface,
+    .tinymist-highlight-struct,
+    .tinymist-highlight-typeParameter,
+    .tinymist-highlight-namespace { color: #56B6C2; }
+    .tinymist-highlight-variable,
+    .tinymist-highlight-property,
+    .tinymist-highlight-enumMember,
+    .tinymist-highlight-parameter,
+    .tinymist-highlight-label,
+    .tinymist-highlight-term { color: #E5C07B; }
+    .tinymist-highlight-punct,
+    .tinymist-highlight-delim { color: #D19A66; }
+    .tinymist-highlight-bool,
+    .tinymist-highlight-pol { color: #C678DD; }
+    .tinymist-highlight-escape,
+    .tinymist-highlight-raw,
+    .tinymist-highlight-marker { color: #E06C75; }
+    .tinymist-highlight-link,
+    .tinymist-highlight-ref,
+    .tinymist-highlight-heading { color: #61AFEF; }
+    .tinymist-highlight-error { color: #E74C3C; }
+    .tinymist-highlight-text { color: inherit; }
+
+    .tinymist-mod-strong { font-weight: bold; }
+    .tinymist-mod-emph { font-style: italic; }
+    .tinymist-mod-math { background-color: #0b3049ff; }
+    .tinymist-mod-readonly { pointer-events: none; opacity: 0.6; }
+    .tinymist-mod-static { background-color: #333355; }
+    .tinymist-mod-defaultLibrary { background-color: #333333; }
+
     /* Legacy error container (kept for compatibility) */
     .tinymist-error-container {
         background: #fee;
