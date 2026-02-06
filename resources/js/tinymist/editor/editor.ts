@@ -144,7 +144,7 @@ export class TinymistEditorUI {
 
     syncFullStateFromServer(content: string) {
         if (content !== this.getText()) {
-            this.setText(content);
+            this.setText(content, true);
             window.$events.emit("tinymist-console-log",
                 { type: "info", message: "[File Sync / LSP] Document synchronized from server" });
         }
@@ -174,6 +174,9 @@ export class TinymistEditorUI {
     }
 
     onDocumentChange(transactions: readonly Transaction[]) {
+        if (transactions.some((tr) => tr.annotation(Transaction.userEvent) === "tinymist-sync")) {
+            return;
+        }
         this.onInput();
         // Send changes to WebSocket server
         if (transactions.some((tr) => tr.docChanged)) {
@@ -290,7 +293,7 @@ export class TinymistEditorUI {
     /**
      * Set editor content.
      */
-    setText(content: string) {
+    setText(content: string, fromSync: boolean = false) {
         if (this.editorView) {
             this.editorView.dispatch({
                 changes: {
@@ -298,6 +301,7 @@ export class TinymistEditorUI {
                     to: this.editorView.state.doc.length,
                     insert: content,
                 },
+                annotations: fromSync ? Transaction.userEvent.of("tinymist-sync") : undefined,
             });
         } else {
             this.editor.value = content;

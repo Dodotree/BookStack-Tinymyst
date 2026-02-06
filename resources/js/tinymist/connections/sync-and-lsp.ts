@@ -22,7 +22,7 @@
 // receive: semanticTokens delta here -> semantic_tokens.ts -> editor applies token edits
 // receive: Error, see list below
 
-// Errors
+// Errors:
 // page mismatch
 // version mismatch
 // can not apply change (most likely cursor drift)

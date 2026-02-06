@@ -2,6 +2,13 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { ChangeSet, Text } from "@codemirror/state";
 
+export type LspPosition = { line: number; character: number };
+export type LspContentChange = {
+  range: { start: LspPosition; end: LspPosition };
+  rangeLength: number;
+  text: string;
+};
+
 export class FileManager {
   private storageRoot: string;
 
@@ -43,7 +50,7 @@ export class FileManager {
   applyChanges(
     pageId: number,
     changeSetJson: unknown
-  ): string {
+  ): { updated: string; contentChanges: LspContentChange[] } {
 
     const currentContent = this.loadDocument(pageId);
     const text = Text.of(currentContent.split("\n"));
@@ -57,11 +64,29 @@ export class FileManager {
     }
 
     try {
-      return changeSet.apply(text).toString();
+      const updated = changeSet.apply(text).toString();
+      const contentChanges: LspContentChange[] = [];
+      changeSet.iterChanges((fromA, toA, _fromB, _toB, insert) => {
+        contentChanges.push({
+          range: {
+            start: this.positionFromOffset(text, fromA),
+            end: this.positionFromOffset(text, toA),
+          },
+          rangeLength: toA - fromA,
+          text: insert.toString(),
+        });
+      });
+
+      return { updated, contentChanges };
     } catch (err) {
       console.error("Failed to apply changeset", { pageId, err });
-      throw new Error("CHANGESET_APPLY_FAILED");
+      throw new Error("CHANGESET_APPLY_FAILED", { cause: changeSetJson });
     }
+  }
+
+  private positionFromOffset(text: Text, pos: number): LspPosition {
+    const line = text.lineAt(pos);
+    return { line: line.number - 1, character: pos - line.from };
   }
 
   /**

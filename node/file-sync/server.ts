@@ -2,7 +2,7 @@ import { config } from "dotenv";
 import { WebSocketServer, WebSocket, RawData } from "ws";
 import { createServer, IncomingMessage } from "http";
 import { join } from "path";
-import { FileManager } from "./file-manager";
+import { FileManager, LspContentChange } from "./file-manager";
 import { LSPClient } from "./lsp-client";
 import { verifyRequestToken, verifyNewToken, AuthToken } from "../token-helper";
 
@@ -12,6 +12,7 @@ config({ path: join(process.cwd(), ".env") });
 type ConnectionContext = {
     socket: WebSocket;
     pageId: number;
+    uri: string;
     userId: number;
     docVersion: number;
     lastSeen: number;
@@ -88,7 +89,7 @@ const fileManager = new FileManager(STORAGE_ROOT);
 
 // LSP client globals
 let lspClient: LSPClient | null = null;
-const openDocuments = new Map<number, string>(); // pageId -> docUri
+const openDocuments = new Map<number, { uri: string; version: number }>(); // pageId -> doc
 
 function send(ws: WebSocket, payload: OutgoingMessagePayload) {
     if (ws.readyState === WebSocket.OPEN) {
@@ -126,14 +127,15 @@ function handleChanges(
     }
 
     let updated: string;
+    let contentChanges: LspContentChange[];
     try {
-        updated = fileManager.applyChanges(ctx.pageId, msg.changes);
+        ({updated, contentChanges} = fileManager.applyChanges(ctx.pageId, msg.changes));
     } catch (err) {
         const errorMessage = err instanceof Error ? err.message : String(err);
         send(ctx.socket, {
             type: "error",
             code: errorMessage,
-            message: "Failed to apply changes",
+            message: `Failed to apply changes: ${msg.changes}`,
         });
         return;
     }
@@ -156,9 +158,44 @@ function handleChanges(
         docVersion: ctx.docVersion,
     });
 
+    if (!lspClient) {
+        console.warn("[LSP] LSP client not initialized");
+        return;
+    }
+
+    // Notify LSP of changes
+    try{
+        if (!openDocuments.has(ctx.pageId)) {
+            lspClient.sendNotification("textDocument/didOpen", {
+                textDocument: {
+                    uri: ctx.uri,
+                    languageId: "typst",
+                    version: ctx.docVersion,
+                    text: updated,
+                },
+            });
+        }else{
+            lspClient.sendNotification("textDocument/didChange", {
+                textDocument: {
+                    uri: ctx.uri,
+                    version: ctx.docVersion,
+                },
+                contentChanges,
+            });
+        }
+        openDocuments.set(ctx.pageId, { uri: ctx.uri, version: ctx.docVersion });
+    }catch(err){
+        console.error("[LSP] Failed to send document change notification:", err);
+    }
+
     // Request semantic tokens after successful change
-    requestSemanticTokens(ctx.pageId, updated).catch((err) => {
+    requestSemanticTokens(ctx.pageId, ctx.uri).catch((err) => {
         console.error("[LSP] Failed to get semantic tokens:", err);
+        send(ctx.socket, {
+            type: "error",
+            code: "LSP_REQUEST_FAILED",
+            message: JSON.stringify(err instanceof Error ? err.message : err),
+        });
     });
 }
 
@@ -167,73 +204,44 @@ function handleChanges(
  */
 async function requestSemanticTokens(
     pageId: number,
-    content: string
+    docUri: string
 ): Promise<void> {
-    if (!lspClient) {
-        console.warn("[LSP] LSP client not initialized");
-        return;
-    }
+    if (!lspClient) {return;} // Here only to satisfy type checker
 
+    console.log(`[LSP] Requesting semantic tokens for page ${pageId}`);
+    let tokensResult;
     try {
-        const docUri = `file:///${join(STORAGE_ROOT, `page_${pageId}.typ`)}`;
-
-        // If document isn't open in LSP yet, open it
-        if (!openDocuments.has(pageId)) {
-            lspClient.sendNotification("textDocument/didOpen", {
-                textDocument: {
-                    uri: docUri,
-                    languageId: "typst",
-                    version: 1,
-                    text: content,
-                },
-            });
-            openDocuments.set(pageId, docUri);
-        } else {
-            // Send didChange notification for already open documents
-            // lspClient.sendNotification("textDocument/didChange", {
-            //   textDocument: {
-            //     uri: docUri,
-            //     version: Date.now(), // Use timestamp as version
-            //   },
-            //   contentChanges: [
-            //     {
-            //       text: content, // Full document sync
-            //     },
-            //   ],
-            // });
-        }
-
-        // Request semantic tokens
-        const tokensResult = await lspClient.sendRequest(
+        tokensResult = await lspClient.sendRequest(
             "textDocument/semanticTokens/full",
             {
                 textDocument: { uri: docUri },
             }
         );
-
-        if (tokensResult?.data) {
-            // TODO: decode client-side to reduce payload size
-            // const decodedTokens = lspClient.decodeSemanticTokens(tokensResult.data);
-
-            // Broadcast to all clients viewing this page
-            const message: Extract<
-                OutgoingMessagePayload,
-                { type: "semanticTokens" }
-            > = {
-                type: "semanticTokens",
-                pageId,
-                tokens: tokensResult.data,
-            };
-
-            for (const [socket, ctx] of connections.entries()) {
-                if (ctx.pageId === pageId) {
-                    send(socket, message);
-                }
-            }
-        }
     } catch (err) {
         console.error("[LSP] Error requesting semantic tokens:", err);
     }
+
+    if (tokensResult?.data) {
+
+        // Broadcast to all clients viewing this page
+        const message: Extract<
+            OutgoingMessagePayload,
+            { type: "semanticTokens" }
+        > = {
+            type: "semanticTokens",
+            pageId,
+            tokens: tokensResult.data,
+        };
+
+        for (const [socket, ctx] of connections.entries()) {
+            if (ctx.pageId === pageId) {
+                send(socket, message);
+            }
+        }
+    } else {
+        console.warn(`[LSP] No semantic tokens returned for page ${pageId}`);
+    }
+
 }
 
 function processMessage(ctx: ConnectionContext, raw: RawData) {
@@ -303,6 +311,7 @@ function createContext(
     return {
         socket,
         pageId: tokenPayload.page_id,
+        uri: `file:///${join(STORAGE_ROOT, `page_${tokenPayload.page_id}.typ`)}`,
         userId: tokenPayload.user_id,
         docVersion: initialVersion,
         lastSeen: Date.now(),
@@ -349,7 +358,7 @@ function initSocketContext(
     });
 
     // Request initial semantic tokens
-    requestSemanticTokens(payload.page_id, content).catch((err) => {
+    requestSemanticTokens(ctx.pageId, ctx.uri).catch((err) => {
         console.error("[LSP] Failed to get initial semantic tokens:", err);
     });
 

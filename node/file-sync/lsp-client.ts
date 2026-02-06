@@ -124,6 +124,11 @@ export class LSPClient {
             },
             rootUri: `file:///${this.options.cwd}`,
             capabilities: {
+                textDocumentSync: {
+                    openClose: true,
+                    change: 2,
+                    save: true
+                },
                 textDocument: {
                     synchronization: {
                         dynamicRegistration: false,
@@ -344,59 +349,6 @@ export class LSPClient {
             this.handleProcessExit(code || 0);
         });
     }
-
-    /**
-     * Decode semantic tokens from LSP format
-     * The data is encoded as [deltaLine, deltaStartChar, length, tokenType, tokenModifiers]
-     */
-    decodeSemanticTokens(
-        data: number[],
-    ): Array<{
-        line: number;
-        startChar: number;
-        length: number;
-        tokenType: string;
-        tokenModifiers: string[];
-    }> {
-        const tokens = [];
-        let line = 0;
-        let startChar = 0;
-
-        for (let i = 0; i < data.length; i += 5) {
-            const deltaLine = data[i];
-            const deltaStartChar = data[i + 1];
-            const length = data[i + 2];
-            const tokenType = data[i + 3];
-            const tokenModifierBits = data[i + 4];
-
-            // Update position
-            line += deltaLine;
-            if (deltaLine === 0) {
-                startChar += deltaStartChar;
-            } else {
-                startChar = deltaStartChar;
-            }
-
-            // Decode token modifiers from bitmask
-            const modifiers: string[] = [];
-            for (let j = 0; j < this.tokenModifiers.length; j++) {
-                if (tokenModifierBits & (1 << j)) {
-                    modifiers.push(this.tokenModifiers[j]);
-                }
-            }
-
-            tokens.push({
-                line,
-                startChar,
-                length,
-                tokenType: this.tokenTypes[tokenType] || `unknown(${tokenType})`,
-                tokenModifiers: modifiers,
-            });
-        }
-
-        return tokens;
-    }
-
 
     /**
      * Stop the LSP server process

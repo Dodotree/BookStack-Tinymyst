@@ -12,6 +12,13 @@ A cross-platform LSP client for managing Tinymist LSP server processes.
 - ✅ **Timeout handling**: Automatic timeout for requests (30s default)
 - ✅ **stdin/stdout pipes**: Standard LSP communication protocol
 
+## File sync
+
+- first full sync goes from the back end (to preserve changes that were not saved yet if the file was edited and already in the storage -- double check if opening new tab respects that or overwrites the file)
+- changes are detected on the front end and applied on the back end by CodeMirror/state
+  on document change from codeMirror transactions emits "tinymist-text-diff"
+  back end parses changeSet fromJSON and tries to .apply it or throws a "failed" error
+
 ## Usage
 
 ### Basic Setup
@@ -207,20 +214,3 @@ The client handles several error scenarios:
 4. **Parse errors**: Logged to console, processing continues
 5. **Shutdown errors**: Force kill after 5 second grace period
 
-## Platform Differences
-
-### Windows
-
-- Uses shell spawning for better path resolution
-- Executable name: `tinymist.exe`
-- Default locations: `%LOCALAPPDATA%`, `%USERPROFILE%\\.cargo\\bin`
-
-### Linux/Ubuntu
-
-- Direct spawn (no shell)
-- Executable name: `tinymist`
-- Default locations: `~/.cargo/bin`, `/usr/local/bin`
-
-## License
-
-Same as parent project.
