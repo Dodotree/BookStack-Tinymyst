@@ -60,6 +60,7 @@ type OutgoingMessagePayload =
     | {
         type: "semanticTokens";
         pageId: number;
+        resultId?: string;
         tokens: Array<{
             line: number;
             startChar: number;
@@ -67,6 +68,13 @@ type OutgoingMessagePayload =
             tokenType: string;
             tokenModifiers: string[];
         }>;
+    }
+    | {
+        type: "semanticTokensDelta";
+        pageId: number;
+        previousResultId?: string;
+        resultId?: string;
+        edits: Array<{ start: number; deleteCount: number; data?: number[] }>;
     }
     | {
         type: "error";
@@ -90,6 +98,11 @@ const fileManager = new FileManager(STORAGE_ROOT);
 // LSP client globals
 let lspClient: LSPClient | null = null;
 const openDocuments = new Map<number, { uri: string; version: number }>(); // pageId -> doc
+const semanticTokenState = new Map<
+    number,
+    { resultId?: string; timer?: NodeJS.Timeout }
+>();
+const SEMANTIC_TOKEN_DEBOUNCE_MS = 300;
 
 function send(ws: WebSocket, payload: OutgoingMessagePayload) {
     if (ws.readyState === WebSocket.OPEN) {
@@ -188,15 +201,8 @@ function handleChanges(
         console.error("[LSP] Failed to send document change notification:", err);
     }
 
-    // Request semantic tokens after successful change
-    requestSemanticTokens(ctx.pageId, ctx.uri).catch((err) => {
-        console.error("[LSP] Failed to get semantic tokens:", err);
-        send(ctx.socket, {
-            type: "error",
-            code: "LSP_REQUEST_FAILED",
-            message: JSON.stringify(err instanceof Error ? err.message : err),
-        });
-    });
+    // Request semantic tokens after successful change (debounced delta)
+    scheduleSemanticTokens(ctx.pageId, ctx.uri, false);
 }
 
 /**
@@ -204,21 +210,57 @@ function handleChanges(
  */
 async function requestSemanticTokens(
     pageId: number,
-    docUri: string
+    docUri: string,
+    forceFull: boolean
 ): Promise<void> {
     if (!lspClient) {return;} // Here only to satisfy type checker
 
-    console.log(`[LSP] Requesting semantic tokens for page ${pageId}`);
-    let tokensResult;
+    const state = semanticTokenState.get(pageId) ?? {};
+    if (forceFull) {
+        state.resultId = undefined;
+    }
+
+    const previousResultId = state.resultId;
+    const method = previousResultId
+        ? "textDocument/semanticTokens/full/delta"
+        : "textDocument/semanticTokens/full";
+
+    console.log(`[LSP] Requesting semantic tokens for page ${pageId} (${method})`);
+    let tokensResult: {
+        resultId?: string;
+        data?: number[];
+        edits?: Array<{ start: number; deleteCount: number; data?: number[] }>;
+    } | undefined;
     try {
-        tokensResult = await lspClient.sendRequest(
-            "textDocument/semanticTokens/full",
-            {
-                textDocument: { uri: docUri },
-            }
-        );
+        tokensResult = await lspClient.sendRequest(method, {
+            textDocument: { uri: docUri },
+            ...(previousResultId ? { previousResultId } : {}),
+        });
     } catch (err) {
         console.error("[LSP] Error requesting semantic tokens:", err);
+        return;
+    }
+
+    if (tokensResult?.resultId) {
+        state.resultId = tokensResult.resultId;
+        semanticTokenState.set(pageId, state);
+    }
+
+    if (tokensResult?.edits && tokensResult.edits.length) {
+        const message: Extract<OutgoingMessagePayload, { type: "semanticTokensDelta" }> = {
+            type: "semanticTokensDelta",
+            pageId,
+            previousResultId,
+            resultId: tokensResult.resultId,
+            edits: tokensResult.edits,
+        };
+
+        for (const [socket, ctx] of connections.entries()) {
+            if (ctx.pageId === pageId) {
+                send(socket, message);
+            }
+        }
+        return;
     }
 
     if (tokensResult?.data) {
@@ -230,6 +272,7 @@ async function requestSemanticTokens(
         > = {
             type: "semanticTokens",
             pageId,
+            resultId: tokensResult.resultId,
             tokens: tokensResult.data,
         };
 
@@ -242,6 +285,25 @@ async function requestSemanticTokens(
         console.warn(`[LSP] No semantic tokens returned for page ${pageId}`);
     }
 
+}
+
+function scheduleSemanticTokens(
+    pageId: number,
+    docUri: string,
+    forceFull: boolean
+): void {
+    const state = semanticTokenState.get(pageId) ?? {};
+    if (state.timer) {
+        clearTimeout(state.timer);
+    }
+
+    state.timer = setTimeout(() => {
+        requestSemanticTokens(pageId, docUri, forceFull).catch((err) => {
+            console.error("[LSP] Failed to get semantic tokens:", err);
+        });
+    }, SEMANTIC_TOKEN_DEBOUNCE_MS);
+
+    semanticTokenState.set(pageId, state);
 }
 
 function processMessage(ctx: ConnectionContext, raw: RawData) {
@@ -358,9 +420,7 @@ function initSocketContext(
     });
 
     // Request initial semantic tokens
-    requestSemanticTokens(ctx.pageId, ctx.uri).catch((err) => {
-        console.error("[LSP] Failed to get initial semantic tokens:", err);
-    });
+    scheduleSemanticTokens(ctx.pageId, ctx.uri, true);
 
     return ctx;
 }

@@ -149,8 +149,8 @@ export class LSPClient {
                     semanticTokens: {
                         dynamicRegistration: false,
                         requests: {
-                            full: true,
-                            range: false
+                            full: {delta: true},
+                            range: true,
                         },
                         formats: ["relative"],
                         tokenTypes: this.tokenTypes,

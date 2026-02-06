@@ -247,3 +247,77 @@ Tinymist-specific
 │  └─ params: Outline
 └─ tinymist/devEvent
 	└─ params: { type, ... }
+
+
+
+First request (full)
+Request:
+{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"textDocument/semanticTokens/full",
+    "params":{
+        "textDocument":{
+            "uri":"file:///path/doc.typ"
+        }
+    }
+}
+
+Reply:
+{
+    "jsonrpc":"2.0",
+    "id":1,"result":{
+        "resultId":"v1",
+        "data":[0,0,5,3,0,0,6,4,1]
+    }
+}
+
+Second request (delta, successful)
+Request:
+{
+    "jsonrpc":"2.0",
+    "id":2,
+    "method":"textDocument/semanticTokens/full/delta",
+    "params":{
+        "textDocument":{
+            "uri":"file:///path/doc.typ"
+        },
+        "previousResultId":"v1"
+    }
+}
+
+Reply:
+{
+    "jsonrpc":"2.0",
+    "id":2,
+    "result":{
+        "resultId":"v2",
+        "edits":[
+            {"start":5,"deleteCount":5,"data":[0,10,3,2,0]}
+        ]
+    }
+}
+
+Third request (delta can’t be computed → full returned)
+Request:
+{
+    "jsonrpc":"2.0",
+    "id":3,
+    "method":"textDocument/semanticTokens/full/delta",
+    "params":{
+        "textDocument":{
+            "uri":"file:///path/doc.typ"
+        },
+        "previousResultId":"v2"
+    }
+}
+
+Reply:
+{
+    "jsonrpc":"2.0",
+    "id":3,
+    "result":{
+        "resultId":"v3",
+        "data":[0,0,4,1,0,0,5,2,0]
+    }
+}

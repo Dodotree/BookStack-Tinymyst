@@ -201,7 +201,18 @@ export class TinymistFileSyncClient {
                     break;
 
                 case 'semanticTokens':
-                    window.$events.emit("tinymist-lsp-semantic-tokens", msg.tokens || []);
+                    window.$events.emit("tinymist-lsp-semantic-tokens", {
+                        tokens: msg.tokens || [],
+                        resultId: msg.resultId,
+                    });
+                    break;
+
+                case 'semanticTokensDelta':
+                    window.$events.emit("tinymist-lsp-semantic-tokens-delta", {
+                        edits: msg.edits || [],
+                        resultId: msg.resultId,
+                        previousResultId: msg.previousResultId,
+                    });
                     break;
 
                 case 'error':
