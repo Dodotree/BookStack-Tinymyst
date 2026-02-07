@@ -215,6 +215,10 @@ export class TinymistFileSyncClient {
                     });
                     break;
 
+                case 'diagnostics':
+                    window.$events.emit("tinymist-lsp-diagnostics", msg.diagnostics || []);
+                    break;
+
                 case 'error':
                     console.error('[File Sync / LSP] Server error:', msg);
                     window.$events.emit("tinymist-console-log",{ type: "error", message: "[File Sync / LSP] Server error", details: msg });

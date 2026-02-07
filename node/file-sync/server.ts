@@ -12,22 +12,9 @@ config({ path: join(process.cwd(), ".env") });
 type ConnectionContext = {
     socket: WebSocket;
     pageId: number;
-    uri: string;
-    userId: number;
-    docVersion: number;
+    tabToken: string;
     lastSeen: number;
 };
-
-// pageId -> TabSession
-type SessionMap = Map<number, TabSession>;
-interface TabSocket extends WebSocket {
-    pageId: number;
-    userId: number;
-    tabToken: string;
-    docVersion: number;
-    lastSeen: number;
-    isAlive: boolean;
-}
 
 type IncomingMessagePayload =
     | { type: "ping" }
@@ -61,13 +48,7 @@ type OutgoingMessagePayload =
         type: "semanticTokens";
         pageId: number;
         resultId?: string;
-        tokens: Array<{
-            line: number;
-            startChar: number;
-            length: number;
-            tokenType: string;
-            tokenModifiers: string[];
-        }>;
+        tokens: number[];
     }
     | {
         type: "semanticTokensDelta";
@@ -75,6 +56,12 @@ type OutgoingMessagePayload =
         previousResultId?: string;
         resultId?: string;
         edits: Array<{ start: number; deleteCount: number; data?: number[] }>;
+    }
+    | {
+        type: "diagnostics";
+        pageId: number;
+        uri: string;
+        diagnostics: Array<unknown>;
     }
     | {
         type: "error";
@@ -91,447 +78,406 @@ const STORAGE_ROOT =
 const HEARTBEAT_INTERVAL_MS = 20_000;
 const STALE_TIMEOUT_MS = 45_000;
 const IDLE_TIMEOUT_MS = 5 * 60_000; // 5 minutes
-
-const connections = new Map<WebSocket, ConnectionContext>();
-const fileManager = new FileManager(STORAGE_ROOT);
-
-// LSP client globals
-let lspClient: LSPClient | null = null;
-const openDocuments = new Map<number, { uri: string; version: number }>(); // pageId -> doc
-const semanticTokenState = new Map<
-    number,
-    { resultId?: string; timer?: NodeJS.Timeout }
->();
 const SEMANTIC_TOKEN_DEBOUNCE_MS = 300;
 
-function send(ws: WebSocket, payload: OutgoingMessagePayload) {
-    if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify(payload));
+// LSP client globals
+const connections = new Map<WebSocket, ConnectionContext>();
+const sessions = new Map<number, PageSession>();
+const fileManager = new FileManager(STORAGE_ROOT);
+let lspClient: LSPClient | null = null;
+
+function broadcastToAllSessions(payload: OutgoingMessagePayload): void {
+    for (const session of sessions.values()) {
+        session.broadcast(payload);
     }
 }
 
-function handleChanges(
-    ctx: ConnectionContext,
-    msg: Extract<IncomingMessagePayload, { type: "changes" }>
-) {
-    if (msg.pageId !== ctx.pageId) {
-        send(ctx.socket, {
-            type: "error",
-            code: "PAGE_MISMATCH",
-            message: "Page mismatch",
-        });
-        return;
-    }
-
-    if (msg.docVersion <= ctx.docVersion) {
-        send(ctx.socket, {
-            type: "error",
-            code: "VERSION_OUTDATED",
-            message: "Client version outdated, request full resync",
-        });
-        const content = fileManager.loadDocument(ctx.pageId);
-        send(ctx.socket, {
-            type: "fullState",
-            pageId: ctx.pageId,
-            docVersion: ctx.docVersion,
-            content,
-        });
-        return;
-    }
-
-    let updated: string;
-    let contentChanges: LspContentChange[];
-    try {
-        ({updated, contentChanges} = fileManager.applyChanges(ctx.pageId, msg.changes));
-    } catch (err) {
-        const errorMessage = err instanceof Error ? err.message : String(err);
-        send(ctx.socket, {
-            type: "error",
-            code: errorMessage,
-            message: `Failed to apply changes: ${msg.changes}`,
-        });
-        return;
-    }
-
-    try {
-        fileManager.persistDocument(ctx.pageId, updated);
-    } catch (err) {
-        send(ctx.socket, {
-            type: "error",
-            code: "WRITE_FAILED",
-            message: "Failed to persist document",
-        });
-        return;
-    }
-
-    ctx.docVersion = msg.docVersion;
-    send(ctx.socket, {
-        type: "ack",
-        pageId: ctx.pageId,
-        docVersion: ctx.docVersion,
+function notifyAllLspStatus(status: "down" | "restarting", details?: unknown): void {
+    const code = status === "down" ? "LSP_DOWN" : "LSP_RESTARTING";
+    const message =
+        status === "down"
+            ? "LSP server unavailable"
+            : "LSP server restarting";
+    broadcastToAllSessions({
+        type: "error",
+        code,
+        message: details ? `${message}: ${String(details)}` : message,
     });
-
-    if (!lspClient) {
-        console.warn("[LSP] LSP client not initialized");
-        return;
-    }
-
-    // Notify LSP of changes
-    try{
-        if (!openDocuments.has(ctx.pageId)) {
-            lspClient.sendNotification("textDocument/didOpen", {
-                textDocument: {
-                    uri: ctx.uri,
-                    languageId: "typst",
-                    version: ctx.docVersion,
-                    text: updated,
-                },
-            });
-        }else{
-            lspClient.sendNotification("textDocument/didChange", {
-                textDocument: {
-                    uri: ctx.uri,
-                    version: ctx.docVersion,
-                },
-                contentChanges,
-            });
-        }
-        openDocuments.set(ctx.pageId, { uri: ctx.uri, version: ctx.docVersion });
-    }catch(err){
-        console.error("[LSP] Failed to send document change notification:", err);
-    }
-
-    // Request semantic tokens after successful change (debounced delta)
-    scheduleSemanticTokens(ctx.pageId, ctx.uri, false);
 }
 
-/**
- * Request semantic tokens from LSP and broadcast to connected clients
- */
-async function requestSemanticTokens(
-    pageId: number,
-    docUri: string,
-    forceFull: boolean
-): Promise<void> {
-    if (!lspClient) {return;} // Here only to satisfy type checker
-
-    const state = semanticTokenState.get(pageId) ?? {};
-    if (forceFull) {
-        state.resultId = undefined;
+function getSession(pageId: number): PageSession {
+    const existing = sessions.get(pageId);
+    if (existing) {
+        return existing;
     }
 
-    const previousResultId = state.resultId;
-    const method = previousResultId
-        ? "textDocument/semanticTokens/full/delta"
-        : "textDocument/semanticTokens/full";
-
-    console.log(`[LSP] Requesting semantic tokens for page ${pageId} (${method})`);
-    let tokensResult: {
-        resultId?: string;
-        data?: number[];
-        edits?: Array<{ start: number; deleteCount: number; data?: number[] }>;
-    } | undefined;
-    try {
-        tokensResult = await lspClient.sendRequest(method, {
-            textDocument: { uri: docUri },
-            ...(previousResultId ? { previousResultId } : {}),
-        });
-    } catch (err) {
-        console.error("[LSP] Error requesting semantic tokens:", err);
-        return;
-    }
-
-    if (tokensResult?.resultId) {
-        state.resultId = tokensResult.resultId;
-        semanticTokenState.set(pageId, state);
-    }
-
-    if (tokensResult?.edits && tokensResult.edits.length) {
-        const message: Extract<OutgoingMessagePayload, { type: "semanticTokensDelta" }> = {
-            type: "semanticTokensDelta",
-            pageId,
-            previousResultId,
-            resultId: tokensResult.resultId,
-            edits: tokensResult.edits,
-        };
-
-        for (const [socket, ctx] of connections.entries()) {
-            if (ctx.pageId === pageId) {
-                send(socket, message);
-            }
-        }
-        return;
-    }
-
-    if (tokensResult?.data) {
-
-        // Broadcast to all clients viewing this page
-        const message: Extract<
-            OutgoingMessagePayload,
-            { type: "semanticTokens" }
-        > = {
-            type: "semanticTokens",
-            pageId,
-            resultId: tokensResult.resultId,
-            tokens: tokensResult.data,
-        };
-
-        for (const [socket, ctx] of connections.entries()) {
-            if (ctx.pageId === pageId) {
-                send(socket, message);
-            }
-        }
-    } else {
-        console.warn(`[LSP] No semantic tokens returned for page ${pageId}`);
-    }
-
-}
-
-function scheduleSemanticTokens(
-    pageId: number,
-    docUri: string,
-    forceFull: boolean
-): void {
-    const state = semanticTokenState.get(pageId) ?? {};
-    if (state.timer) {
-        clearTimeout(state.timer);
-    }
-
-    state.timer = setTimeout(() => {
-        requestSemanticTokens(pageId, docUri, forceFull).catch((err) => {
-            console.error("[LSP] Failed to get semantic tokens:", err);
-        });
-    }, SEMANTIC_TOKEN_DEBOUNCE_MS);
-
-    semanticTokenState.set(pageId, state);
-}
-
-function processMessage(ctx: ConnectionContext, raw: RawData) {
-    let msg: IncomingMessagePayload;
-    try {
-        msg = JSON.parse(raw.toString());
-    } catch (err) {
-        send(ctx.socket, {
-            type: "error",
-            code: "BAD_JSON",
-            message: "Invalid JSON",
-        });
-        return;
-    }
-
-    ctx.lastSeen = Date.now();
-
-    switch (msg.type) {
-        case "ping":
-            send(ctx.socket, { type: "pong" });
-            return;
-        case "changes":
-            handleChanges(ctx, msg);
-            return;
-        case "updateToken":
-            handleTokenUpdate(ctx, msg);
-            return;
-        default:
-            send(ctx.socket, {
-                type: "error",
-                code: "UNKNOWN_TYPE",
-                message: "Unsupported message type",
-            });
-            return;
-    }
-}
-
-function handleTokenUpdate(
-    ctx: ConnectionContext,
-    msg: Extract<IncomingMessagePayload, { type: "updateToken" }>
-) {
-    try {
-        const payload = verifyNewToken(msg.token, ctx.pageId);
-        // Update context with new user ID (in case user changed)
-        ctx.userId = payload.user_id;
-        // Send acknowledgment
-        send(ctx.socket, {
-            type: "ack",
-            pageId: ctx.pageId,
-            docVersion: ctx.docVersion,
-        });
-    } catch (err) {
-        console.error("[File Sync] Token update failed:", err);
-        send(ctx.socket, {
-            type: "error",
-            code: "INVALID_TOKEN",
-            message: "Token verification failed",
-        });
-    }
-}
-
-function createContext(
-    socket: WebSocket,
-    tokenPayload: AuthToken,
-    initialVersion: number
-): ConnectionContext {
-    return {
-        socket,
-        pageId: tokenPayload.page_id,
-        uri: `file:///${join(STORAGE_ROOT, `page_${tokenPayload.page_id}.typ`)}`,
-        userId: tokenPayload.user_id,
-        docVersion: initialVersion,
-        lastSeen: Date.now(),
-    };
-}
-
-function initSocketContext(
-    socket: WebSocket,
-    request: IncomingMessage
-): ConnectionContext {
-
-    let payload: AuthToken;
-    try {
-        payload = verifyRequestToken(request);
-    } catch (err) {
-        console.error("Invalid token during connection", { err });
-        socket.close(4401, "INVALID_TOKEN");
-        throw new Error("INVALID_TOKEN", {cause: err});
-    }
-
-    const latestContext = Array.from(connections.values()).reduce(
-        (acc, c) =>
-            c.pageId === payload.page_id && c.docVersion > acc.version
-                ? {
-                    version: c.docVersion,
-                    someoneElse: payload.user_id !== c.userId,
-                    lastSeen: c.lastSeen,
-                }
-                : acc,
-        { version: 0, someoneElse: false, lastSeen: 0 }
-    );
-
-    const content = fileManager.loadDocument(payload.page_id);
-    const ctx = createContext(socket, payload, latestContext.version);
-    connections.set(socket, ctx);
-
-    send(socket, {
-        type: "fullState",
-        pageId: payload.page_id,
-        docVersion: ctx.docVersion,
-        content,
-        someoneElse: latestContext.someoneElse,
-        lastSeen: latestContext.lastSeen,
+    const uri = `file:///${join(STORAGE_ROOT, `page_${pageId}.typ`)}`
+    const session = new PageSession(pageId, uri, () => {
+        sessions.delete(pageId);
     });
-
-    // Request initial semantic tokens
-    scheduleSemanticTokens(ctx.pageId, ctx.uri, true);
-
-    return ctx;
+    sessions.set(pageId, session);
+    return session;
 }
 
-function pruneStaleConnections() {
-    const now = Date.now();
-    for (const [ws, ctx] of connections.entries()) {
-        if (now - ctx.lastSeen > STALE_TIMEOUT_MS) {
-            console.warn("Closing stale connection", {
-                pageId: ctx.pageId,
-                userId: ctx.userId,
-            });
-            ws.close(4000, "Idle timeout");
-            connections.delete(ws);
+function getNotificationSession(params: unknown): PageSession | null {
+    if (params && typeof params === "object" && "uri" in params && typeof params.uri === "string") {
+        const pageId = params.uri
+            .split("/")
+            .pop()
+            ?.split(".")[0]
+            .replace("page_", "");
+        // pageId is 1-based (not zero-based)
+        if (!pageId || isNaN(Number(pageId))) {
+            return null;
         }
+        return sessions.get(Number(pageId)) || null;
     }
+    return null;
 }
 
-function rawDataToString(data: RawData): string {
-    if (typeof data === "string") {
-        return data;
-    }
-    if (data instanceof Buffer) {
-        return data.toString();
-    }
-    if (data instanceof ArrayBuffer) {
-        return Buffer.from(data).toString();
-    }
-    if (Array.isArray(data)) {
-        return Buffer.concat(data).toString();
-    }
-    if (ArrayBuffer.isView(data)) {
-        const view = data as ArrayBufferView;
-        return Buffer.from(view.buffer, view.byteOffset, view.byteLength).toString();
-    }
-    return String(data);
-}
-
-class TabSession {
-    // private readonly client: TinymistPreviewClient;
-    private readonly browsers: Set<TabSocket> = new Set();
+class PageSession {
+    private readonly browsers: Set<ConnectionContext> = new Set();
     private idleTimer: NodeJS.Timeout | null = null;
     private destroyed = false;
+    private docVersion = 0;
+    private semanticTokenResultId?: string;
+    private semanticTokenTimer?: NodeJS.Timeout;
+    private lspOpen = false;
 
     constructor(
         private readonly pageId: number,
-        // private readonly options: PreviewClientOptions,
-        private readonly remove: (pageId: number) => void
-    ) {
-        // this.client = new TinymistPreviewClient(pageId, filePath, { ...managerOptions });
-        // this.readyPromise = this.client.start().then(() => undefined);
+        private readonly uri: string,
+        private readonly remove: () => void
+    ) {}
+
+
+    send(ws: WebSocket, payload: OutgoingMessagePayload) {
+        if (ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify(payload));
+        }
     }
 
-    addBrowser(socket: TabSocket): void {
+    sendAck(ws: WebSocket) {
+        this.send(ws, {
+            type: "ack",
+            pageId: this.pageId,
+            docVersion: this.docVersion,
+        });
+    }
+
+    addConnection(ctx: ConnectionContext): void {
         if (this.destroyed) {
             throw new Error("Session has been destroyed");
         }
 
-        this.browsers.add(socket);
+        const content = fileManager.loadDocument(this.pageId);
+        const { someoneElse, lastSeen } = this.getLatestConnectionInfo(ctx.tabToken);
+
+        this.browsers.add(ctx);
         this.clearIdleTimer();
 
-        if (socket.readyState === WebSocket.OPEN) {
-            // const payload = JSON.stringify({ type: "bridge:connected", pageId: this.pageId });
-            // socket.send(Buffer.concat([Buffer.from([CONTROL_TAG]), Buffer.from(payload, "utf8")]));
-        }
+        this.send(ctx.socket, {
+            type: "fullState",
+            pageId: this.pageId,
+            docVersion: this.docVersion,
+            content,
+            someoneElse,
+            lastSeen,
+        });
+
+        this.scheduleSemanticTokens(true);
     }
 
-    removeBrowser(socket: TabSocket): void {
-        this.browsers.delete(socket);
+    removeConnection(ctx: ConnectionContext): void {
+        this.browsers.delete(ctx);
         if (!this.destroyed && this.browsers.size === 0) {
             this.scheduleIdleStop();
         }
     }
 
-    handleBrowserMessage(socket: TabSocket, data: RawData, isBinary: boolean): void {
+    handleMessage(ctx: ConnectionContext, raw: RawData): void {
+        let msg: IncomingMessagePayload;
         try {
-            const json = rawDataToString(data);
-            const msg: IncomingMessagePayload = JSON.parse(json);
-            // Handle message...
+            msg = JSON.parse(raw.toString());
         } catch (err) {
-            send(socket, {
+            this.send(ctx.socket, {
                 type: "error",
                 code: "BAD_JSON",
                 message: "Invalid JSON",
             });
+            return;
+        }
+
+        ctx.lastSeen = Date.now();
+
+        switch (msg.type) {
+            case "ping":
+                this.send(ctx.socket, { type: "pong" });
+                return;
+            case "changes":
+                this.handleChanges(ctx, msg);
+                return;
+            case "updateToken":
+                this.handleTokenUpdate(ctx, msg);
+                return;
+            default:
+                this.send(ctx.socket, {
+                    type: "error",
+                    code: "UNKNOWN_TYPE",
+                    message: "Unsupported message type",
+                });
+                return;
         }
     }
 
-    private broadcastSync(payload: RawData | string): void {
+    handleLspNotification(method: string, params: any): void {
+        if (method === "textDocument/publishDiagnostics") {
+            console.log(
+                "[LSP] Diagnostics:",
+                params.uri,
+                params.diagnostics?.length ?? 0
+            );
+
+            this.broadcastDiagnostics(
+                params.uri,
+                Array.isArray(params.diagnostics) ? params.diagnostics : []
+            );
+        }
+    }
+
+    handleTokenUpdate( // Token renewal from single browser
+        ctx: ConnectionContext,
+        msg: Extract<IncomingMessagePayload, { type: "updateToken" }>
+    ) {
+        try {
+            verifyNewToken(msg.token, ctx.pageId);
+            // Send acknowledgment
+            this.sendAck(ctx.socket);
+        } catch (err) {
+            console.error("[File Sync] Token update failed:", err);
+            this.send(ctx.socket, {
+                type: "error",
+                code: "INVALID_TOKEN",
+                message: "Token verification failed",
+            });
+        }
+    }
+
+    broadcast(payload: OutgoingMessagePayload): void {
         for (const browser of this.browsers) {
-            if (browser.readyState === WebSocket.OPEN) {
-                browser.send(payload);
-            }
+            this.send(browser.socket, payload);
         }
     }
 
-    private broadcastStatus(status: string, details: any): void {
-        console.log(`[Tab Session ${this.pageId}] ${status}`, details ?? "");
-        const payload = JSON.stringify({ type: `bridge:${status}`, pageId: this.pageId, details });
-        for (const browser of this.browsers) {
-            if (browser.readyState === WebSocket.OPEN) {
-                browser.send(payload);
-            }
+    broadcastDiagnostics(uri: string, diagnostics: Array<unknown>): void {
+        this.broadcast({
+            type: "diagnostics",
+            pageId: this.pageId,
+            uri,
+            diagnostics,
+        });
+    }
+
+    handleLspRestart(): void {
+        this.lspOpen = false;
+        this.semanticTokenResultId = undefined;
+        if (this.browsers.size > 0) {
+            const content = fileManager.loadDocument(this.pageId);
+            this.openLspDocument(content, true);
+            this.scheduleSemanticTokens(true);
         }
     }
 
-    private handleClientExit(code: number | null, signal: NodeJS.Signals | null): void {
-        const details = { code, signal };
-        console.warn(`[Tab Session ${this.pageId}] Tinymist exited ${details}`);
-        this.broadcastStatus('exit', details);
-        this.stop().catch((error) => console.error("Failed to stop after exit", error));
+    private handleChanges(
+        ctx: ConnectionContext,
+        msg: Extract<IncomingMessagePayload, { type: "changes" }>
+    ): void {
+        if (msg.pageId !== ctx.pageId) {
+            this.send(ctx.socket, {
+                type: "error",
+                code: "PAGE_MISMATCH",
+                message: "Page mismatch",
+            });
+            return;
+        }
+
+        if (msg.docVersion <= this.docVersion) {
+            this.send(ctx.socket, {
+                type: "error",
+                code: "VERSION_OUTDATED",
+                message: "Client version outdated, request full resync",
+            });
+            const content = fileManager.loadDocument(this.pageId);
+            this.send(ctx.socket, {
+                type: "fullState",
+                pageId: this.pageId,
+                docVersion: this.docVersion,
+                content,
+            });
+            return;
+        }
+
+        let updated: string;
+        let contentChanges: LspContentChange[];
+        try {
+            ({ updated, contentChanges } = fileManager.applyChanges(
+                this.pageId,
+                msg.changes
+            ));
+        } catch (err) {
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            this.send(ctx.socket, {
+                type: "error",
+                code: errorMessage,
+                message: `Failed to apply changes: ${msg.changes}`,
+            });
+            return;
+        }
+
+        try {
+            fileManager.persistDocument(this.pageId, updated);
+        } catch (err) {
+            this.send(ctx.socket, {
+                type: "error",
+                code: "WRITE_FAILED",
+                message: "Failed to persist document",
+            });
+            return;
+        }
+
+        this.docVersion = msg.docVersion;
+        this.sendAck(ctx.socket);
+
+        if (!lspClient) {
+            notifyAllLspStatus("down", "client not initialized");
+            return;
+        }
+
+        try {
+            if (!this.lspOpen) {
+                this.openLspDocument(updated, false);
+            } else {
+                lspClient.sendNotification("textDocument/didChange", {
+                    textDocument: {
+                        uri: this.uri,
+                        version: this.docVersion,
+                    },
+                    contentChanges,
+                });
+            }
+        } catch (err) {
+            console.error("[LSP] Failed to send document change notification:", err);
+        }
+
+        this.scheduleSemanticTokens(false);
+    }
+
+    private openLspDocument(text: string, force: boolean): void {
+        if (!lspClient) {
+            return;
+        }
+        if (this.lspOpen && !force) {
+            return;
+        }
+        lspClient.sendNotification("textDocument/didOpen", {
+            textDocument: {
+                uri: this.uri,
+                languageId: "typst",
+                version: this.docVersion,
+                text,
+            },
+        });
+        this.lspOpen = true;
+    }
+
+    private scheduleSemanticTokens(forceFull: boolean): void {
+        if (this.semanticTokenTimer) {
+            clearTimeout(this.semanticTokenTimer);
+        }
+
+        this.semanticTokenTimer = setTimeout(() => {
+            this.requestSemanticTokens(forceFull).catch((err) => {
+                console.error("[LSP] Failed to get semantic tokens:", err);
+            });
+        }, SEMANTIC_TOKEN_DEBOUNCE_MS);
+    }
+
+    private async requestSemanticTokens(forceFull: boolean): Promise<void> {
+        if (!lspClient) {
+            notifyAllLspStatus("down", "client not initialized");
+            return;
+        }
+
+        if (forceFull) {
+            this.semanticTokenResultId = undefined;
+        }
+
+        const previousResultId = this.semanticTokenResultId;
+        const method = previousResultId
+            ? "textDocument/semanticTokens/full/delta"
+            : "textDocument/semanticTokens/full";
+
+        console.log(
+            `[LSP] Requesting semantic tokens for page ${this.pageId} (${method})`
+        );
+        let tokensResult:
+            | {
+                  resultId?: string;
+                  data?: number[];
+                  edits?: Array<{ start: number; deleteCount: number; data?: number[] }>;
+              }
+            | undefined;
+        try {
+            tokensResult = await lspClient.sendRequest(method, {
+                textDocument: { uri: this.uri },
+                ...(previousResultId ? { previousResultId } : {}),
+            });
+        } catch (err) {
+            console.error("[LSP] Error requesting semantic tokens:", err);
+            return;
+        }
+
+        if (tokensResult?.resultId) {
+            this.semanticTokenResultId = tokensResult.resultId;
+        }
+
+        if (tokensResult?.edits && tokensResult.edits.length) {
+            this.broadcast({
+                type: "semanticTokensDelta",
+                pageId: this.pageId,
+                previousResultId,
+                resultId: tokensResult.resultId,
+                edits: tokensResult.edits,
+            });
+            return;
+        }
+
+        if (tokensResult?.data) {
+            this.broadcast({
+                type: "semanticTokens",
+                pageId: this.pageId,
+                resultId: tokensResult.resultId,
+                tokens: tokensResult.data,
+            });
+        } else {
+            console.warn(`[LSP] No semantic tokens returned for page ${this.pageId}`);
+        }
+    }
+
+    private getLatestConnectionInfo(newTabToken: string): {
+        someoneElse: boolean;
+        lastSeen: number;
+    } {
+        let someoneElse = false;
+        let lastSeen = 0;
+        for (const ctx of this.browsers) {
+            if (ctx.tabToken !== newTabToken) {
+                someoneElse = true;
+            }
+            lastSeen = Math.max(lastSeen, ctx.lastSeen);
+        }
+
+        return { someoneElse, lastSeen };
     }
 
     private scheduleIdleStop(): void {
@@ -557,11 +503,39 @@ class TabSession {
         }
         this.destroyed = true;
         this.clearIdleTimer();
+        if (this.semanticTokenTimer) {
+            clearTimeout(this.semanticTokenTimer);
+            this.semanticTokenTimer = undefined;
+        }
         this.browsers.clear();
+        if (this.lspOpen && lspClient) {
+            try {
+                lspClient.sendNotification("textDocument/didClose", {
+                    textDocument: { uri: this.uri },
+                });
+            } catch (err) {
+                console.error("[LSP] Failed to close document:", err);
+            }
+        }
+        this.lspOpen = false;
+        this.remove();
+    }
+}
 
-        // remove file?
 
-        this.remove(this.pageId);
+function pruneStaleConnections() {
+    const now = Date.now();
+    for (const [ws, ctx] of connections.entries()) {
+        if (now - ctx.lastSeen > STALE_TIMEOUT_MS) {
+            console.warn("Closing stale connection", {
+                pageId: ctx.pageId,
+                tabToken: ctx.tabToken,
+            });
+            ws.close(4000, "Idle timeout");
+            connections.delete(ws);
+            const session = sessions.get(ctx.pageId);
+            session?.removeConnection(ctx);
+        }
     }
 }
 
@@ -574,38 +548,42 @@ async function bootstrap() {
 
     wss.on("connection", (socket, request) => {
         try {
-            const ctx = initSocketContext(socket, request);
 
-            socket.on("message", (raw) => processMessage(ctx, raw));
+            let payload: AuthToken;
+            try {
+                payload = verifyRequestToken(request);
+            } catch (err) {
+                console.error("Invalid token during connection", { err });
+                socket.close(4401, "INVALID_TOKEN");
+                throw new Error("INVALID_TOKEN", {cause: err});
+            }
+
+            const ctx = {
+                socket,
+                pageId: payload.page_id,
+                tabToken: payload.tabToken ?? "",
+                lastSeen: Date.now(),
+            };
+            connections.set(socket, ctx);
+            const session = getSession(ctx.pageId);
+            session.addConnection(ctx);
+
+            socket.on("message", (raw) => session.handleMessage(ctx, raw));
 
             socket.on("close", (code, reason) => {
                 console.log("Socket closed", {
                     code,
                     reason: reason.toString(),
                     pageId: ctx.pageId,
-                    userId: ctx.userId,
                 });
                 connections.delete(socket);
-
-                // Close document in LSP if no other clients are viewing it
-                const hasOtherClients = Array.from(connections.values()).some(
-                    (c) => c.pageId === ctx.pageId
-                );
-                if (!hasOtherClients && openDocuments.has(ctx.pageId)) {
-                    const docUri = openDocuments.get(ctx.pageId)!;
-                    lspClient?.sendNotification("textDocument/didClose", {
-                        textDocument: { uri: docUri },
-                    });
-                    openDocuments.delete(ctx.pageId);
-                    console.log(`[LSP] Closed document for page ${ctx.pageId}`);
-                }
+                session.removeConnection(ctx);
             });
 
             socket.on("error", (err) => {
                 console.error("Socket error", {
                     err,
                     pageId: ctx.pageId,
-                    userId: ctx.userId,
                 });
             });
         } catch (err) {
@@ -652,20 +630,20 @@ async function initializeLSPClient(): Promise<void> {
         cwd: process.cwd(),
         stderrLogFile: logFile,
         onNotification: (method, params) => {
-            if (method === "textDocument/publishDiagnostics") {
-                console.log(
-                    "[LSP] Diagnostics:",
-                    params.uri,
-                    params.diagnostics.length
-                );
-                // TODO: Broadcast diagnostics to clients
-            }
+            console.log(`[LSP] Notification: ${method}`, params);
+            const session = getNotificationSession(params);
+            session?.handleLspNotification(method, params);
         },
         onError: (error) => {
             console.error("[LSP] Error:", error);
+            notifyAllLspStatus("down", error);
         },
         onRestart: () => {
             console.log("[LSP] Server restarted, re-initializing...");
+            notifyAllLspStatus("restarting");
+            for (const session of sessions.values()) {
+                session.handleLspRestart();
+            }
             lspClient?.initializeLSP();
         },
     });
@@ -677,6 +655,7 @@ async function initializeLSPClient(): Promise<void> {
     } catch (err) {
         console.error("[LSP] Failed to initialize:", err);
         lspClient = null;
+        notifyAllLspStatus("down", err);
     }
 }
 

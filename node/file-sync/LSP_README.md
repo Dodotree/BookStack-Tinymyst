@@ -321,3 +321,25 @@ Reply:
         "data":[0,0,4,1,0,0,5,2,0]
     }
 }
+
+textDocument/publishDiagnostics
+
+params shape (LSP 3.17):
+
+{
+    uri: string
+    version?: number
+    diagnostics: [
+        {
+            range: { start: { line, character }, end: { line, character } }
+            severity?: 1|2|3|4 (Error/Warning/Info/Hint)
+            code?: number|string
+            codeDescription?: { href: string }
+            source?: string
+            message: string
+            tags?: number[] (1=Unnecessary, 2=Deprecated)
+            relatedInformation?: [{ location: { uri, range }, message }]
+            data?: any
+        }, ...
+    ]
+}

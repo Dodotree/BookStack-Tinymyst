@@ -15,6 +15,11 @@ export class DiagnosticsProcessor {
 
     constructor(editorView: EditorView | null = null) {
         this.editorView = editorView;
+
+        this.updateDiagnosticsFromFallback = this.updateDiagnosticsFromFallback.bind(this);
+        this.updateDiagnosticsFromLsp = this.updateDiagnosticsFromLsp.bind(this);
+        window.$events.listen("tinymist-diagnostics", this.updateDiagnosticsFromFallback);
+        window.$events.listen("tinymist-lsp-diagnostics", this.updateDiagnosticsFromLsp);
     }
 
     attachEditorView(view: EditorView): void {
@@ -23,14 +28,6 @@ export class DiagnosticsProcessor {
 
     detachEditorView(): void {
         this.editorView = null;
-    }
-
-    triggerLinting(): void {
-        if (this.editorView) {
-            this.editorView.dispatch(
-                setDiagnostics(this.editorView.state, this.cachedDiagnostics)
-            );
-        }
     }
 
     private mapSeverity(severity: string): 'error' | 'warning' | 'info' {
@@ -42,6 +39,20 @@ export class DiagnosticsProcessor {
             case 'hint':
                 return 'info';
             default: return 'error';
+        }
+    }
+
+    private mapLspSeverity(severity: number | undefined): "error" | "warning" | "info" {
+        switch (severity) {
+            case 1:
+                return "error";
+            case 2:
+                return "warning";
+            case 3:
+            case 4:
+                return "info";
+            default:
+                return "error";
         }
     }
 
@@ -60,22 +71,78 @@ export class DiagnosticsProcessor {
     /**
      * Update diagnostics from (fallback) compilation response and the text that triggered it
      */
-    updateDiagnostics(diagnostics: any[], sourceText: string): void {
+    updateDiagnosticsFromFallback(diagnostics: any[], sourceText: string): void {
         if (!Array.isArray(diagnostics)) {
             return;
         }
-
-        // Calculate positions for CodeMirror
-        this.cachedDiagnostics = diagnostics.map((diag: any) => {
-            const from = this.positionToOffsetInText(sourceText, diag.line - 1, diag.column - 1);
-            const to = this.positionToOffsetInText(sourceText, diag.line - 1, Math.max(diag.column - 1, diag.column));
+        this.cachedDiagnostics = diagnostics.map((d: any) => {
+            const from = this.positionToOffsetInText(sourceText, d.line - 1, d.column - 1);
+            const to = this.positionToOffsetInText(sourceText, d.line - 1, d.column);
 
             return {
-                from: from,
+                from,
                 to: Math.max(from + 1, to),
-                severity: this.mapSeverity(diag.severity),
-                message: diag.message,
+                severity: this.mapSeverity(d.severity),
+                message: d.message,
             };
         });
     }
+
+
+    updateDiagnosticsFromLsp = (diagnostics: any[]) => {
+        if (!this.editorView || !Array.isArray(diagnostics)) {
+            return;
+        }
+
+        const doc = this.editorView.state.doc;
+        const cmDiagnostics = diagnostics.map((d) => {
+            const range = d.range || {};
+            const start = range.start || {};
+            const end = range.end || {};
+            const startLine = typeof start.line === "number" ? start.line + 1 : 1;
+            const endLine = typeof end.line === "number" ? end.line + 1 : startLine;
+            const startChar = typeof start.character === "number" ? start.character : 0;
+            const endChar = typeof end.character === "number" ? end.character : startChar;
+
+            const fromLine = doc.line(Math.min(Math.max(startLine, 1), doc.lines));
+            const toLine = doc.line(Math.min(Math.max(endLine, 1), doc.lines));
+            const from = Math.min(fromLine.from + startChar, fromLine.to);
+            const to = Math.min(toLine.from + endChar, toLine.to);
+
+            const severity = this.mapLspSeverity(d.severity);
+
+            return {
+                from,
+                to: Math.max(from + 1, to),
+                severity,
+                message: d.message || "LSP diagnostic",
+            };
+        });
+
+        this.editorView.dispatch(
+            setDiagnostics(this.editorView.state, cmDiagnostics)
+        );
+    }
+
+    triggerLinting(): void {
+        if (this.editorView) {
+            this.editorView.dispatch(
+                setDiagnostics(this.editorView.state, this.cachedDiagnostics)
+            );
+        }
+    }
+
+    logToConsole(diagnostics: Diagnostic[]): void {
+        diagnostics.forEach(diag => {
+            const logMessage = `[Diagnostic] ${diag.message} (from ${diag.severity})`;
+            if (diag.severity === 'error') {
+                window.$events.emit("tinymist-console-log", { type: "error", message: `[Typst]Line ${diag.line}, Col ${diag.column}: ${diag.message}` });
+            } else if (diag.severity === 'warning') {
+                window.$events.emit("tinymist-console-log", { type: "warning", message: logMessage });
+            } else {
+                window.$events.emit("tinymist-console-log", { type: "info", message: logMessage });
+            }
+        });
+    }
+
 }

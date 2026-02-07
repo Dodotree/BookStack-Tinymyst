@@ -166,14 +166,14 @@ export class LSPClient {
 
         console.log("LSP initialized:", initResult);
 
-        // Send initialized notification
+        // Send initialized notification, for some reason it's required
         this.sendNotification("initialized", {});
 
         return initResult;
     }
 
     /**
-     * Send a request to the LSP server
+     * Send a request to the LSP server (expects a response)
      */
     sendRequest(method: string, params?: any): Promise<any> {
         if (!this.process || !this.process.stdin) {

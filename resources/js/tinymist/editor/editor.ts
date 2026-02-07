@@ -15,23 +15,20 @@ import { EditorState, StateEffect, Transaction } from "@codemirror/state";
 import { setDiagnostics } from "@codemirror/lint";
 
 import { SemanticTokenProcessor, highlightField } from "./semantic-tokens";
+import { DiagnosticsProcessor } from "./diagnostics";
 
 
 export class TinymistEditorUI {
     elem: HTMLElement;
     editor: HTMLTextAreaElement;
     editorView: EditorView | null = null;
+    private diagnosticsProcessor = new DiagnosticsProcessor();
     private semanticTokens = new SemanticTokenProcessor();
     private previewPanEnabled = false;
 
     constructor(elem: HTMLElement, editor: HTMLTextAreaElement) {
         this.elem = elem;
         this.editor = editor;
-
-        this.updateDiagnostics = this.updateDiagnostics.bind(this);
-        this.syncFullStateFromServer = this.syncFullStateFromServer.bind(this);
-        window.$events.listen("tinymist-diagnostics", this.updateDiagnostics);
-        window.$events.listen("tinymist-sync-full-state", this.syncFullStateFromServer);
 
         this.setupCodeMirror();
 
@@ -41,6 +38,7 @@ export class TinymistEditorUI {
         // Setup form submit handler to sync CodeMirror content to textarea
         this.setupFormSubmitHandler();
 
+        this.diagnosticsProcessor.attachEditorView(this.editorView!);
         this.semanticTokens.attachEditorView(this.editorView!);
     }
 
@@ -87,6 +85,9 @@ export class TinymistEditorUI {
     }
 
     setupListeners() {
+        this.syncFullStateFromServer = this.syncFullStateFromServer.bind(this);
+        window.$events.listen("tinymist-sync-full-state", this.syncFullStateFromServer);
+
         if (!this.editorView) {
             // Fall back to textarea if CodeMirror fails, otherwise onInput() called from CodeMirror update listener
             this.editor.style.display = "block";
@@ -132,14 +133,6 @@ export class TinymistEditorUI {
         form.addEventListener("submit", () => {
             this.syncContentToTextarea();
         });
-    }
-
-    updateDiagnostics = (diagnostics: any[]) => {
-        if (this.editorView) {
-            this.editorView.dispatch(
-                setDiagnostics(this.editorView.state, diagnostics)
-            );
-        }
     }
 
     syncFullStateFromServer(content: string) {

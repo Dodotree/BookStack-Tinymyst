@@ -4,8 +4,6 @@
 // diagnostics output parsed on the backend
 // when compilations succeed, provides SVG to fill the preview pane
 
-import { Diagnostic } from '@codemirror/lint';
-
 /**
  * Fallback compiler for Typst when WebSocket sync is unavailable
  * Handles compilation via AJAX endpoint and diagnostic processing
@@ -16,8 +14,6 @@ export class TinymistFallbackCompiler {
     private compileDelay: number;
     private compilationSequence: number = 0;
     private lastProcessedSequence: number = 0;
-    private lastCompiledSource: string = '';
-    private cachedDiagnostics: Diagnostic[] = [];
 
     // Callbacks
     private getText: () => string;
@@ -74,8 +70,6 @@ export class TinymistFallbackCompiler {
             clearTimeout(this.compileTimer);
             this.compileTimer = null;
         }
-        this.lastCompiledSource = '';
-        this.cachedDiagnostics = [];
         this.compilationSequence = 0;
         this.lastProcessedSequence = 0;
     }
@@ -109,9 +103,6 @@ export class TinymistFallbackCompiler {
             // Mark this as the last processed compilation
             this.lastProcessedSequence = thisCompilationSequence;
 
-            // Store the source that was compiled (for diagnostic position calculation)
-            this.lastCompiledSource = source;
-
             const respData = response && response.data;
 
             // Guard the shape of respData before accessing properties to avoid errors
@@ -124,19 +115,17 @@ export class TinymistFallbackCompiler {
 
                     // Update cached diagnostics
                     if (data.diagnostics && data.diagnostics.length > 0) {
-                        this.updateDiagnostics(data.diagnostics, source);
+                        window.$events.emit("tinymist-diagnostics", { diagnostics: data.diagnostics, sourceText: source });
                     } else {
                         // Clear diagnostics on successful compilation with no errors
                         console.log('[Typst] Clearing diagnostics (success with no errors)');
-                        this.cachedDiagnostics = [];
-                        window.$events.emit("tinymist-diagnostics", []);
+                        window.$events.emit("tinymist-diagnostics", { diagnostics: [], sourceText: source });
                     }
                 } else {
                     if (data.diagnostics && Array.isArray(data.diagnostics) && data.diagnostics.length > 0) {
-                        this.updateDiagnostics(data.diagnostics, source);
+                        window.$events.emit("tinymist-diagnostics", { diagnostics: data.diagnostics, sourceText: source });
                     } else {
                         // No diagnostics parsed - log raw errors as fallback
-                        this.cachedDiagnostics = [];
                         data.errors?.forEach((error) =>  window.$events.emit("tinymist-console-log",{ type: "error", message: "[Typst] Compile Error", details: error }))
                     }
                 }
@@ -152,67 +141,6 @@ export class TinymistFallbackCompiler {
             console.error('[Typst] Compilation failed:', error);
             window.$events.emit("tinymist-console-log",{ type: "error", message: "[Typst] Compilation failed. Check console for details.", details: error });
         }
-    }
-
-    /**
-     * Update diagnostics from compilation response
-     */
-    updateDiagnostics(diagnostics: any[], sourceText: string): void {
-        if (!Array.isArray(diagnostics)) {
-            this.cachedDiagnostics = [];
-            return;
-        }
-
-        // Calculate positions for CodeMirror
-        this.cachedDiagnostics = diagnostics.map((diag: any) => {
-            const from = this.positionToOffsetInText(sourceText, diag.line - 1, diag.column - 1);
-            const to = this.positionToOffsetInText(sourceText, diag.line - 1, Math.max(diag.column - 1, diag.column));
-
-            return {
-                from: from,
-                to: Math.max(from + 1, to),
-                severity: this.mapSeverity(diag.severity),
-                message: diag.message,
-            };
-        });
-
-        console.log('[Typst] Cached diagnostics:', this.cachedDiagnostics);
-        window.$events.emit("tinymist-diagnostics", this.cachedDiagnostics);
-
-        // Log diagnostics to console
-        diagnostics.forEach(diag => {
-            if (diag.severity === 'error') {
-                window.$events.emit("tinymist-console-log",{ type: "error", message: `[Typst]Line ${diag.line}, Col ${diag.column}: ${diag.message}` });
-            } else if (diag.severity === 'warning') {
-                window.$events.emit("tinymist-console-log",{ type: "warning", message: `[Typst] Line ${diag.line}, Col ${diag.column}: ${diag.message}` });
-            }
-        });
-    }
-
-    // Private helper methods
-
-    private mapSeverity(severity: string): 'error' | 'warning' | 'info' {
-        switch (severity.toLowerCase()) {
-            case 'error': return 'error';
-            case 'warning': return 'warning';
-            case 'information':
-            case 'info':
-            case 'hint':
-                return 'info';
-            default: return 'error';
-        }
-    }
-
-    private positionToOffsetInText(text: string, line: number, column: number): number {
-        const lines = text.split('\n');
-        if (line < 0 || line >= lines.length) return 0;
-
-        let offset = 0;
-        for (let i = 0; i < line; i++) {
-            offset += lines[i].length + 1; // +1 for newline
-        }
-        offset += Math.min(column, lines[line].length);
-        return offset;
     }
 
 }
