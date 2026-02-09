@@ -47,12 +47,14 @@ type OutgoingMessagePayload =
     | {
         type: "semanticTokens";
         pageId: number;
+        docVersion: number;
         resultId?: string;
         tokens: number[];
     }
     | {
         type: "semanticTokensDelta";
         pageId: number;
+        docVersion: number;
         previousResultId?: string;
         resultId?: string;
         edits: Array<{ start: number; deleteCount: number; data?: number[] }>;
@@ -60,6 +62,7 @@ type OutgoingMessagePayload =
     | {
         type: "diagnostics";
         pageId: number;
+        docVersion: number;
         uri: string;
         diagnostics: Array<unknown>;
     }
@@ -273,6 +276,7 @@ class PageSession {
         this.broadcast({
             type: "diagnostics",
             pageId: this.pageId,
+            docVersion: this.docVersion,
             uri,
             diagnostics,
         });
@@ -445,6 +449,7 @@ class PageSession {
             this.broadcast({
                 type: "semanticTokensDelta",
                 pageId: this.pageId,
+                docVersion: this.docVersion,
                 previousResultId,
                 resultId: tokensResult.resultId,
                 edits: tokensResult.edits,
@@ -456,6 +461,7 @@ class PageSession {
             this.broadcast({
                 type: "semanticTokens",
                 pageId: this.pageId,
+                docVersion: this.docVersion,
                 resultId: tokensResult.resultId,
                 tokens: tokensResult.data,
             });

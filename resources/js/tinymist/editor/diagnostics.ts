@@ -5,41 +5,31 @@
 // and reports to console if applicable
 // semantic highlights have to be translucent to not obscure the underlines
 
-import { EditorView, Decoration, DecorationSet } from "@codemirror/view";
+import { EditorView } from "@codemirror/view";
 import { Diagnostic, setDiagnostics } from "@codemirror/lint";
+import { ChangeSet } from "@codemirror/state";
 
 
 export class DiagnosticsProcessor {
     private editorView: EditorView | null;
-    private cachedDiagnostics: Diagnostic[] = [];
+    private getSnapshotContext: ((docVersion: number) => { snapshot: string; changeSet: ChangeSet });
 
     constructor(editorView: EditorView | null = null) {
         this.editorView = editorView;
+        this.getSnapshotContext = () => ({ snapshot: "", changeSet: ChangeSet.empty(0) });
 
-        this.updateDiagnosticsFromFallback = this.updateDiagnosticsFromFallback.bind(this);
-        this.updateDiagnosticsFromLsp = this.updateDiagnosticsFromLsp.bind(this);
-        window.$events.listen("tinymist-diagnostics", this.updateDiagnosticsFromFallback);
-        window.$events.listen("tinymist-lsp-diagnostics", this.updateDiagnosticsFromLsp);
+        this.mapDiagnosticsToCurrent = this.mapDiagnosticsToCurrent.bind(this);
+        window.$events.listen("tinymist-diagnostics", this.mapDiagnosticsToCurrent);
+        window.$events.listen("tinymist-lsp-diagnostics", this.mapDiagnosticsToCurrent);
     }
 
-    attachEditorView(view: EditorView): void {
+    attachEditorView(view: EditorView, getSnapshotContext: (docVersion: number) => { snapshot: string; changeSet: ChangeSet }): void {
         this.editorView = view;
+        this.getSnapshotContext = getSnapshotContext;
     }
 
     detachEditorView(): void {
         this.editorView = null;
-    }
-
-    private mapSeverity(severity: string): 'error' | 'warning' | 'info' {
-        switch (severity.toLowerCase()) {
-            case 'error': return 'error';
-            case 'warning': return 'warning';
-            case 'information':
-            case 'info':
-            case 'hint':
-                return 'info';
-            default: return 'error';
-        }
     }
 
     private mapLspSeverity(severity: number | undefined): "error" | "warning" | "info" {
@@ -68,26 +58,47 @@ export class DiagnosticsProcessor {
         return offset;
     }
 
-    /**
-     * Update diagnostics from (fallback) compilation response and the text that triggered it
-     */
-    updateDiagnosticsFromFallback(diagnostics: any[], sourceText: string): void {
-        if (!Array.isArray(diagnostics)) {
+    private mapDiagnosticsToCurrent = (payload: { diagnostics: any[]; docVersion?: number }) => {
+        if (!payload || !Array.isArray(payload.diagnostics) ||!this.editorView || typeof payload.docVersion !== "number") {
             return;
         }
-        this.cachedDiagnostics = diagnostics.map((d: any) => {
-            const from = this.positionToOffsetInText(sourceText, d.line - 1, d.column - 1);
-            const to = this.positionToOffsetInText(sourceText, d.line - 1, d.column);
+
+        const context = this.getSnapshotContext(payload.docVersion);
+        const currentDoc = this.editorView.state.doc;
+
+        const mappedDiagnostics = payload.diagnostics.map((diag) => {
+            const range = diag.range || {};
+            const start = range.start || {};
+            const end = range.end || {};
+            const startLine = typeof start.line === "number" ? start.line : 0;
+            const endLine = typeof end.line === "number" ? end.line : startLine;
+            const startChar = typeof start.character === "number" ? start.character : 0;
+            const endChar = typeof end.character === "number" ? end.character : startChar;
+
+            let startOffset = this.positionToOffsetInText(context.snapshot, startLine, startChar);
+            let endOffset = this.positionToOffsetInText(context.snapshot, endLine, endChar);
+            startOffset = context.changeSet.mapPos(startOffset, 1);
+            endOffset = context.changeSet.mapPos(endOffset, -1);
+
+            const startLineInfo = currentDoc.lineAt(Math.min(startOffset, currentDoc.length));
+            const endLineInfo = currentDoc.lineAt(Math.min(endOffset, currentDoc.length));
 
             return {
-                from,
-                to: Math.max(from + 1, to),
-                severity: this.mapSeverity(d.severity),
-                message: d.message,
+                ...diag,
+                range: {
+                    start: {
+                        line: startLineInfo.number - 1,
+                        character: Math.max(0, startOffset - startLineInfo.from),
+                    },
+                    end: {
+                        line: endLineInfo.number - 1,
+                        character: Math.max(0, endOffset - endLineInfo.from),
+                    },
+                },
             };
         });
+        this.updateDiagnosticsFromLsp(mappedDiagnostics);
     }
-
 
     updateDiagnosticsFromLsp = (diagnostics: any[]) => {
         if (!this.editorView || !Array.isArray(diagnostics)) {
@@ -119,29 +130,22 @@ export class DiagnosticsProcessor {
             };
         });
 
-        this.editorView.dispatch(
-            setDiagnostics(this.editorView.state, cmDiagnostics)
-        );
+        this.triggerLinting(cmDiagnostics);
     }
 
-    triggerLinting(): void {
+    triggerLinting(newDiagnostics: Diagnostic[]): void {
         if (this.editorView) {
             this.editorView.dispatch(
-                setDiagnostics(this.editorView.state, this.cachedDiagnostics)
+                setDiagnostics(this.editorView.state, newDiagnostics)
             );
         }
+        this.logToConsole(newDiagnostics);
     }
 
     logToConsole(diagnostics: Diagnostic[]): void {
         diagnostics.forEach(diag => {
-            const logMessage = `[Diagnostic] ${diag.message} (from ${diag.severity})`;
-            if (diag.severity === 'error') {
-                window.$events.emit("tinymist-console-log", { type: "error", message: `[Typst]Line ${diag.line}, Col ${diag.column}: ${diag.message}` });
-            } else if (diag.severity === 'warning') {
-                window.$events.emit("tinymist-console-log", { type: "warning", message: logMessage });
-            } else {
-                window.$events.emit("tinymist-console-log", { type: "info", message: logMessage });
-            }
+            const logMessage = `[Diagnostic] ${diag.message} ${diag.severity} (from ${diag.from}, to ${diag.to})`;
+            window.$events.emit("tinymist-console-log", { type: diag.severity, message: logMessage });
         });
     }
 

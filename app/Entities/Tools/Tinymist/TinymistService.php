@@ -48,7 +48,7 @@ class TinymistService
 
             if ($returnCode !== 0 || !file_exists($outputFile)) {
                 // Parse errors from short diagnostic format
-                $diagnostics = $this->parseShortDiagnostics($output);
+                $diagnostics = $this->parseDiagnostics($output);
 
                 return [
                     'success' => false,
@@ -115,44 +115,141 @@ class TinymistService
     }
 
     /**
-     * Parse Typst CLI short diagnostic format.
-     * Format: filename:line:column: level: message
-     * Example: temp.typ:1:5: error: unknown variable: foo
-     * Windows example: \\?\C:\Users\...\temp.typ:1:5: error: unknown variable: foo
+     * Parse Typst CLI diagnostics (short or human-formatted output).
+     * Short format: filename:line:column: level: message
+     * Human format:
+     *   error: message
+     *     ┌─ path:line:column
+     *     │
+     *   12 │ code
+     *     │    ^^^^
+     *     = hint: ...
+     *
+     * Returns diagnostics shaped like LSP output while keeping legacy fields.
      *
      * @param array $output Raw output lines from typst compile
-     * @return array Parsed diagnostics in format compatible with frontend
+     * @return array Parsed diagnostics
      */
-    protected function parseShortDiagnostics(array $output): array
+    protected function parseDiagnostics(array $output): array
     {
         $diagnostics = [];
-        $currentDiag = null;
+        $current = null;
+
+        $flush = function () use (&$diagnostics, &$current) {
+            if (!$current) {
+                return;
+            }
+
+            $line = (int)($current['line'] ?? 1);
+            $column = (int)($current['column'] ?? 1);
+            $length = (int)($current['length'] ?? 1);
+            $severityText = (string)($current['severity'] ?? 'error');
+
+            $severityMap = [
+                'error' => 1,
+                'warning' => 2,
+                'info' => 3,
+                'hint' => 4,
+            ];
+            $severity = $severityMap[$severityText] ?? 1;
+
+            $rangeStart = max($column - 1, 0);
+            $rangeEnd = max($rangeStart + max($length, 1), $rangeStart + 1);
+
+            $diagnostics[] = [
+                // LSP-like shape
+                'range' => [
+                    'start' => ['line' => max($line - 1, 0), 'character' => $rangeStart],
+                    'end' => ['line' => max($line - 1, 0), 'character' => $rangeEnd],
+                ],
+                'severity' => $severity,
+                'message' => $current['message'] ?? 'Typst diagnostic',
+                'source' => 'typst',
+                'hints' => $current['hints'] ?? [],
+                // Legacy fields
+                'line' => $line,
+                'column' => $column,
+                'length' => max($length, 1),
+                'severity_text' => $severityText,
+            ];
+
+            $current = null;
+        };
 
         foreach ($output as $line) {
-            // Match: path:line:col: severity: message
-            if (preg_match('/^(.+):(\d+):(\d+):\s*(error|warning|hint|info):\s*(.+)$/i', $line, $matches)) {
-                // Save previous diagnostic if exists
-                if ($currentDiag) {
-                    $diagnostics[] = $currentDiag;
-                }
+            $trimmed = rtrim($line);
 
-                $currentDiag = [
+            // Short format: path:line:col: severity: message
+            if (preg_match('/^(.+):(\d+):(\d+):\s*(error|warning|hint|info):\s*(.+)$/i', $trimmed, $matches)) {
+                $flush();
+                $current = [
                     'line' => (int)$matches[2],
                     'column' => (int)$matches[3],
                     'severity' => strtolower($matches[4]),
                     'message' => $matches[5],
-                    'hints' => []
+                    'hints' => [],
+                    'length' => 1,
                 ];
-            } elseif ($currentDiag && preg_match('/^Hint:\s*(.+)$/i', $line, $matches)) {
-                // Add hint to current diagnostic
-                $currentDiag['hints'][] = $matches[1];
+                continue;
+            }
+
+            // Human format: severity: message
+            if (preg_match('/^(error|warning|hint|info):\s*(.+)$/i', ltrim($trimmed), $matches)) {
+                $flush();
+                $current = [
+                    'severity' => strtolower($matches[1]),
+                    'message' => $matches[2],
+                    'hints' => [],
+                    'length' => 1,
+                ];
+                continue;
+            }
+
+            // Human format: file location line
+            if ($current && preg_match('/^[\s│]*┌─\s*(.+):(\d+):(\d+)\s*$/u', $trimmed, $matches)) {
+                $current['line'] = (int)$matches[2];
+                $current['column'] = (int)$matches[3];
+                continue;
+            }
+
+            // Human format: source line content
+            if ($current && preg_match('/^\s*\d+\s*│\s*(.*)$/u', $trimmed, $matches)) {
+                $current['source_line'] = $matches[1];
+                continue;
+            }
+
+            // Human format: caret line indicates range length
+            if ($current && strpos($trimmed, '^') !== false) {
+                $after = $trimmed;
+                if (strpos($trimmed, '│') !== false) {
+                    $parts = explode('│', $trimmed, 2);
+                    $after = $parts[1] ?? $trimmed;
+                }
+                $caretStart = strpos($after, '^');
+                if ($caretStart !== false) {
+                    $caretLen = 0;
+                    $afterLen = strlen($after);
+                    for ($i = $caretStart; $i < $afterLen; $i++) {
+                        if ($after[$i] !== '^') {
+                            break;
+                        }
+                        $caretLen++;
+                    }
+                    if ($caretLen > 0) {
+                        $current['length'] = $caretLen;
+                    }
+                }
+                continue;
+            }
+
+            // Human format: hints
+            if ($current && preg_match('/^\s*=\s*hint:\s*(.+)$/i', $trimmed, $matches)) {
+                $current['hints'][] = $matches[1];
+                continue;
             }
         }
 
-        // Add last diagnostic
-        if ($currentDiag) {
-            $diagnostics[] = $currentDiag;
-        }
+        $flush();
 
         return $diagnostics;
     }

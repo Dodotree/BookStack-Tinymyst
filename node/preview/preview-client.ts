@@ -428,6 +428,8 @@ export class TinymistPreviewClient extends EventEmitter {
 
         this.stopping = true;
 
+        // could be also JSON.stringify({ type: "disconnect" }) ?
+
         if (this.controlSocket) {
             this.controlSocket.terminate();
             this.controlSocket = null;

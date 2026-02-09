@@ -18,7 +18,7 @@ const path = require('path');
 const { execSync } = require('child_process');
 const os = require('os');
 
-const VERSION = '0.14.0';
+const VERSION = '0.14.2';
 const BASE_DIR = path.join(__dirname, '../..');
 const INSTALL_DIR = path.join(BASE_DIR, 'vendor/bin');
 

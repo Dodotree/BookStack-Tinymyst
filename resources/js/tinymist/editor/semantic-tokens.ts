@@ -6,7 +6,7 @@
 // and applies syntax highlighting in the editor
 
 import { EditorView, Decoration, DecorationSet } from "@codemirror/view";
-import { StateEffect, StateField, RangeSetBuilder } from "@codemirror/state";
+import { ChangeSet, StateEffect, StateField, RangeSetBuilder } from "@codemirror/state";
 
 // Highlight region interface
 interface HighlightRegion {
@@ -75,12 +75,10 @@ const highlightColors = [
 // StateEffect to add highlights
 const addHighlightsEffect = StateEffect.define<HighlightRegion[]>();
 const replaceHighlightsEffect = StateEffect.define<{ from: number; to: number; regions: HighlightRegion[] }>();
-
 // StateEffect to clear highlights
 const clearHighlightsEffect = StateEffect.define();
 
 type SemanticTokensDeltaEdit = { start: number; deleteCount: number; data?: number[] };
-
 type DecorationEntry = { from: number; to: number; mark: Decoration };
 
 function buildDecorationEntries(
@@ -121,6 +119,10 @@ function buildDecorationEntries(
 
 
 // StateField to store highlight decorations
+// highlightField registers the StateField that holds the DecorationSet,
+// and SemanticTokenProcessor dispatches effects (addHighlightsEffect, replaceHighlightsEffect, clearHighlightsEffect)
+// that update this field.
+// Without highlightField in the editor extensions, those effects won’t render any highlights.
 export const highlightField = StateField.define<DecorationSet>({
     create() {
         return Decoration.none;
@@ -169,9 +171,12 @@ export class SemanticTokenProcessor {
     private encodedTokens: number[] | null = null;
     private lineSignatures: Map<number, string> = new Map();
     private currentResultId: string | null = null;
+    private getSnapshotContext: ((docVersion: number) => { snapshot: string; changeSet: ChangeSet });
 
     constructor(editorView: EditorView | null = null) {
+        // placeholders until attachEditorView is called
         this.editorView = editorView;
+        this.getSnapshotContext = () => ({ snapshot: "", changeSet: ChangeSet.empty(0) });
 
         this.processSemanticTokens = this.processSemanticTokens.bind(this);
         this.processSemanticTokensDelta = this.processSemanticTokensDelta.bind(this);
@@ -179,8 +184,12 @@ export class SemanticTokenProcessor {
         window.$events.listen("tinymist-lsp-semantic-tokens-delta", this.processSemanticTokensDelta);
     }
 
-    attachEditorView(view: EditorView): void {
+    attachEditorView(
+        view: EditorView,
+        getSnapshotContext: (docVersion: number) => { snapshot: string; changeSet: ChangeSet }
+    ): void {
         this.editorView = view;
+        this.getSnapshotContext = getSnapshotContext;
         this.flushPendingHighlights();
     }
 
@@ -188,26 +197,81 @@ export class SemanticTokenProcessor {
         this.editorView = null;
     }
 
+    private mapRegionsToCurrent(
+        regions: Array<{ line: number; start: number; len: number; type: string; modifiers?: string[] }>,
+        baseText: string,
+        changeSet: ChangeSet
+    ) {
+        if (!this.editorView) {
+            return regions;
+        }
+        const currentDoc = this.editorView.state.doc;
+        return regions.map((region) => {
+            const baseStartOffset = this.positionToOffsetInText(baseText, region.line - 1, region.start);
+            const baseEndOffset = this.positionToOffsetInText(baseText, region.line - 1, region.start + region.len);
+
+            const mappedStart = changeSet.mapPos(baseStartOffset, 1);
+            const mappedEnd = changeSet.mapPos(baseEndOffset, -1);
+
+            const startLineInfo = currentDoc.lineAt(Math.min(mappedStart, currentDoc.length));
+            const endLineInfo = currentDoc.lineAt(Math.min(mappedEnd, currentDoc.length));
+
+            const startChar = Math.max(0, mappedStart - startLineInfo.from);
+            const endChar = Math.max(0, mappedEnd - endLineInfo.from);
+            const len = Math.max(1, endChar - startChar);
+
+            return {
+                line: startLineInfo.number,
+                start: startChar,
+                len,
+                type: region.type,
+                modifiers: region.modifiers,
+            };
+        });
+    }
+
+    private positionToOffsetInText(text: string, line: number, column: number): number {
+        const lines = text.split("\n");
+        if (line < 0 || line >= lines.length) {
+            return 0;
+        }
+
+        let offset = 0;
+        for (let i = 0; i < line; i++) {
+            offset += lines[i].length + 1;
+        }
+        offset += Math.min(column, lines[line].length);
+        return offset;
+    }
+
     processSemanticTokens(
-        payload: number[] | { tokens: number[]; resultId?: string }
+        payload: { tokens: number[]; resultId?: string; docVersion: number }
     ) {
         const tokens = Array.isArray(payload) ? payload : payload.tokens;
-        if (!Array.isArray(tokens)) {
+        if (!Array.isArray(tokens) || !this.editorView) {
             return;
         }
         const highlights = this.buildHighlights(tokens);
+        const snapshotCtx = this.getSnapshotContext(payload.docVersion);
+        const mappedHighlights = this.mapRegionsToCurrent(
+                    highlights,
+                    snapshotCtx.snapshot,
+                    snapshotCtx.changeSet
+                );
+
         this.encodedTokens = tokens.slice();
-        this.lineSignatures = this.buildLineSignatures(highlights);
+        this.lineSignatures = this.buildLineSignatures(mappedHighlights);
         this.currentResultId = Array.isArray(payload) ? null : payload.resultId ?? null;
-        this.renderSemanticHighlights(highlights);
+        this.renderSemanticHighlights(mappedHighlights);
     }
 
     processSemanticTokensDelta(payload: {
         edits: SemanticTokensDeltaEdit[];
         resultId?: string;
         previousResultId?: string;
+        docVersion: number;
     }) {
-        if (!payload || !Array.isArray(payload.edits) || !this.encodedTokens) {
+        if (!payload || !Array.isArray(payload.edits) || !this.encodedTokens || !this.editorView) {
             return;
         }
 
@@ -221,7 +285,13 @@ export class SemanticTokenProcessor {
 
         const updatedTokens = this.applySemanticTokensEdits(this.encodedTokens, payload.edits);
         const highlights = this.buildHighlights(updatedTokens);
-        const nextSignatures = this.buildLineSignatures(highlights);
+        const snapshotCtx = this.getSnapshotContext(payload.docVersion);
+        const mappedHighlights = this.mapRegionsToCurrent(
+            highlights,
+            snapshotCtx.snapshot,
+            snapshotCtx.changeSet
+        );
+        const nextSignatures = this.buildLineSignatures(mappedHighlights);
         const changedLines = this.getChangedLines(this.lineSignatures, nextSignatures);
 
         this.encodedTokens = updatedTokens;
@@ -233,11 +303,11 @@ export class SemanticTokenProcessor {
         }
 
         if (!this.editorView) {
-            this.pendingSemanticHighlights = highlights;
+            this.pendingSemanticHighlights = mappedHighlights;
             return;
         }
 
-        this.replaceHighlightsForLines(highlights, changedLines);
+        this.replaceHighlightsForLines(mappedHighlights, changedLines);
     }
 
     private resolveSemanticTokenType(tokenType: string): string | null {
@@ -255,39 +325,29 @@ export class SemanticTokenProcessor {
     }
 
     private renderSemanticHighlights(highlights: HighlightRegion[]): void {
+        this.pendingSemanticHighlights = null;
         if (!this.editorView) {
             this.pendingSemanticHighlights = highlights;
             return;
         }
-
-        this.pendingSemanticHighlights = null;
-
         if (!highlights.length) {
             this.clearHighlights();
             return;
         }
-
         this.addHighlights(highlights);
     }
 
     flushPendingHighlights(): void {
-        if (!this.editorView) {
-            return;
-        }
-
-        if (this.pendingSemanticHighlights === null) {
-            return;
-        }
-
         const highlights = this.pendingSemanticHighlights;
         this.pendingSemanticHighlights = null;
-
+        if (!this.editorView || highlights === null) {
+            return;
+        }
         if (!highlights.length) {
-            // not sure if we should allow clearing here
+            // not sure why no highlights is better
             // this.clearHighlights();
             return;
         }
-
         this.addHighlights(highlights);
     }
 
@@ -304,6 +364,20 @@ export class SemanticTokenProcessor {
 
         this.editorView.dispatch({
             effects: addHighlightsEffect.of(regions),
+        });
+    }
+
+    /**
+     * Clear all highlights from the editor
+     */
+    clearHighlights() {
+        if (!this.editorView) {
+            this.pendingSemanticHighlights = null;
+            return;
+        }
+
+        this.editorView.dispatch({
+            effects: clearHighlightsEffect.of(null),
         });
     }
 
@@ -347,20 +421,6 @@ export class SemanticTokenProcessor {
         }
 
         flushRange(rangeStart, prev);
-    }
-
-    /**
-     * Clear all highlights from the editor
-     */
-    clearHighlights() {
-        if (!this.editorView) {
-            this.pendingSemanticHighlights = null;
-            return;
-        }
-
-        this.editorView.dispatch({
-            effects: clearHighlightsEffect.of(null),
-        });
     }
 
     /**

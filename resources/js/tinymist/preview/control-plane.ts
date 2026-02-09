@@ -10,27 +10,12 @@ export class PreviewControlPlane {
     private static readonly FILEPATH_PLACEHOLDER = "__TINYMIST_FILE__";
 
     constructor() {
-
         this.sendControlMessage = this.sendControlMessage.bind(this);
-        this.disconnect = this.disconnect.bind(this);
         this.handleControlMessage = this.handleControlMessage.bind(this);
-        this.handleConnected = this.handleConnected.bind(this);
-        this.handleDisconnected = this.handleDisconnected.bind(this);
         window.$events.listen("tinymist-preview-control-message", this.handleControlMessage);
-        window.$events.listen("tinymist-preview-control-connected", this.handleConnected);
-        window.$events.listen("tinymist-preview-control-disconnected", this.handleDisconnected);
         window.$events.listen("tinymist-control", this.sendControlMessage);
-        window.$events.listen("tinymist-control-disconnect", this.disconnect);
-    }
-
-    private handleConnected(): void {
-        window.$events.emit("tinymist-status", { what: "control-plane-ws", connected: true });
-        window.$events.emit("tinymist-console-log", { type: "success", message: "[Preview Control] connected" });
-    }
-
-    private handleDisconnected(): void {
-        window.$events.emit("tinymist-status", { what: "control-plane-ws", connected: false });
-        window.$events.emit("tinymist-console-log", { type: "error", message: "[Preview Control] disconnected" });
+        // this.disconnect = this.disconnect.bind(this);
+        // window.$events.listen("tinymist-control-disconnect", this.disconnect);
     }
 
     private handleControlMessage(raw: string): void {
@@ -48,9 +33,12 @@ export class PreviewControlPlane {
                 this.onOutline(msg.items);
             } else if (msg.event === 'syncEditorChanges') {
                 this.onSyncChanges(msg);
+            } else if (msg.status) {
+                // Generic status message
+                window.$events.emit("tinymist-console-log", { type: "info", message: `[Preview Bridge (via Control)] Status: ${msg.status}` });
             } else {
                 console.warn(`[Preview Control] Unknown message: ${raw}`);
-                window.$events.emit("tinymist-console-log", { type: "warning", message: `[Preview Control] Unknown message: ${raw}` });
+                window.$events.emit("tinymist-console-log", { type: "warning", message: `[Preview Bridge (via Control)] Unknown message: ${raw}` });
             }
         } catch (error) {
             console.warn(`[Preview Control] Failed to parse message: ${raw}`);
@@ -135,9 +123,5 @@ export class PreviewControlPlane {
 
         console.log(`[Preview Control] Sending Control Plane ${message.event}:`, msg);
         window.$events.emit("tinymist-preview-send-control", JSON.stringify(msg));
-    }
-
-    disconnect() {
-        window.$events.emit("tinymist-preview-send-control", JSON.stringify({ type: "disconnect" }));
     }
 }

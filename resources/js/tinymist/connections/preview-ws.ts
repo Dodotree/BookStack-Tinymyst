@@ -94,8 +94,6 @@ export class PreviewBridgeClient {
 
                     console.log('[Preview WS] WebSocket connected');
                     window.$events.emit("tinymist-status", { what: "preview-ws", connected: true });
-                    window.$events.emit("tinymist-preview-control-connected");
-                    window.$events.emit("tinymist-preview-data-connected");
                     window.$events.emit("tinymist-console-log",{ type: "success", message: "[Preview WS] connected" });
 
                     resolve();
@@ -113,8 +111,6 @@ export class PreviewBridgeClient {
                 this.socket.onerror = (error) => {
                     console.error('[Preview WS] WebSocket error:', error);
                     window.$events.emit("tinymist-status", { what: "preview-ws", connected: false });
-                    window.$events.emit("tinymist-preview-control-disconnected");
-                    window.$events.emit("tinymist-preview-data-disconnected");
                     reject(error);
                 };
 

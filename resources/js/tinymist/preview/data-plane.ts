@@ -3,11 +3,9 @@ export class PreviewDataPlane {
 
     constructor() {
         this.handleBridgeDataMessage = this.handleBridgeDataMessage.bind(this);
-        this.handleConnected = this.handleConnected.bind(this);
-        this.handleDisconnected = this.handleDisconnected.bind(this);
         window.$events.listen("tinymist-preview-data-message", this.handleBridgeDataMessage);
-        window.$events.listen("tinymist-preview-data-connected", this.handleConnected);
-        window.$events.listen("tinymist-preview-data-disconnected", this.handleDisconnected);
+        // this.handleConnected = this.handleConnected.bind(this);
+        // window.$events.listen("tinymist-preview-data-connected", this.handleConnected);
     }
 
     private handleBridgeDataMessage(msg: Uint8Array): void {
@@ -21,17 +19,6 @@ export class PreviewDataPlane {
             .catch((err) => {
                 console.error("[Preview Data] Failed to process message:", err);
             });
-    }
-
-    private handleConnected(): void {
-        window.$events.emit("tinymist-status", { what: "data-plane-ws", connected: true });
-        window.$events.emit("tinymist-console-log", { type: "success", message: "[Preview Data] connected" });
-        window.$events.emit("tinymist-preview-send-data", "current");
-    }
-
-    private handleDisconnected(): void {
-        window.$events.emit("tinymist-status", { what: "data-plane-ws", connected: false });
-        window.$events.emit("tinymist-console-log", { type: "error", message: "[Preview Data] disconnected" });
     }
 
     private async handleBinaryMessage(msg: Uint8Array) {
@@ -121,10 +108,4 @@ export class PreviewDataPlane {
             console.error("[Preview Data] Failed to handle binary message:", error);
         }
     }
-
-    dispose() {
-        window.$events.emit("tinymist-preview-send-data", JSON.stringify({ type: "disconnect" }));
-        console.log("[Preview Data] disposed");
-    }
-
 }

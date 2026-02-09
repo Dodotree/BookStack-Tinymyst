@@ -264,7 +264,7 @@ class PreviewSession {
         this.clearIdleTimer();
 
         if (socket.readyState === WebSocket.OPEN) {
-            const payload = JSON.stringify({ type: "bridge:connected", pageId: this.pageId });
+            const payload = JSON.stringify({ status: "connected" });
             socket.send(payload);
         }
     }
@@ -341,7 +341,7 @@ class PreviewSession {
 
 
     private broadcastPreview(payload: RawData | string): void {
-        this.logMessage("outgoing", payload);
+        // this.logMessage("outgoing", payload);
         for (const browser of this.browsers) {
             if (browser.readyState === WebSocket.OPEN) {
                 browser.send(payload);
@@ -351,7 +351,7 @@ class PreviewSession {
 
     private broadcastStatus(status: string, details: any): void {
         console.log(`[Preview Session ${this.pageId}] ${status}`, details ?? "");
-        const payload = JSON.stringify({ type: `bridge:${status}`, pageId: this.pageId, details });
+        const payload = JSON.stringify({ status, details });
         for (const browser of this.browsers) {
             if (browser.readyState === WebSocket.OPEN) {
                 browser.send(payload);

@@ -11,8 +11,7 @@ import {
 } from "@codemirror/view";
 
 import { defaultKeymap } from "@codemirror/commands";
-import { EditorState, StateEffect, Transaction } from "@codemirror/state";
-import { setDiagnostics } from "@codemirror/lint";
+import { ChangeSet, EditorState, Transaction } from "@codemirror/state";
 
 import { SemanticTokenProcessor, highlightField } from "./semantic-tokens";
 import { DiagnosticsProcessor } from "./diagnostics";
@@ -25,6 +24,18 @@ export class TinymistEditorUI {
     private diagnosticsProcessor = new DiagnosticsProcessor();
     private semanticTokens = new SemanticTokenProcessor();
     private previewPanEnabled = false;
+    private fallbackEnabled = false;
+
+    private docVersion = 0;
+    private pendingSendTimer: ReturnType<typeof setTimeout> | null = null;
+    private snapshots: Array<{
+        docVersion: number;
+        snapshot: string;
+        afterTransactions: ChangeSet;
+    }> = [];
+    private readonly maxSnapshots = 3;
+    private readonly changeDebounceMs = 150;
+    private readonly fallbackDebounceMs = 800;
 
     constructor(elem: HTMLElement, editor: HTMLTextAreaElement) {
         this.elem = elem;
@@ -38,8 +49,11 @@ export class TinymistEditorUI {
         // Setup form submit handler to sync CodeMirror content to textarea
         this.setupFormSubmitHandler();
 
-        this.diagnosticsProcessor.attachEditorView(this.editorView!);
-        this.semanticTokens.attachEditorView(this.editorView!);
+        this.diagnosticsProcessor.attachEditorView(this.editorView!, this.getSnapshotContext.bind(this));
+        this.semanticTokens.attachEditorView(this.editorView!, this.getSnapshotContext.bind(this));
+
+        // Initial snapshot
+        this.resetSyncState(this.docVersion);
     }
 
     async setupCodeMirror() {
@@ -87,6 +101,9 @@ export class TinymistEditorUI {
     setupListeners() {
         this.syncFullStateFromServer = this.syncFullStateFromServer.bind(this);
         window.$events.listen("tinymist-sync-full-state", this.syncFullStateFromServer);
+        this.pruneSnapshots = this.pruneSnapshots.bind(this);
+        window.$events.listen("tinymist-prune-snapshots", this.pruneSnapshots);
+        window.$events.listen("tinymist-fallback-enable", (enabled: boolean) => this.fallbackEnabled = enabled);
 
         if (!this.editorView) {
             // Fall back to textarea if CodeMirror fails, otherwise onInput() called from CodeMirror update listener
@@ -135,9 +152,10 @@ export class TinymistEditorUI {
         });
     }
 
-    syncFullStateFromServer(content: string) {
-        if (content !== this.getText()) {
-            this.setText(content, true);
+    syncFullStateFromServer(payload: { content: string; docVersion?: number }) {
+        if (payload.content !== this.getText()) {
+            this.setText(payload.content, true); // Sets' flag to true to avoid emitting change events
+            this.resetSyncState(payload.docVersion || this.docVersion);
             window.$events.emit("tinymist-console-log",
                 { type: "info", message: "[File Sync / LSP] Document synchronized from server" });
         }
@@ -162,7 +180,7 @@ export class TinymistEditorUI {
     }
 
     onInput() {
-        // Notify page editor of changes
+        // Notify Bookstack page editor of changes, also fallback is using it
         window.$events.emit("editor-tinymist-change", "");
     }
 
@@ -175,10 +193,91 @@ export class TinymistEditorUI {
         if (transactions.some((tr) => tr.docChanged)) {
             transactions.forEach((tr) => {
                 if (tr.changes && !tr.changes.empty) {
-                    window.$events.emit("tinymist-text-diff", tr.changes);
+                    this.queueChanges(tr.changes);
                 }
             });
         }
+    }
+
+    private queueChanges(changes: ChangeSet): void {
+        const lastSnapshot = this.snapshots.at(-1);
+        if (lastSnapshot) {
+            this.snapshots[this.snapshots.length - 1].afterTransactions =
+                lastSnapshot.afterTransactions ? lastSnapshot.afterTransactions.compose(changes) : changes;
+        }
+
+        if (this.pendingSendTimer) {
+            clearTimeout(this.pendingSendTimer);
+        }
+        this.pendingSendTimer = setTimeout(() => {
+            this.flushPendingChanges();
+        }, this.fallbackEnabled ? this.fallbackDebounceMs : this.changeDebounceMs);
+    }
+
+    private flushPendingChanges(): void {
+        this.docVersion += 1;
+        const currentContent = this.getText();
+        if(this.fallbackEnabled) {
+            window.$events.emit("tinymist-fallback-compile", {
+                docVersion: this.docVersion,
+                content: currentContent,
+            });
+        } else {
+            window.$events.emit("tinymist-text-diff", {
+                changes: this.snapshots.at(-1)?.afterTransactions,
+                docVersion: this.docVersion,
+            });
+        }
+        this.snapshots.push({
+            docVersion: this.docVersion,
+            snapshot: currentContent,
+            afterTransactions: ChangeSet.empty(currentContent.length),
+        });
+        if (this.snapshots.length > this.maxSnapshots) {
+            this.snapshots = this.snapshots.slice(-this.maxSnapshots);
+        }
+    }
+
+    private resetSyncState(docVersion: number): void {
+        this.docVersion = docVersion;
+        const currentContent = this.getText();
+        this.snapshots = [{
+            docVersion: this.docVersion,
+            snapshot: currentContent,
+            afterTransactions: ChangeSet.empty(currentContent.length),
+        }];
+        if (this.pendingSendTimer) {
+            clearTimeout(this.pendingSendTimer);
+            this.pendingSendTimer = null;
+        }
+    }
+
+    private getSnapshotContext(docVersion: number): { snapshot: string; changeSet: ChangeSet } {
+        const index = this.snapshots.findIndex((s) => s.docVersion === docVersion);
+        if (index === -1) {
+            const currentContent = this.getText();
+            return {
+                snapshot: currentContent,
+                changeSet: ChangeSet.empty(currentContent.length),
+            };
+        }
+        let pending = this.snapshots[index].afterTransactions;
+        for (let i = index + 1; i < this.snapshots.length; i++) {
+            if (this.snapshots[i].afterTransactions) {
+                pending = pending.compose(this.snapshots[i].afterTransactions);
+            }
+        }
+        return {
+            snapshot: this.snapshots[index].snapshot,
+            changeSet: pending,
+        };
+    }
+
+    private pruneSnapshots(docVersion: number): void {
+        if (this.snapshots.length === 0) {
+            return;
+        }
+        this.snapshots = this.snapshots.filter((s) => s.docVersion >= docVersion);
     }
 
     onCursorPositionChange(state: any) {
@@ -326,6 +425,10 @@ export class TinymistEditorUI {
     }
 
     destroy() {
+        if (this.pendingSendTimer) {
+            clearTimeout(this.pendingSendTimer);
+            this.pendingSendTimer = null;
+        }
         this.semanticTokens.clearHighlights();
         this.semanticTokens.detachEditorView();
     }

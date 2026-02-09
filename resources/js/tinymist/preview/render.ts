@@ -52,6 +52,12 @@ export class PreviewRenderer {
 
         this.handleSyncInit = this.handleSyncInit.bind(this);
         this.dispose = this.dispose.bind(this);
+        window.$events.listen("tinymist-wasm-init", this.handleSyncInit)
+        window.$events.listen("tinymist-wasm-dispose", this.dispose);
+
+        this.updateSVG = this.updateSVG.bind(this);
+        window.$events.listen("tinymist-fallback-compiled-svg", this.updateSVG);
+
         this.handleSyncMessage = this.handleSyncMessage.bind(this);
         this.handleZoomIn = this.handleZoomIn.bind(this);
         this.handleZoomOut = this.handleZoomOut.bind(this);
@@ -60,8 +66,6 @@ export class PreviewRenderer {
         this.handlePanMouseDown = this.handlePanMouseDown.bind(this);
         this.handlePanMouseMove = this.handlePanMouseMove.bind(this);
         this.handlePanMouseUp = this.handlePanMouseUp.bind(this);
-        window.$events.listen("tinymist-wasm-init", this.handleSyncInit)
-        window.$events.listen("tinymist-wasm-dispose", this.dispose);
 
         window.$events.listen("tinymist-data-binary", this.handleSyncMessage);
         window.$events.listen("tinymist-preview-zoom-in", this.handleZoomIn);
@@ -204,10 +208,7 @@ export class PreviewRenderer {
                     data_selection: { body: true, defs: true, css: false, js: false },
                 });
 
-                this.previewElement.innerHTML = svg;
-                this.baseSvgWidth = null;
-                this.baseSvgHeight = null;
-                this.applyZoomToSvg();
+                this.updateSVG(svg);
 
                 // const svgDoc = this.previewElement.querySelector('svg.typst-doc');
                 // const helperCode = document.querySelector('svg.typst-doc script')?.textContent;
@@ -239,6 +240,13 @@ export class PreviewRenderer {
                 await this.recoverRenderer(e);
             }
 
+    }
+
+    updateSVG(svg: string, docVersion?: number) {
+        this.previewElement.innerHTML = svg;
+        this.baseSvgWidth = null;
+        this.baseSvgHeight = null;
+        this.applyZoomToSvg();
     }
 
     dispose() {
