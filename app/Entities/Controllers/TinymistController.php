@@ -17,46 +17,53 @@ class TinymistController extends Controller
     }
 
     /**
-     * Compile Typst source to SVG (AJAX endpoint).
+     * Compile Typst content to SVG (AJAX endpoint).
      * POST /ajax/tinymist/compile
      */
     public function compile(Request $request)
     {
-        $source = $request->input('source', '');
+        $content = $request->input('content', '');
+        $docVersion = $request->input('docVersion');
 
-        // Validate source is not empty
-        if (empty($source)) {
+        // Validate content is not empty
+        if (empty($content)) {
             return response()->json([
                 'success' => false,
                 'svg' => null,
-                'errors' => ['No Typst source provided'],
+                'errors' => ['No Typst content provided'],
+                'docVersion' => $docVersion,
             ]);
         }
 
         // Check document size limit
         $maxSize = config('tinymist.max_document_size', 1024) * 1024; // Convert KB to bytes
-        if (strlen($source) > $maxSize) {
+        if (strlen($content) > $maxSize) {
             return response()->json([
                 'success' => false,
                 'svg' => null,
                 'errors' => ['Document exceeds maximum size limit'],
+                'docVersion' => $docVersion,
             ]);
         }
 
-        // Compile the source
-        $result = $this->tinymist->compileToSvg($source);
+        // Compile the content
+        $result = $this->tinymist->compileToSvg($content);
+
+        if (!is_null($docVersion)) {
+            $result['docVersion'] = $docVersion;
+        }
 
         return response()->json($result);
     }
 
     /**
-     * Check Typst source (AJAX endpoint).
+     * Check Typst content (AJAX endpoint).
      * POST /ajax/tinymist/check
      */
     public function check(Request $request)
     {
-        $source = $request->input('source', '');
-        $diagnostics = $this->tinymist->validate($source);
+        $content = $request->input('content', '');
+        $diagnostics = $this->tinymist->validate($content);
 
         return response()->json($diagnostics);
     }

@@ -25,7 +25,7 @@ const os = require('os');
 
 // Configuration
 const TINYMIST_VERSION = '0.14.10'; //'0.14.0' '0.13.28'; // Latest stable release
-const GITHUB_REPO = 'Myriad-Dreamin/tinymist';
+const GITHUB_REPO = 'Dodotree/tinymist';
 const VENDOR_BIN_DIR = path.join(__dirname, '..', '..', 'vendor', 'bin');
 
 /**

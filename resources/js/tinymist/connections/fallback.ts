@@ -30,7 +30,7 @@ export class TinymistFallbackCompiler {
         window.$events.emit("tinymist-console-log",{ type: "info", message: "[Typst] Compiling..." });
 
         try {
-            const response = await window.$http.post('/ajax/tinymist/compile', {content});
+            const response = await window.$http.post('/ajax/tinymist/compile', { content, docVersion });
 
             console.log(`[Typst] Compilation #${docVersion} completed (processing...)`);
 

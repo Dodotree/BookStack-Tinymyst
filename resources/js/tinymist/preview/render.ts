@@ -56,7 +56,7 @@ export class PreviewRenderer {
         window.$events.listen("tinymist-wasm-dispose", this.dispose);
 
         this.updateSVG = this.updateSVG.bind(this);
-        window.$events.listen("tinymist-fallback-compiled-svg", this.updateSVG);
+        window.$events.listen<{svg: string, docVersion:string}>("tinymist-fallback-compiled-svg", ({svg, docVersion}) => this.updateSVG(svg));
 
         this.handleSyncMessage = this.handleSyncMessage.bind(this);
         this.handleZoomIn = this.handleZoomIn.bind(this);

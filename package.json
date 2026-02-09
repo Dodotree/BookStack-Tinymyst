@@ -55,6 +55,7 @@
     "@codemirror/lang-json": "^6.0.2",
     "@codemirror/lang-markdown": "^6.3.4",
     "@codemirror/lang-php": "^6.0.2",
+    "@codemirror/lang-python": "^6.0.2",
     "@codemirror/lang-xml": "^6.1.0",
     "@codemirror/language": "^6.11.3",
     "@codemirror/legacy-modes": "^6.5.1",

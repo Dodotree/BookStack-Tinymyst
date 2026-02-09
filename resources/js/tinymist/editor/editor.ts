@@ -12,6 +12,11 @@ import {
 
 import { defaultKeymap } from "@codemirror/commands";
 import { ChangeSet, EditorState, Transaction } from "@codemirror/state";
+import { LanguageDescription, defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { markdown } from "@codemirror/lang-markdown";
+import { javascript } from "@codemirror/lang-javascript";
+import { python } from "@codemirror/lang-python";
+import { php } from "@codemirror/lang-php";
 
 import { SemanticTokenProcessor, highlightField } from "./semantic-tokens";
 import { DiagnosticsProcessor } from "./diagnostics";
@@ -65,6 +70,25 @@ export class TinymistEditorUI {
                     lineNumbers(), // Enable line numbers
                     highlightActiveLineGutter(), // Highlight current line number in gutter
                     highlightActiveLine(), // Highlight current line
+                    markdown({
+                        codeLanguages: [
+                            LanguageDescription.of({
+                                name: "javascript",
+                                alias: ["js", "jsx", "ts", "tsx"],
+                                load: async () => javascript(),
+                            }),
+                            LanguageDescription.of({
+                                name: "python",
+                                alias: ["py"],
+                                load: async () => python(),
+                            }),
+                            LanguageDescription.of({
+                                name: "php",
+                                load: async () => php(),
+                            }),
+                        ],
+                    }),
+                    syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
                     highlightField, // Add custom highlighting support
                     keymap.of(defaultKeymap),
                     EditorView.editable.of(true), // Make editor editable
