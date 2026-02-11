@@ -4,10 +4,10 @@ This folder contains the Node.js services used for Tinymist real‑time preview 
 
 ## Components
 
-- **Preview bridge**: [node/preview/preview-server.ts](node/preview/preview-server.ts)
+- **Preview bridge**: [tinymist-devops/node/preview/preview-server.ts](tinymist-devops/node/preview/preview-server.ts)
   Is a browser facing web socket server. It spawns preview-clients that spawn instances of tinymist-preview for each file that needs previewing. Each preview-client keep connections to both tinymist-preview websockets (data and control). It forwards messages from the browser to tinymist-preview and forwards encoded render object back to the browser for WASM in the browser to decode it and render into svg.
 
-- **File sync + LSP**: [node/file-sync/server.ts](node/file-sync/server.ts)
+- **File sync + LSP**: [tinymist-devops/node/file-sync/server.ts](tinymist-devops/node/file-sync/server.ts)
    Is a browser facing web socket server. It also spawns LSP-server client (one for all browsers) lsp-client.ts and uses file-manager.ts for syncing the file state with the editor in the browser. Preview-tinymist instances are watching the files they were spawned for. LSP-tinymist does not watch files registered in it by itself, the state of the file has to be updated by messages didChange etc. from LSP-client. LSP provides diagnostics and semantic tokens.
 
 ## High‑level Flow
@@ -58,7 +58,7 @@ Browser receives updates
 Browser editor input
   |  WebSocket changes
   v
-File Sync Server (node/file-sync)
+File Sync Server (tinymist-devops/node/file-sync)
   |  writes page_<id>.typ
   v
 Tinymist preview process watches file

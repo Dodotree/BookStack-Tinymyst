@@ -49,7 +49,7 @@ Script entries** in `package.json`:
   ```json
   {
     "scripts": {
-      "ws:dev": "ts-node-dev --respawn --transpile-only --project tsconfig.server.json node/file-sync/server.ts",
+      "ws:dev": "ts-node-dev --respawn --transpile-only --project tsconfig.server.json tinymist-devops/node/file-sync/server.ts",
       "ws:build": "tsc --project tsconfig.server.json",
       "ws:start": "node dev/build/file-sync/server.js"
     }
@@ -60,4 +60,4 @@ Script entries** in `package.json`:
 
 - Local hot-reload: `npm run ws:dev`.
 - Build for deployment: `npm run ws:build` → use `node dist/node/...` in PM2/systemd.
-- Diagnostic run without build: `npx ts-node --project tsconfig.server.json node/file-sync/server.ts`.
+- Diagnostic run without build: `npx ts-node --project tsconfig.server.json tinymist-devops/node/file-sync/server.ts`.

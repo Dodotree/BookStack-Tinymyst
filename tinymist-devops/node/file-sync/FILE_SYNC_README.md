@@ -18,7 +18,7 @@ Production places the Node server behind Nginx on Ubuntu; local development runs
       - Receives semantic tokens + diagnostics with `docVersion` for mapping.
     - sync-and-lsp.ts module keeps connection to file sync websocket server.
 
-3. **Node WebSocket service** (`node/file-sync/server.ts`) handles authenticated connections and forwards file-related tasks to the FileManager. Server also notifies lsp-client.ts about changes and it in turn notifies LSP server.
+3. **Node WebSocket service** (`tinymist-devops/node/file-sync/server.ts`) handles authenticated connections and forwards file-related tasks to the FileManager. Server also notifies lsp-client.ts about changes and it in turn notifies LSP server.
 
 4. **Code Mirror in the back end file-manager.ts**  checks document version for the sync, and writes updates to the of the file in the `storage/app/tinymist`. If the version of the file is bigger on the back end, it sends "full sync" document to the browser to sync it.
 

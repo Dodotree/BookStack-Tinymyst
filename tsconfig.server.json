@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true
   },
-  "include": ["node/**/*.ts"]
+  "include": ["tinymist-devops/node/**/*.ts"]
 }

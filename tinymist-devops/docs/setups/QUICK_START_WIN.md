@@ -64,8 +64,8 @@ Open separate terminals for each:
 Default ports:
 
 - 8000 – Laravel (php artisan serve)
-- 4000 – File sync WebSocket (node/file-sync/server.ts)
-- 4020 – Preview bridge WebSocket (node/preview/preview-server.ts)
+- 4000 – File sync WebSocket (tinymist-devops/node/file-sync/server.ts)
+- 4020 – Preview bridge WebSocket (tinymist-devops/node/preview/preview-server.ts)
 
 ## Verify Tinymist binaries
 
