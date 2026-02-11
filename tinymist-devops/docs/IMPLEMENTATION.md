@@ -34,7 +34,7 @@ Platform support: Windows (x64/ARM64), Linux (x64/ARM64), macOS (x64/ARM64)
 
 ---
 
-## 🏗️ Architecture without sockets
+## Architecture for the fallback without sockets
 
 ### Design Decisions
 

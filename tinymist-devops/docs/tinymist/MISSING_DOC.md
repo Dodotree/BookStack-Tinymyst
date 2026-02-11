@@ -85,6 +85,108 @@ Binary Message Flow:
              │ (SVG visible to user)        │
              └──────────────────────────────┘
 
+## Preview Data Plane
+
+**Client → Server Message Types:**
+
+```js
+// Request current SVG
+dataWs.send('current');
+```
+
+**Server → Client Message Types:**
+
+**Response:** Binary SVG patch (incremental update sent automatically if it's a real file, not in-memory-file)
+
+### Binary Message Format
+
+Data Plane messages are binary data in this format:
+
+```js
+[message_type],[payload]
+```
+
+- `message_type`: ASCII text (e.g., "diff-v1", "new", "svg")
+- `,`: ASCII comma (byte 44) or (0x2C)
+- `payload`: Binary data
+
+- Find comma separator (0x2C) in binary data
+- Extract command (ASCII text before comma)
+- Extract payload (binary data after comma)
+
+### Example Binary Message
+
+```javascript
+// Received on Data Plane WebSocket
+Blob(1140 bytes)
+
+// Parsed structure:
+[100, 105, 102, 102, 45, 118, 49, 44, ...]  // "diff-v1," + binary diff data
+     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     "diff-v1" in ASCII (bytes 100-118)
+                                     ^^
+                                     comma separator (byte 44)
+                                          ^^^^^^^^^^^^
+                                          Binary diff payload (1132 bytes)
+```
+
+### Message Types
+
+| Type | Size | Description | When |
+|------|------|-------------|------|
+| `partial-rendering,true` | 4 bytes | Configuration confirmation | On connect |
+| `diff-v1,<binary>` | 1-3 KB | **Incremental diff** | After file change |
+| `new,<binary>` | 10-15 KB | **Full document** | Initial render or manual request |
+
+### Example of splitting off the start
+
+```javascript
+// Browser console test
+const blob = new Blob([
+    ...new TextEncoder().encode("diff-v1,"),
+    ...new Uint8Array([1, 2, 3, 4, 5])  // Mock binary data
+]);
+
+const buffer = await blob.arrayBuffer();
+const uint8 = new Uint8Array(buffer);
+const comma = uint8.indexOf(44);
+const type = new TextDecoder().decode(uint8.slice(0, comma));
+const payload = uint8.slice(comma + 1);
+
+console.log(`Type: ${type}, Payload: ${payload.length} bytes`);
+// Output: Type: diff-v1, Payload: 5 bytes
+```
+
+--- svg (No comma = full SVG render)
+**Format:** Raw binary SVG data
+**Size:** 1 KB - 500 KB (depending on document complexity)
+Binary SVG response (31,404 bytes in test)
+Blob { size: 31404, type: "" }
+
+--- new
+**Format:** ? It looks very similar to the full document `diff-v1` but misses important parts, not usable for incremental updates
+**Purpose:** Reset document state. Patched tinymist provides foll document diff-v1 instead so the reset can work with incremental updates
+Compressed binary document (Binary SVG diff reflexo-vec2svg format)
+
+--- svg patch
+**Format:** Binary diff/patch data
+**Purpose:** Incremental SVG update (smaller than full render)
+**Key Flag:** `--partial-rendering true` at tinymist cli initiation (can not toggle later)
+Blob { size: 1234, type: `diff-v1` (or `new`) }
+Compressed binary document (Binary SVG diff reflexo-vec2svg format)
+WASM deserializes it using rkyv
+
+--- jump
+**Format:** `jump,[page] [x] [y]`
+**Purpose:** Scroll to specific position
+Jump command example
+Binary data: "jump,1 70.866 112.127"
+
+"viewport-change" // (?)
+"svgUpdateEvent" (default) // (?)
+
+---
+
 ## KEY COMPONENTS
 
 ### 1. WebSocketPreviewProcessor
