@@ -142,4 +142,37 @@ class TinymistPreviewManager
         file_put_contents($filePath, $content);
     }
 
+    /**
+     * Ensure the preview file exists and return the content that should be used in the editor.
+     * If an existing file is newer than the page updated time, it is preserved and used.
+     */
+    public function ensurePreviewFileContent(
+        int $pageId,
+        string $dbContent,
+        ?\DateTimeInterface $pageUpdatedAt
+    ): string {
+        $filePath = storage_path("app/tinymist/page_{$pageId}.typ");
+        $directory = dirname($filePath);
+
+        if (!is_dir($directory)) {
+            mkdir($directory, 0755, true);
+        }
+
+        if (!file_exists($filePath)) {
+            file_put_contents($filePath, $dbContent);
+            return $dbContent;
+        }
+
+        $fileMtime = @filemtime($filePath) ?: 0;
+        $dbTimestamp = $pageUpdatedAt ? $pageUpdatedAt->getTimestamp() : 0;
+
+        if ($fileMtime > $dbTimestamp) {
+            $fileContent = @file_get_contents($filePath);
+            return is_string($fileContent) ? $fileContent : $dbContent;
+        }
+
+        file_put_contents($filePath, $dbContent);
+        return $dbContent;
+    }
+
 }

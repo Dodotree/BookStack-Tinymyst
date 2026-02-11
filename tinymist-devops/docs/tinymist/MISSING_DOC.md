@@ -1,7 +1,46 @@
-# Typst Preview WebSocket Processing - Complete Implementation
+# Typst Preview WebSocket Processing
 
 This directory contains a complete, production-ready implementation of the
 Typst preview WebSocket lifecycle with full WASM integration.
+
+## Why tinymist preview has 2 channels - developed for VSCode
+
+┌─────────────────────────────────────┐
+│  VSCode Extension (Node.js)         │
+│  ┌─────────────────────────────┐   │
+│  │ Tinymist Language Server    │   │
+│  │  ├─ Document analysis        │   │
+│  │  ├─ Outline extraction       │   │
+│  │  └─ Compilation              │   │
+│  └─────────────────────────────┘   │
+│           │              │           │
+│      WebSocket      postMessage     │
+│     (Binary data)  (Control/JSON)   │
+└───────────┼──────────────┼──────────┘
+            │              │
+            ▼              ▼
+┌─────────────────────────────────────┐
+│  Webview (Browser context)          │
+│  - ws.ts handles WebSocket          │
+│  - window.message handles control   │
+└─────────────────────────────────────┘
+
+WebSocket - High-performance binary data streaming
+
+1. **WebSocket - High-performance binary data streaming**
+Document diffs (can be large, binary format)
+Real-time updates during typing
+Direct connection to preview server
+**became Data Plane**
+
+2. **Window Messages - VSCode extension control**
+Structured JSON data
+Extension → webview communication
+Configuration, outline, reconnect commands
+VSCode API (postMessage)
+**became Control Plane**
+
+---
 
 ARCHITECTURE OVERVIEW
 
@@ -819,4 +858,35 @@ Beware that inline helper script (if enabled) can alter document tree even more
         {"kind": 5, "index": 10,"fingerprint": ""}  // page[0].g[0].g[11].g[3].g[2].text[0].char[10]
     ]
 ]
+```
+
+
+
+#### Paging
+
+AI: Tinymist preview renders the whole document; it doesn’t have a “render only page 2” mode. If you need a single page, export with Typst CLI and a page range (e.g., --pages 2) instead.
+To find what text corresponds to page 2, use preview/source sync: click in the preview to jump to the source, or use the editor’s “sync/reveal in preview” command to scroll the preview to the current source position.
+
+-- With incremental updates it could be ok. Otherwise we can work on separate parts and only at the end combine them in single file.
+
+```typst  styles.typ
+#set page(width: 8.5in, height: 4in, margin: 1in)
+#set text(font: "Linux Libertine", size: 11pt)        // top‑level content
+#let heading = [#set text(size: 14pt)]    // symbol
+```
+
+```typst doc.typ
+#include "styles.typ"
+
+== Heading
+My text
+#image("assets/logo.svg", width: 2cm)
+#image("assets/photo.png", width: 5cm)
+```
+
+##### Include vs Import
+
+```typst
+#include "styles.typ" runs the top‑level #set and also makes heading available.
+#import "styles.typ": heading only brings in heading; it does not run the top‑level #set line.
 ```

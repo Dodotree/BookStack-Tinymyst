@@ -125,8 +125,10 @@ class PageEditorData
             $manager = app(\BookStack\Entities\Tools\Tinymist\TinymistPreviewManager::class);
             $token = $manager->generateTinymistWsToken($page);
 
-            // Save current content to file
+            // Save current content to file (prefer newer file content if present)
             $content = $page->markdown ?? '== Empty document from PageEditorData';
+            $content = $manager->ensurePreviewFileContent($pageId, $content, $page->updated_at);
+            $page->markdown = $content;
 
             // Debug logging
             \Illuminate\Support\Facades\Log::info('Starting Tinymist preview', [
@@ -137,7 +139,6 @@ class PageEditorData
                 'ws_token' => $token['ws_token'],
             ]);
 
-            $manager->updateTinymistPreviewFile($pageId, $content);
             return [
                 'ws_token' => $token['ws_token'],
                 'status' => 'token_ready',

@@ -51,13 +51,14 @@ const initResult = await client.sendRequest("initialize", {
   capabilities: { /* ... */ },
 });
 
+// Required before starting communication
 client.sendNotification("initialized", {});
 ```
 
 ### Send Requests
 
 ```typescript
-// Request with response
+// Request ("request" implies with response)
 const hoverResult = await client.sendRequest("textDocument/hover", {
   textDocument: { uri: "file:///document.typ" },
   position: { line: 0, character: 5 },
@@ -167,43 +168,6 @@ Content-Length: 123\r\n
 }
 ```
 
-## Example
-
-See `lsp-client-example.ts` for a complete working example.
-
-## Integration with File Sync Server
-
-To integrate with the file-sync server:
-
-```typescript
-import { LSPClient } from "./lsp-client";
-import { FileManager } from "./file-manager";
-
-const fileManager = new FileManager(STORAGE_ROOT);
-const lspClient = new LSPClient({
-  command: getTinymistCommand(),
-  args: ["lsp"],
-  onNotification: (method, params) => {
-    if (method === "textDocument/publishDiagnostics") {
-      // Send diagnostics to connected clients
-      broadcastDiagnostics(params);
-    }
-  },
-});
-
-await lspClient.start();
-await initializeLSP(lspClient);
-
-// When file changes, notify LSP
-function onFileChange(pageId: number, content: string) {
-  const uri = getFileUri(pageId);
-  lspClient.sendNotification("textDocument/didChange", {
-    textDocument: { uri, version: getVersion(pageId) },
-    contentChanges: [{ text: content }],
-  });
-}
-```
-
 ## Error Handling
 
 The client handles several error scenarios:
@@ -213,4 +177,3 @@ The client handles several error scenarios:
 3. **Process crashes**: Auto-restart with exponential backoff
 4. **Parse errors**: Logged to console, processing continues
 5. **Shutdown errors**: Force kill after 5 second grace period
-

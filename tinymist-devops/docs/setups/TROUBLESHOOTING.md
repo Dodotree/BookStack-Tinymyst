@@ -1,48 +1,17 @@
-# Reload page socket failure
-
-Background tinymist process for the page port (for now page port is calculated from page number) have to stop, it needs couple seconds. Refresh  couple times with pauses in between, you will get there.
-(this should be solved by different port allocation mechanism)
-
-## 5. Add Scheduled Cleanup
-
-**File:** `app/Console/Kernel.php`
-
-```php
-protected function schedule(Schedule $schedule)
-{
-    // ... existing schedules ...
-
-    // Clean up idle Tinymist preview servers every 10 minutes
-    $schedule->call(function () {
-        app(TinymistPreviewManager::class)->cleanupIdleServers();
-    })->everyTenMinutes();
-}
-```
-
-## Development Mode
-
-**Concurrency:** Configure max concurrent preview servers in `.env`:
-TINYMIST_MAX_PREVIEW_SERVERS=20
-
-### Firewall Configuration
-
-```bash
-# Allow preview server port range / not recommended, use proxy instead
-sudo ufw allow 33625:33999/tcp comment 'Tinymist preview servers'
-```
-
-**Recommended:** Keep preview servers on localhost only (`127.0.0.1`). Use Nginx reverse proxy if remote access needed.
-
-### Nginx Reverse Proxy (Optional - for Remote Access)
-
-Only needed if users connect from different servers than where Tinymist runs.
-
-**File:** `/etc/nginx/sites-available/bookstack`
+# Initial troubleshooting
 
 ## Verification
 
 ```bash
-tinymist --version
+
+npm install
+# for linux without .exe
+./vendor/bin/typst.exe --version  # Should show: typst 0.x.x
+./vendor/bin/tinymist.exe --version  # Should show: tinymist v0.x.x
+
+# Check tinymist LSP capabilities
+tinymist --help
+tinymist lsp --help
 
 echo "= Hello World\nThis is *Typst*!" > test.typ
 ./vendor/bin/typst.exe compile test.typ output.svg --format svg
@@ -220,42 +189,9 @@ ps aux | grep "tinymist preview" | awk '{sum+=$6} END {print "Total memory:", su
 ### Cleanup After Testing
 
 ```bash
-# Stop all preview servers
-for i in {1..10}; do
-    curl -X POST http://localhost/ajax/tinymist/stop-preview \
-      -H "Content-Type: application/json" \
-      -d "{\"page_id\": $i}"
-done
-
 # Verify all stopped
 ps aux | grep "tinymist preview" | grep -v grep
 # Expected: No output
-```
-
-### Timeout
-
-**Solution 1:** Increase timeout
-
-```php
-// Not controller, though
-// app/Http/Controllers/TinymistController.php
-
-protected function compileTypst(string $source): string
-{
-    $result = Process::timeout(60)->run([  // Increase to 60 seconds
-        config('tinymist.tinymist_cli_path'),
-        'compile',
-        '-',
-        '--format', 'svg',
-        '-o', '-'
-    ], $source);
-
-    if (!$result->successful()) {
-        throw new \RuntimeException($result->errorOutput());
-    }
-
-    return $result->output();
-}
 ```
 
 ### CLI Returns Empty Output
@@ -274,87 +210,6 @@ echo "= Test" | tinymist compile - --format svg -o -
 
 # Check stderr
 echo "= Test" | tinymist compile - --format svg -o - 2>&1
-```
-
-**Solution:**
-
-```php
-protected function compileTypst(string $source): string
-{
-    // Add validation
-    if (empty(trim($source))) {
-        throw new \InvalidArgumentException('Source cannot be empty');
-    }
-
-    $result = Process::timeout(30)->run([
-        config('tinymist.tinymist_cli_path'),
-        'compile',
-        '-',
-        '--format', 'svg',
-        '-o', '-'
-    ], $source);
-
-    if (!$result->successful()) {
-        // Log detailed error
-        \Log::error('Tinymist compilation failed', [
-            'exit_code' => $result->exitCode(),
-            'stdout' => $result->output(),
-            'stderr' => $result->errorOutput(),
-            'source_length' => strlen($source),
-        ]);
-
-        throw new \RuntimeException(
-            'Compilation failed: ' . $result->errorOutput()
-        );
-    }
-
-    $output = $result->output();
-
-    // Validate output
-    if (empty($output)) {
-        throw new \RuntimeException('Compilation produced empty output');
-    }
-
-    if (!str_starts_with($output, '<svg')) {
-        throw new \RuntimeException('Output is not valid SVG');
-    }
-
-    return $output;
-}
-```
-
-## Enable Verbose Logging
-
-```php
-// app/Http/Controllers/TinymistController.php
-
-use Illuminate\Support\Facades\Log;
-
-public function compile(Request $request)
-{
-    Log::info('Tinymist compile started', [
-        'page_id' => $request->input('page_id'),
-        'content_length' => strlen($request->input('content')),
-        'user_id' => auth()->id(),
-    ]);
-
-    try {
-        $svgContent = $this->compileTypst($typstSource);
-
-        Log::info('Tinymist compile completed', [
-            'page_id' => $pageId,
-            'svg_size' => strlen($svgContent),
-        ]);
-    } catch (\Exception $e) {
-        Log::error('Tinymist compile failed', [
-            'page_id' => $pageId,
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString(),
-        ]);
-
-        throw $e;
-    }
-}
 ```
 
 **View logs:**
@@ -408,22 +263,37 @@ Tinymist spawns websocket, it needs Winsock and throws The Windows error 10106 (
                 $tinymistCommand = implode(' ', $command);
 ```
 
-## Lint and test before push
+### API Testing for fallback (typst command line render)
 
 ```bash
-# Run linting
-npm run lint
+# Test compilation endpoint
+curl -X POST http://localhost:8000/ajax/tinymist/compile \
+  -H "Content-Type: application/json" \
+  -d '{"source": "= Test\n\nHello *world*!"}'
 
-# Run TypeScript checks
-npm run ts:lint
+# Expected response:
+# {"success": true, "svg": "<svg>...</svg>", "errors": []}
 
-# Run tests
-npm test
+# Test validation endpoint
+curl -X POST http://localhost:8000/ajax/tinymist/check \
+  -H "Content-Type: application/json" \
+  -d '{"source": "= Invalid Typst \n\n#unknowncommand"}'
 
-composer lint
+# Test status endpoint
+curl http://localhost:8000/ajax/tinymist/status
 
-# or php -l, all the mess to make it recursive
-find . -name '*.php' -print0 | xargs -0 -n1 php -l
-
-php artisan test
+# Expected response:
+# {"available": true, "enabled": true}
 ```
+
+### Error Handling Test
+
+- [ ] Typst CLI not installed
+  - Should show compilation errors
+  - `/ajax/tinymist/status` returns `{"available": false}`
+
+- [ ] Document exceeds max size (1024 KB)
+  - Should show "Document exceeds maximum size limit"
+
+- [ ] Compilation timeout (30s limit)
+  - Should handle gracefully with error message

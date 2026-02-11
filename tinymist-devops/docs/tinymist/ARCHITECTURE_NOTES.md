@@ -35,7 +35,6 @@ This document describes the **on-demand per-page architecture** for Tinymist int
 │  │  ┌──────────────┐         ┌──────────────────┐    │         │
 │  │  │Control Plane │         │   Data Plane     │    │         │
 │  │  │  Port 33636  │         │   Port 33637     │    │         │
-│  │  │ (33626+2*5)  │         │ (33625+2*5+1)    │    │         │
 │  │  │              │         │                  │    │         │
 │  │  │ • Events     │         │ • Binary diffs   │    │         │
 │  │  │ • Status     │         │ • Incremental    │    │         │
@@ -54,8 +53,8 @@ This document describes the **on-demand per-page architecture** for Tinymist int
 │  ┌─── Another user editing Page 10 simultaneously ───┐         │
 │  │  Tinymist Preview Server for Page 10              │         │
 │  │  Watches: storage/app/tinymist/page_10.typ        │         │
-│  │  Control Port: 33646 (33626 + 2*10)               │         │
-│  │  Data Port: 33647 (33625 + 2*10 + 1)              │         │
+│  │  Control Port: 33646                              │         │
+│  │  Data Port: 33647                                 │         │
 │  └───────────────────────────────────────────────────┘         │
 └─────────────────────────────────────────────────────────────────┘
             │
@@ -87,45 +86,6 @@ This document describes the **on-demand per-page architecture** for Tinymist int
 │  └──────────────┘  └──────────────┘  └───────────────┘         │
 └─────────────────────────────────────────────────────────────────┘
 ```
-
-## Why preview has 2 channels - developed for VSCode
-
-┌─────────────────────────────────────┐
-│  VSCode Extension (Node.js)         │
-│  ┌─────────────────────────────┐   │
-│  │ Tinymist Language Server    │   │
-│  │  ├─ Document analysis        │   │
-│  │  ├─ Outline extraction       │   │
-│  │  └─ Compilation              │   │
-│  └─────────────────────────────┘   │
-│           │              │           │
-│      WebSocket      postMessage     │
-│     (Binary data)  (Control/JSON)   │
-└───────────┼──────────────┼──────────┘
-            │              │
-            ▼              ▼
-┌─────────────────────────────────────┐
-│  Webview (Browser context)          │
-│  - ws.ts handles WebSocket          │
-│  - window.message handles control   │
-└─────────────────────────────────────┘
-
-WebSocket - High-performance binary data streaming
-
-1. **WebSocket - High-performance binary data streaming**
-Document diffs (can be large, binary format)
-Real-time updates during typing
-Direct connection to preview server
-**became Data Plane**
-
-2. **Window Messages - VSCode extension control**
-Structured JSON data
-Extension → webview communication
-Configuration, outline, reconnect commands
-VSCode API (postMessage)
-**became Control Plane**
-
----
 
 ## On-Demand Lifecycle
 
@@ -190,29 +150,6 @@ Free up resources for active users
 | **Data Plane** | SVG binary streaming | Tinymist (Rust) | Per-page process |
 | **TinymistController** | Save/publish + file updates | PHP/Laravel | Request-scoped |
 | **Database** | Persistent storage | MySQL/PostgreSQL | Always available |
-
----
-
-## Port Allocation Strategy
-
-### Dynamic Port Calculation
-
-**Formula:**
-
-- Control Port = `base_port + (2 * page_id)`
-- Data Port = `base_port + (2 * page_id) + 1`
-
-**Default Base Ports:**
-
-- Control Base: 33626
-- Data Base: 33625
-
-**Why this formula?**
-
-- ✅ Each page gets 2 consecutive ports (easy to remember)
-- ✅ No port conflicts between pages
-- ✅ Predictable debugging (port → page ID)
-- ✅ Scales to thousands of pages (33625-63999 = 30k+ pages) -> Enough for now
 
 ---
 
@@ -674,148 +611,6 @@ export class TinymistEditorLSP {
 }
 ```
 
-### Backend LSP Bridge (PHP)
-
-**Receives LSP didChange events and updates .typ file on disk.**
-
-```php
-<?php
-// app/Http/Controllers/TinymistLspController.php
-
-namespace BookStack\Http\Controllers;
-
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
-
-class TinymistLspController extends Controller
-{
-    /**
-     * Handle LSP messages from CodeMirror
-     */
-    public function handleLspMessage(Request $request)
-    {
-        $pageId = $request->input('page_id');
-        $message = $request->input('message');
-
-        // Handle textDocument/didChange
-        if ($message['method'] === 'textDocument/didChange') {
-            $this->applyChangesToFile($pageId, $message['params']);
-        }
-
-        return response()->json(['success' => true]);
-    }
-
-    /**
-     * Apply LSP didChange to .typ file on disk
-     */
-    protected function applyChangesToFile(int $pageId, array $params)
-    {
-        $filePath = "tinymist/page_{$pageId}.typ";
-
-        // Get current content
-        $content = Storage::get($filePath);
-
-        // Apply incremental changes (LSP sends ranges)
-        foreach ($params['contentChanges'] as $change) {
-            if (isset($change['range'])) {
-                // Incremental change (range-based)
-                $start = $this->positionToOffset($content, $change['range']['start']);
-                $end = $this->positionToOffset($content, $change['range']['end']);
-
-                $content = substr($content, 0, $start) .
-                          $change['text'] .
-                          substr($content, $end);
-            } else {
-                // Full document sync (fallback)
-                $content = $change['text'];
-            }
-        }
-
-        // Write to file - Tinymist file watcher will detect change
-        Storage::put($filePath, $content);
-
-        // Tinymist automatically:
-        // 1. Detects file change (inotify/kqueue)
-        // 2. Compiles incrementally (200-500µs)
-        // 3. Sends diff-v1 via Data Plane WebSocket
-    }
-
-    /**
-     * Convert LSP position (line/character) to byte offset
-     */
-    protected function positionToOffset(string $content, array $position): int
-    {
-        $lines = explode("\n", $content);
-        $offset = 0;
-
-        for ($i = 0; $i < $position['line']; $i++) {
-            $offset += strlen($lines[$i]) + 1; // +1 for newline
-        }
-
-        $offset += $position['character'];
-        return $offset;
-    }
-}
-```
-
-**Workflow Summary:**
-
-1. **User types in CodeMirror** → LSP extension detects change
-2. **textDocument/didChange sent** to `/ajax/tinymist/lsp-message`
-3. **Backend applies change** to `page_{id}.typ` file
-4. **Tinymist file watcher** detects file modification
-5. **Incremental compilation** (200-500µs) → generates binary diff
-6. **Data Plane sends** `diff-v1,<binary>` via WebSocket
-7. **Frontend receives** small diff (1-3 KB instead of 10+ KB)
-8. **WASM decoder** (future) applies diff → Preview updates
-
-**Key Advantage:** File-based approach works with existing tinymist file watching, no need for direct LSP server connection. Partial rendering enabled via `--partial-rendering true` flag.
-
----
-
-### Complete Editor Component with Dynamic Ports (Legacy Direct WebSocket)
-
-```typescript
-// resources/js/components/tinymist-editor.ts
-
-export class TinymistEditor {
-    private pageId: number;
-    private editor: EditorView;
-    private controlWs: WebSocket | null = null;
-    private dataWs: WebSocket | null = null;
-    private renderer: PreviewDataPlane;
-    private controlPort: number | null = null;
-    private dataPort: number | null = null;
-    private previewServerStarted: boolean = false;
-
-    async initialize() {
-        // Get page ID from URL or data attribute
-        this.pageId = parseInt(this.elem.dataset.pageId || this.getPageIdFromUrl());
-
-        // Initialize CodeMirror
-        this.editor = new EditorView({
-            doc: this.getInitialContent(),
-            extensions: [
-                typstLanguage(),
-                this.createUpdateListener(),
-            ],
-            parent: this.elem.querySelector('.editor-pane')
-        });
-
-        // Initialize preview renderer
-        this.renderer = new PreviewDataPlane(
-            this.elem.querySelector('.preview-pane')
-        );
-
-        // START PREVIEW SERVER (on-demand)
-        await this.startPreviewServer();
-    }
-}
-```
-
----
----
-
 ## Tinymist Partial Rendering
 
 **Key Flag:** `--partial-rendering true`
@@ -855,94 +650,6 @@ Browser receives and renders SVG diff
 - ✅ **Compilation efficiency** - Tinymist recompiles only changed parts
 - ✅ **Transfer efficiency** - Browser receives only SVG diffs
 - ❌ **NOT input efficiency** - You still send full document
-
-### MemoryUpdate flow from editor
-
-```js
-        // Initialize editor
-        this.editor = new EditorView({
-            doc: this.getInitialContent(),
-            extensions: [
-                typstLanguage(),
-                EditorView.updateListener.of((update) => {
-                    if (update.docChanged) {
-                        const content = update.state.doc.toString();
-                        this.sendMemoryFileUpdate(content);
-                    }
-                })
-            ],
-            parent: this.elem.querySelector('.editor-pane')
-        });
-
-    /**
-     * Send file update via Control Plane WebSocket
-     */
-    private sendMemoryFileUpdate(content: string) {
-        if (this.controlWs?.readyState === WebSocket.OPEN) {
-            const message = {
-                "event": "UpdateMemoryFiles"
-                "files": {
-                    [this.filePath]: content
-                }
-            };
-
-            this.controlWs.send(JSON.stringify(message));
-            console.log('UpdateMemoryFiles sent');
-        }
-    }
-
-    private connectControlPlane(port: number) {
-        this.controlWs = new WebSocket(`ws://127.0.0.1:${port}`);
-
-        this.controlWs.onopen = () => {
-            console.log('✓ Control Plane connected');
-        };
-
-        this.controlWs.onmessage = (event) => {
-            const message = JSON.parse(event.data);
-
-            if (message.event === 'compileStatus') {
-                console.log(`Compile: ${message.kind}`);
-                // CompileSuccess → Data Plane will automatically (?) send diff
-                // More likely it needs a request "current"
-                // Doubt it would be incremental, so
-                // Memory updates don't give incremental values?
-                // Maybe "sync" will trigger it?
-            }
-        };
-    }
-
-    private connectDataPlane(port: number) {
-        this.dataWs = new WebSocket(`ws://127.0.0.1:${port}`);
-
-        this.dataWs.onopen = () => {
-            // Request initial render
-            this.dataWs.send('current');
-        };
-
-        this.dataWs.onmessage = async (event) => {
-            if (event.data instanceof Blob) {
-                const buffer = await event.data.arrayBuffer();
-                const uint8Array = new Uint8Array(buffer);
-
-                const commaIndex = uint8Array.indexOf(44);
-                const type = new TextDecoder().decode(uint8Array.slice(0, commaIndex));
-                const payload = uint8Array.slice(commaIndex + 1);
-
-                switch (type) {
-                    case 'diff-v1':
-                        this.dataWs.send('current');
-                        break;
-                    case 'new':
-                        // TODO: Render full document
-                        break;
-                }
-            }
-        };
-    }
-```
-
----
 
 ### WebSocket Approach with memory save
 
@@ -995,41 +702,6 @@ Browser receives and renders SVG diff
 │ Preview updates      │
 │ (50-100ms latency)   │
 └──────────────────────┘
-```
-
-### Step 3: Trigger Updates via LSP didChange
-
-```typescript
-// CodeMirror LSP extension sends 'textDocument/didChange'
-import {LanguageServerClient} from "@codemirror/language-server";
-
-const lspClient = new LanguageServerClient({
-    documentUri: `file:///page_${pageId}.typ`,
-    languageId: "typst",
-    transport: {
-        send: async (message) => {
-            // Send LSP message to backend
-            await fetch('/ajax/tinymist/lsp-message', {
-                method: 'POST',
-                body: JSON.stringify({page_id, message})
-            });
-        }
-    }
-});
-```
-
-For now, request full renders instead of applying diffs.
-This could work for memory updates
-
-```javascript
-// On compileSuccess event, request full render
-controlWs.onmessage = (event) => {
-    const msg = JSON.parse(event.data);
-    if (msg.event === 'compileStatus' && msg.kind === 'CompileSuccess') {
-        // Request full `new` messages instead of diffs (fallback until decoder implemented)
-        dataWs.send('current');
-    }
-};
 ```
 
 ## More diagrams
@@ -1187,8 +859,7 @@ controlWs.onmessage = (event) => {
 │    COMMIT;              │
 └───────────┬─────────────┘
 
-✅ DATABASE WRITE
-✅ SEARCH INDEX UPDATE
+
 ```
 
 ## Page View Flow
@@ -1242,9 +913,3 @@ controlWs.onmessage = (event) => {
 ### BookStack Search Integration
 
 BookStack's existing search automatically indexes the `pages.markdown` and `pages.text` columns.
-
-## See Also
-
-- **TINYMIST_INSTALLATION.md** - Setup guide
-- **TINYMIST_SVG_WORKFLOW.md** - Complete workflow
-- **TINYMIST_DEBUGGING.md** - Troubleshooting

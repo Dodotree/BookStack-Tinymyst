@@ -27,6 +27,7 @@ This guide helps a developer run BookStack with the Tinymist editor locally on W
 4) Install frontend dependencies (also downloads Typst/Tinymist binaries into vendor/bin):
 
 - npm install
+	- or: npm ci
 
 ## Database setup
 
@@ -88,6 +89,8 @@ If missing, re-run npm install.
 
 - Delete storage/app/tinymist/ to reset local preview state
 
+Note: The editor content is loaded from storage/app/tinymist/page_<id>.typ if it exists and is newer than DB. Delete the file to force DB content.
+
 ### Find or kill stray Tinymist processes (Windows)
 
 PowerShell:
@@ -110,3 +113,23 @@ CMD:
 - WebSocket auth errors: ensure TINYMIST_WS_SECRET is set in .env and matches the Node server environment (both load .env from project root).
 - Preview not updating: confirm both npm run ws:dev and npm run preview:dev are running.
 - Missing Typst/Tinymist binaries: re-run npm install to trigger the download scripts.
+
+## Lint and test before push
+
+```bash
+# Run linting
+npm run lint
+
+# Run TypeScript checks
+npm run ts:lint
+
+# Run tests
+npm test
+
+composer lint
+
+# or php -l, all the mess to make it recursive
+find . -name '*.php' -print0 | xargs -0 -n1 php -l
+
+php artisan test
+```
