@@ -2,27 +2,27 @@
 
 ## Objective
 
-Making Typst markup easily available for engineers, scientist, students, and such without the need to program or manage packages. Features expected:
-    - customizable highlighting of the typst markup itself for easier editing
-    - live preview with zoom-in/zoom-out with full rendering support
+Making Typst markup easily available for engineers, scientists, students, and such without the need to program or manage packages. Expected features:
+    - customizable highlighting of the Typst markup itself for easier editing
+    - live preview with zoom-in/zoom-out and full rendering support
     - ability to use #import #include #image to link additional files
-    - show typst text editor cursor in the rendered preview
-    - save/download both typst text and preview as svg/pdf/image
-    - print pdf
+    - show the Typst editor cursor in the rendered preview
+    - save/download both Typst text and preview as SVG/PDF/images
+    - print PDFs
     - save/load templates or examples of use
-    - light and dark themes, fonts selection
+    - light and dark themes and font selection
     - save user preferences
 
 ## Main Tools for components and their responsibilities
 
-    - Typst cli compiler for one off renders of the whole file or selected pages from it.
-    - Tinymist wrapper around typst compiler initially created for VScode and other IDE. Tinymist preview for realtime rendering preview panel. Tinymist LSP for editor panel diagnostics, semantic tokens, tips, autofill and whatever works.
-    - CodeMirror as rich text editor that also can be used on the back end for realtime syncing with the copy of the edited file. Live copy of the edited file is needed for the tinymist.
-    - @myriaddreamin/typst-ts-renderer WASM tinymist renderer to convert tinymist custom vector format into live .svg preview. This is very important to have the right release for it to be able to decode back end tinymist renders:
+    - Typst CLI compiler for one-off renders of the whole file or selected pages from it.
+    - Tinymist wrapper around the Typst compiler initially created for VS Code and other IDEs. Tinymist preview for real-time rendering in the preview panel. Tinymist LSP for editor diagnostics, semantic tokens, tips, autocomplete, and more.
+    - CodeMirror as a rich text editor that can also be used on the backend for real-time syncing with the copy of the edited file. The live copy of the edited file is needed for Tinymist.
+    - @myriaddreamin/typst-ts-renderer WASM Tinymist renderer to convert the Tinymist custom vector format into a live SVG preview. This is very important to have the right release for it to be able to decode backend Tinymist renders:
         0.6.x release that matches tinymist 0.13.x.
         0.7.x release that matches tinymist 0.14.x. (current)
-    - Nodejs for creating clients for tinymist processes and bridges to connect through web sockets tinymist with the browser. Also nodejs websocket connects browser and back end CodeMirror for realtime sync of the editors content in the browser with the back end temporary copy of the file. (The reason for nodejs being a tool of choice was the ease of use and CodeMirror module availability. I was not able to find PHP tools that can support custom protocol websockets, meaning, there will be required fields in their protocols and Tinymist will drop any message that contains fields it does not recognize)
-    - Bookstack Laravel for user authentication, file organization, saving to database, search. Also for some scheduled tasks and logging.
+    - Node.js for creating clients for Tinymist processes and bridges to connect Tinymist with the browser through WebSockets. Also, a Node.js WebSocket connects the browser and backend CodeMirror for real-time sync of the editor's content in the browser with the backend temporary copy of the file. (The reason for Node.js being a tool of choice was the ease of use and CodeMirror module availability. I couldn't find PHP tools that can support custom protocol WebSockets, meaning there are required fields in their protocols and Tinymist will drop any message that contains fields it does not recognize.)
+    - BookStack Laravel for user authentication, file organization, saving to the database, and search. Also for some scheduled tasks and logging.
 
 ## System Diagram (Per-Page Architecture)
 
@@ -166,17 +166,17 @@ Making Typst markup easily available for engineers, scientist, students, and suc
                             │    (50-200ms latency)│
                             └──────────────────────┘
 
-## In-memory-file preview
+## In-memory file preview
 
-It allows to post changes directly to the control plane of the preview
-But consumes memory and creates traffic with the whole file going back and forth
-on each click. This is more suitable for desktop applications.
+It allows posting changes directly to the control plane of the preview,
+but consumes memory and creates traffic with the whole file going back and forth
+on each change. This is more suitable for desktop applications.
 
 **Note, "partial rendering" refers to:**
 
 - ✅ **Compilation efficiency** - Tinymist recompiles only changed parts
 - ✅ **Transfer efficiency** - Browser receives only SVG diffs
-- ❌ **NOT input efficiency** - You still send full document
+- ❌ **NOT input efficiency** - You still send the full document
 
 ┌──────────────────────┐
 │ User types           │
@@ -281,8 +281,6 @@ on each click. This is more suitable for desktop applications.
 
 ## Page View Flow
 
-### Detailed Sequence2
-
 ```log
 ┌─────────────────────────┐
 │ 1. User visits page URL │
@@ -327,9 +325,9 @@ on each click. This is more suitable for desktop applications.
 
 ```
 
-**Note, PHP HTML5 parser doesn't properly handle SVG namespaces, formatHtml()** will strip svg tags before saving, bypass it
-**Note, using DOMDocument->loadHTML()** will strip svg tags (`xlink:href` and the <defs> section)
-bypass render() method since it's using loadHTML()
+**Note: the PHP HTML5 parser doesn't properly handle SVG namespaces; formatHtml()** will strip SVG tags before saving, so bypass it.
+**Note: using DOMDocument->loadHTML()** will strip SVG tags (`xlink:href` and the <defs> section).
+Bypass the render() method since it uses loadHTML().
 
 ---
 
