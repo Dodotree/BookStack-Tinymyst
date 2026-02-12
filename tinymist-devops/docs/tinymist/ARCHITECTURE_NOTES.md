@@ -15,74 +15,48 @@ Making Typst markup easily available for engineers, scientists, students, and su
 
 ## Main Tools for components and their responsibilities
 
-    - Typst CLI compiler for one-off renders of the whole file or selected pages from it.
-    - Tinymist wrapper around the Typst compiler initially created for VS Code and other IDEs. Tinymist preview for real-time rendering in the preview panel. Tinymist LSP for editor diagnostics, semantic tokens, tips, autocomplete, and more.
-    - CodeMirror as a rich text editor that can also be used on the backend for real-time syncing with the copy of the edited file. The live copy of the edited file is needed for Tinymist.
-    - @myriaddreamin/typst-ts-renderer WASM Tinymist renderer to convert the Tinymist custom vector format into a live SVG preview. This is very important to have the right release for it to be able to decode backend Tinymist renders:
-        0.6.x release that matches tinymist 0.13.x.
-        0.7.x release that matches tinymist 0.14.x. (current)
-    - Node.js for creating clients for Tinymist processes and bridges to connect Tinymist with the browser through WebSockets. Also, a Node.js WebSocket connects the browser and backend CodeMirror for real-time sync of the editor's content in the browser with the backend temporary copy of the file. (The reason for Node.js being a tool of choice was the ease of use and CodeMirror module availability. I couldn't find PHP tools that can support custom protocol WebSockets, meaning there are required fields in their protocols and Tinymist will drop any message that contains fields it does not recognize.)
-    - BookStack Laravel for user authentication, file organization, saving to the database, and search. Also for some scheduled tasks and logging.
+- Typst CLI compiler for one-off renders of the whole file or selected pages from it.
+- Tinymist wrapper around the Typst compiler initially created for VS Code and other IDEs. Tinymist preview for real-time rendering in the preview panel. Tinymist LSP for editor diagnostics, semantic tokens, tips, autocomplete, and more.
+- CodeMirror as a rich text editor that can also be used on the backend for real-time syncing with the copy of the edited file. The live copy of the edited file is needed for Tinymist.
+- @myriaddreamin/typst-ts-renderer WASM Tinymist renderer to convert the Tinymist custom vector format into a live SVG preview. This is very important to have the right release for it to be able to decode backend Tinymist renders:
+    0.6.x release that matches tinymist 0.13.x.
+    0.7.x release that matches tinymist 0.14.x. (current)
+- Node.js for creating clients for Tinymist processes and bridges to connect Tinymist with the browser through WebSockets. Also, a Node.js WebSocket connects the browser and backend CodeMirror for real-time sync of the editor's content in the browser with the backend temporary copy of the file. (The reason for Node.js being a tool of choice was the ease of use and CodeMirror module availability. I couldn't find PHP tools that can support custom protocol WebSockets, meaning there are required fields in their protocols and Tinymist will drop any message that contains fields it does not recognize.)
+- BookStack Laravel for user authentication, file organization, saving to the database, and search. Also for some scheduled tasks and logging.
 
 ## System Diagram (Per-Page Architecture)
 
-┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
-│                    Browser (User editing Page 5)                                                       │
-│  ┌──────────────────┐                                                     ┌──────────────────┐         │
-│  │  Editor Pane     │           Cursor position                           │  Preview Pane    │         │
-│  │  CodeMirror      ├────────────────────────────────────────────────────►│  Connection      │         │
-│  └────────┬─────────┘                                                     └────────┬─────────┘         │
-│           │                                                                        │                   │
-│           │ WebSocket (JSON Events)                                                │ WebSocket (Binary)│
-└───────────┼────────────────────────────────────────────────────────────────────────┼───────────────────┘
-            │                                                                        │
-            │ ws://host:4000                                                         │ ws://host:4020
-            │                                                                        │
-┌───────────┼────────────┐       ┌──────────────────────────────┐     ┌──────────────┼────────────────────────────────┐
-│           ▼            │       │ Page 5 copy in storage/      │     │              ▼                                │
-│ file-sync/server.ts    │       │ created by Laravel           │     │ preview/preview-server.ts                     │
-│                        │       │ when serving the page        │     │                                               │
-│ ┌──────────────┐       │       │                              │     │ ┌───────────────┐ ┌───────────────┐ ┌───────┐ │
-│ │ file-manager │       │       │                              │     │ │ Page 5        │ │ Page 8        │ │ ...   │ │
-│ │ CodeMirror   ┼───────┼───────┼──►                           │     │ │ PreviewClient │ │ PreviewClient │ │       │ │
-│ │ updates      │       │       │                    Tinymist  │     │ │┌─────────────┐│ │┌─────────────┐│ │       │ │
-│ └──────────────┘       │       │                     preview  │     │ ││ Tinymist    ││ ││ Tinymist    ││ │       │ │
-│ ┌────────────────────┐ │       │                       ───────┼─────┼─┼┼─►  Preview  ││ ││ Preview     ││ │       │ │
-│ │ LSP Client    │    │ │       │                file watcher  │     │ │├───────┬─────││ │├───────┬─────││ │       │ │
-│ │┌──────────────┼───┐│ │       │              inotify/kqueue  │     │ ││Control│ Data││ ││Control│ Data││ │       │ │
-│ ││ LSP Server   ▼   ││ │       │ Pulls                        │     │ ││Plane  │Plane││ ││Plane  │Plane││ │       │ │
-│ ││                ◄─┼┼─┼───────┼── upon                       │     │ │└───────┴─────┘│ │└───────┴─────┘│ │       │ │
-│ ││ • Diagnostics    ││ │       │ notification                 │     │ │ Both ports    │ │               │ │───────│ │
-│ ││ • Semantic Tokens││ │       └──────────────────────────────┘     │ └───────────────┘ └───────────────┘ └───────┘ │
-│ ││ ...              ││ │                                            └─────────────┼─────────────────────────────────┘
-│ │└──────────────────┘│ │                                                          │
-│ └────────────────────┘ │                                                          │
-└───────┼────────────────┘                                                          │
-        │                                                                           │
-┌───────┼───────────────────────────────────────────────────────────────────────────┼─────────────────────────────────┐
-│       ▼            Browser (User editing Page 5)                                  ▼                                 │
-│  ┌──────────────────────────────────────────┐                      ┌──────────────────────────────────────┐         │
-│  │  CodeMirror Editor Pane                  │                      │  Preview Pane                        │         │
-│  │                                          │                      │                                      │         │
-│  │                                          │                      │  Compile status from control plane   │         │
-│  │  Sync command:                           │                      │                                      │         │
-│  │  • WS `fullState` resets local state     │                      │  SVG handling:                       │         │
-│  │                                          │                      │  • WASM decodes binary full state    │         │
-│  │                                          │                      │    or incremental diffs              │         │
-│  │  Diagnostics:                            │                      │  • Render is always full             │         │
-│  │  • WS `diagnostics` + docVersion         │                      │    (no svg patches)                  │         │
-│  │  • Mapped via snapshots + ChangeSet      │                      │                                      │         │
-│  │  • Logged into Console Pane              │                      │                                      │         │
-│  │                                          │                      │  Cursor handling:                    │         │
-│  │  Semantic tokens:                        │                      │  • Parse path                        │         │
-│  │  • WS `semanticTokens*` + docVersion     │                      │  • Find node and calculate size      │         │
-│  │  • Mapped via snapshots + ChangeSet      │                      │  • Insert spotlight circle           │         │
-│  │                                          │                      │                                      │         │
-│  │                                          │                      │  Outline handling: none              │         │
-│  │                                          │                      │                                      │         │
-│  └────────┬─────────────────────────────────┘                      └──────────────────────────────────────┘         │
-│           │                                                                                                         │
-└───────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart LR
+       subgraph Browser[Browser (User editing Page 5)]
+              direction LR
+              Editor[Editor Pane\nCodeMirror]
+              PreviewConn[Preview Pane\nConnection]
+              Editor <--> |Cursor position| PreviewConn
+       end
+
+       Editor -->|WebSocket (JSON Events)\nws://host:4000| FileSync[file-sync/server.ts]
+       PreviewConn -->|WebSocket (Binary)\nws://host:4020| PreviewServer[preview/preview-server.ts]
+
+       FileSync -->|CodeMirror updates| FileManager[file-manager]\n
+       FileSync --> LSPClient[LSP Client]
+       LSPClient --> LSPServer[LSP Server]\nDiagnostics\nSemantic Tokens\n...
+
+       FileSync -->|writes .typ| PageCopy[Page 5 copy in storage/\ncreated by Laravel\nwhen serving the page]
+       PageCopy -->|file watcher\n(inotify/kqueue)| TinymistPreview[Tinymist preview]
+
+       PreviewServer --> PreviewClient5[PreviewClient (Page 5)]
+       PreviewServer --> PreviewClient8[PreviewClient (Page 8)]
+       PreviewClient5 -->|Control Plane| TinymistPreview
+       PreviewClient5 -->|Data Plane| TinymistPreview
+
+       subgraph BrowserDetails[Browser (User editing Page 5)]
+              direction LR
+              EditorDetails[CodeMirror Editor Pane\n\nSync command:\n• WS fullState resets local state\n\nDiagnostics:\n• WS diagnostics + docVersion\n• Mapped via snapshots + ChangeSet\n• Logged into Console Pane\n\nSemantic tokens:\n• WS semanticTokens* + docVersion\n• Mapped via snapshots + ChangeSet]
+              PreviewDetails[Preview Pane\n\nCompile status from control plane\n\nSVG handling:\n• WASM decodes binary full state\n  or incremental diffs\n• Render is always full\n  (no svg patches)\n\nCursor handling:\n• Parse path\n• Find node and calculate size\n• Insert spotlight circle\n\nOutline handling: none]
+              EditorDetails --- PreviewDetails
+       end
+```
             │
             ▼
 ┌─────────────────────────────────────────────────────────────────┐
