@@ -28,56 +28,38 @@ Making Typst markup easily available for engineers, scientists, students, and su
 
 ```mermaid
 flowchart LR
-       subgraph Browser[Browser (User editing Page 5)]
+       subgraph Browser["Browser (User editing Page 5)"]
               direction LR
-              Editor[Editor Pane\nCodeMirror]
-              PreviewConn[Preview Pane\nConnection]
+              Editor["Editor Pane<br/>CodeMirror"]
+              PreviewConn["Preview Pane<br/>Connection"]
               Editor <--> |Cursor position| PreviewConn
        end
 
-       Editor -->|WebSocket (JSON Events)\nws://host:4000| FileSync[file-sync/server.ts]
-       PreviewConn -->|WebSocket (Binary)\nws://host:4020| PreviewServer[preview/preview-server.ts]
+       Editor -->|"WebSocket (JSON Events)<br/>ws://host:4000"| FileSync["file-sync/server.ts"]
+       PreviewConn -->|"WebSocket (Binary)<br/>ws://host:4020"| PreviewServer["preview/preview-server.ts"]
 
-       FileSync -->|CodeMirror updates| FileManager[file-manager]\n
-       FileSync --> LSPClient[LSP Client]
-       LSPClient --> LSPServer[LSP Server]\nDiagnostics\nSemantic Tokens\n...
+       FileSync -->|CodeMirror updates| FileManager["file-manager"]
+       FileSync --> LSPClient["LSP Client"]
+       LSPClient --> LSPServer["LSP Server<br/>Diagnostics<br/>Semantic Tokens<br/>..."]
 
-       FileSync -->|writes .typ| PageCopy[Page 5 copy in storage/\ncreated by Laravel\nwhen serving the page]
-       PageCopy -->|file watcher\n(inotify/kqueue)| TinymistPreview[Tinymist preview]
+       FileSync -->|"writes .typ"| PageCopy["Page 5 copy in storage/<br/>created by Laravel<br/>when serving the page"]
+       PageCopy -->|"file watcher<br/>(inotify/kqueue)"| TinymistPreview["Tinymist preview"]
 
-       PreviewServer --> PreviewClient5[PreviewClient (Page 5)]
-       PreviewServer --> PreviewClient8[PreviewClient (Page 8)]
+       PreviewServer --> PreviewClient5["PreviewClient (Page 5)"]
+       PreviewServer --> PreviewClient8["PreviewClient (Page 8)"]
        PreviewClient5 -->|Control Plane| TinymistPreview
        PreviewClient5 -->|Data Plane| TinymistPreview
 
-       subgraph BrowserDetails[Browser (User editing Page 5)]
+       Editor -->|"HTTP (save/publish)"| Backend["BookStack Backend (PHP/Laravel)<br/>TinymistController<br/>• Fallback recompile<br/>• CLI compilation (save/publish only)<br/>• Database persistence<br/>• Search text extraction"]
+       Backend --> Database["Database (MySQL/PostgreSQL)<br/>pages.content (typst src)<br/>pages.html (final SVG)<br/>pages.markdown (for search)"]
+
+       subgraph BrowserDetails["Browser (User editing Page 5)"]
               direction LR
-              EditorDetails[CodeMirror Editor Pane\n\nSync command:\n• WS fullState resets local state\n\nDiagnostics:\n• WS diagnostics + docVersion\n• Mapped via snapshots + ChangeSet\n• Logged into Console Pane\n\nSemantic tokens:\n• WS semanticTokens* + docVersion\n• Mapped via snapshots + ChangeSet]
-              PreviewDetails[Preview Pane\n\nCompile status from control plane\n\nSVG handling:\n• WASM decodes binary full state\n  or incremental diffs\n• Render is always full\n  (no svg patches)\n\nCursor handling:\n• Parse path\n• Find node and calculate size\n• Insert spotlight circle\n\nOutline handling: none]
+              EditorDetails["CodeMirror Editor Pane<br/><br/>Sync command:<br/>• WS fullState resets local state<br/><br/>Diagnostics:<br/>• WS diagnostics + docVersion<br/>• Mapped via snapshots + ChangeSet<br/>• Logged into Console Pane<br/><br/>Semantic tokens:<br/>• WS semanticTokens* + docVersion<br/>• Mapped via snapshots + ChangeSet"]
+              PreviewDetails["Preview Pane<br/><br/>Compile status from control plane<br/><br/>SVG handling:<br/>• WASM decodes binary full state<br/>  or incremental diffs<br/>• Render is always full<br/>  (no svg patches)<br/><br/>Cursor handling:<br/>• Parse path<br/>• Find node and calculate size<br/>• Insert spotlight circle<br/><br/>Outline handling: none"]
               EditorDetails --- PreviewDetails
        end
 ```
-            │
-            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│          BookStack Backend (PHP/Laravel)                        │
-│  ┌──────────────────────────────────────────────────┐           │
-│  │         TinymistController (PHP)                 │           │
-│  │  • Fallback recompile                            │           │
-│  │  • CLI compilation (save/publish only)           │           │
-│  │  • Database persistence                          │           │
-│  │  • Search text extraction                        │           │
-│  └──────────────────────────────────────────────────┘           │
-└─────────────────────────────────────────────────────────────────┘
-            │
-            ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Database (MySQL/PostgreSQL)                │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐          │
-│  │ pages.content│  │  pages.html  │  │ pages.markdown│          │
-│  │ (typst src)  │  │ (final SVG)  │  │ (for search)  │          │
-│  └──────────────┘  └──────────────┘  └───────────────┘          │
-└─────────────────────────────────────────────────────────────────┘
 
 ## Preview Data Flow
 
