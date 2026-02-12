@@ -26,43 +26,90 @@ Making Typst markup easily available for engineers, scientists, students, and su
 
 ## System Diagram (Per-Page Architecture)
 
-```mermaid
-flowchart LR
-       subgraph Browser["Browser (User editing Page 5)"]
-              direction LR
-              Editor["Editor Pane<br/>CodeMirror"]
-              PreviewConn["Preview Pane<br/>Connection"]
-              Editor <--> |Cursor position| PreviewConn
-       end
-
-       Editor -->|"WebSocket (JSON Events)<br/>ws://host:4000"| FileSync["file-sync/server.ts"]
-       PreviewConn -->|"WebSocket (Binary)<br/>ws://host:4020"| PreviewServer["preview/preview-server.ts"]
-
-       FileSync -->|CodeMirror updates| FileManager["file-manager"]
-       FileSync --> LSPClient["LSP Client"]
-       LSPClient --> LSPServer["LSP Server<br/>Diagnostics<br/>Semantic Tokens<br/>..."]
-
-       FileSync -->|"writes .typ"| PageCopy["Page 5 copy in storage/<br/>created by Laravel<br/>when serving the page"]
-       PageCopy -->|"file watcher<br/>(inotify/kqueue)"| TinymistPreview["Tinymist preview"]
-
-       PreviewServer --> PreviewClient5["PreviewClient (Page 5)"]
-       PreviewServer --> PreviewClient8["PreviewClient (Page 8)"]
-       PreviewClient5 -->|Control Plane| TinymistPreview
-       PreviewClient5 -->|Data Plane| TinymistPreview
-
-       Editor -->|"HTTP (save/publish)"| Backend["BookStack Backend (PHP/Laravel)<br/>TinymistController<br/>• Fallback recompile<br/>• CLI compilation (save/publish only)<br/>• Database persistence<br/>• Search text extraction"]
-       Backend --> Database["Database (MySQL/PostgreSQL)<br/>pages.content (typst src)<br/>pages.html (final SVG)<br/>pages.markdown (for search)"]
-
-       subgraph BrowserDetails["Browser (User editing Page 5)"]
-              direction LR
-              EditorDetails["CodeMirror Editor Pane<br/><br/>Sync command:<br/>• WS fullState resets local state<br/><br/>Diagnostics:<br/>• WS diagnostics + docVersion<br/>• Mapped via snapshots + ChangeSet<br/>• Logged into Console Pane<br/><br/>Semantic tokens:<br/>• WS semanticTokens* + docVersion<br/>• Mapped via snapshots + ChangeSet"]
-              PreviewDetails["Preview Pane<br/><br/>Compile status from control plane<br/><br/>SVG handling:<br/>• WASM decodes binary full state<br/>  or incremental diffs<br/>• Render is always full<br/>  (no svg patches)<br/><br/>Cursor handling:<br/>• Parse path<br/>• Find node and calculate size<br/>• Insert spotlight circle<br/><br/>Outline handling: none"]
-              EditorDetails --- PreviewDetails
-       end
+```log
+┌────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│                    Browser (User editing Page 5)                                                       │
+│  ┌──────────────────┐                                                     ┌──────────────────┐         │
+│  │  Editor Pane     │           Cursor position                           │  Preview Pane    │         │
+│  │  CodeMirror      ├────────────────────────────────────────────────────►│  Connection      │         │
+│  └────────┬─────────┘                                                     └────────┬─────────┘         │
+│           │                                                                        │                   │
+│           │ WebSocket (JSON Events)                                                │ WebSocket (Binary)│
+└───────────┼────────────────────────────────────────────────────────────────────────┼───────────────────┘
+            │                                                                        │
+            │ ws://host:4000                                                         │ ws://host:4020
+            │                                                                        │
+┌───────────┼────────────┐       ┌──────────────────────────────┐     ┌──────────────┼────────────────────────────────┐
+│           ▼            │       │ Page 5 copy in storage/      │     │              ▼                                │
+│ file-sync/server.ts    │       │ created by Laravel           │     │ preview/preview-server.ts                     │
+│                        │       │ when serving the page        │     │                                               │
+│ ┌──────────────┐       │       │                              │     │ ┌───────────────┐ ┌───────────────┐ ┌───────┐ │
+│ │ file-manager │       │       │                              │     │ │ Page 5        │ │ Page 8        │ │ ...   │ │
+│ │ CodeMirror   ┼───────┼───────┼──►                           │     │ │ PreviewClient │ │ PreviewClient │ │       │ │
+│ │ updates      │       │       │                    Tinymist  │     │ │┌─────────────┐│ │┌─────────────┐│ │       │ │
+│ └──────────────┘       │       │                     preview  │     │ ││ Tinymist    ││ ││ Tinymist    ││ │       │ │
+│ ┌────────────────────┐ │       │                       ───────┼─────┼─┼┼─►  Preview  ││ ││ Preview     ││ │       │ │
+│ │ LSP Client    │    │ │       │                file watcher  │     │ │├───────┬─────││ │├───────┬─────││ │       │ │
+│ │┌──────────────┼───┐│ │       │              inotify/kqueue  │     │ ││Control│ Data││ ││Control│ Data││ │       │ │
+│ ││ LSP Server   ▼   ││ │       │ Pulls                        │     │ ││Plane  │Plane││ ││Plane  │Plane││ │       │ │
+│ ││                ◄─┼┼─┼───────┼── upon                       │     │ │└───────┴─────┘│ │└───────┴─────┘│ │       │ │
+│ ││ • Diagnostics    ││ │       │ notification                 │     │ │ Both ports    │ │               │ │───────│ │
+│ ││ • Semantic Tokens││ │       └──────────────────────────────┘     │ └───────────────┘ └───────────────┘ └───────┘ │
+│ ││ ...              ││ │                                            └─────────────┼─────────────────────────────────┘
+│ │└──────────────────┘│ │                                                          │
+│ └────────────────────┘ │                                                          │
+└───────┼────────────────┘                                                          │
+        │                                                                           │
+┌───────┼───────────────────────────────────────────────────────────────────────────┼─────────────────────────────────┐
+│       ▼            Browser (User editing Page 5)                                  ▼                                 │
+│  ┌──────────────────────────────────────────┐                      ┌──────────────────────────────────────┐         │
+│  │  CodeMirror Editor Pane                  │                      │  Preview Pane                        │         │
+│  │                                          │                      │                                      │         │
+│  │                                          │                      │  Compile status from control plane   │         │
+│  │  Sync command:                           │                      │                                      │         │
+│  │  • WS `fullState` resets local state     │                      │  SVG handling:                       │         │
+│  │                                          │                      │  • WASM decodes binary full state    │         │
+│  │                                          │                      │    or incremental diffs              │         │
+│  │  Diagnostics:                            │                      │  • Render is always full             │         │
+│  │  • WS `diagnostics` + docVersion         │                      │    (no svg patches)                  │         │
+│  │  • Mapped via snapshots + ChangeSet      │                      │                                      │         │
+│  │  • Logged into Console Pane              │                      │                                      │         │
+│  │                                          │                      │  Cursor handling:                    │         │
+│  │  Semantic tokens:                        │                      │  • Parse path                        │         │
+│  │  • WS `semanticTokens*` + docVersion     │                      │  • Find node and calculate size      │         │
+│  │  • Mapped via snapshots + ChangeSet      │                      │  • Insert spotlight circle           │         │
+│  │                                          │                      │                                      │         │
+│  │                                          │                      │  Outline handling: none              │         │
+│  │                                          │                      │                                      │         │
+│  └────────┬─────────────────────────────────┘                      └──────────────────────────────────────┘         │
+│           │                                                                                                         │
+└───────────┼─────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+            │
+            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│          BookStack Backend (PHP/Laravel)                        │
+│  ┌──────────────────────────────────────────────────┐           │
+│  │         TinymistController (PHP)                 │           │
+│  │  • Fallback recompile                            │           │
+│  │  • CLI compilation (save/publish only)           │           │
+│  │  • Database persistence                          │           │
+│  │  • Search text extraction                        │           │
+│  └──────────────────────────────────────────────────┘           │
+└─────────────────────────────────────────────────────────────────┘
+            │
+            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Database (MySQL/PostgreSQL)                │
+│  ┌──────────────┐  ┌──────────────┐  ┌───────────────┐          │
+│  │ pages.content│  │  pages.html  │  │ pages.markdown│          │
+│  │ (typst src)  │  │ (final SVG)  │  │ (for search)  │          │
+│  └──────────────┘  └──────────────┘  └───────────────┘          │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Preview Data Flow
 
+```log
 ┌────────────────────────┐
 │ User types in editor   │
 └──────────┬─────────────┘
@@ -121,6 +168,7 @@ flowchart LR
                             │ 7. Preview updates   │
                             │    (50-200ms latency)│
                             └──────────────────────┘
+```
 
 ## In-memory file preview
 
@@ -134,6 +182,7 @@ on each change. This is more suitable for desktop applications.
 - ✅ **Transfer efficiency** - Browser receives only SVG diffs
 - ❌ **NOT input efficiency** - You still send the full document
 
+```log
 ┌──────────────────────┐
 │ User types           │
 │ in CodeMirror        │
@@ -182,11 +231,13 @@ on each change. This is more suitable for desktop applications.
 │ Preview updates      │
 │ (50-100ms latency)   │
 └──────────────────────┘
+```
 
 ---
 
 ## Save/Publish Flow
 
+```log
 ┌─────────────────────────┐
 │ 1. User clicks "Save"   │
 │    or "Publish" button  │
@@ -234,6 +285,7 @@ on each change. This is more suitable for desktop applications.
 │    WHERE id = ?;        │
 │    COMMIT;              │
 └───────────┬─────────────┘
+```
 
 ## Page View Flow
 
