@@ -108,7 +108,10 @@ export class ComponentStore {
      * Initialize all components found within the given element.
      */
     public init(parentElement: Document|HTMLElement = document) {
-        const componentElems = parentElement.querySelectorAll('[component],[components]');
+        const componentElems = [...parentElement.querySelectorAll('[component],[components]')];
+        if (parentElement instanceof HTMLElement && parentElement.matches('[component],[components]')) {
+            componentElems.push(parentElement);
+        }
 
         for (const el of componentElems) {
             const componentNames = `${el.getAttribute('component') || ''} ${(el.getAttribute('components'))}`.toLowerCase().split(' ').filter(Boolean);

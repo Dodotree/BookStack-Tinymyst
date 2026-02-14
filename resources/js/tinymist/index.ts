@@ -10,7 +10,10 @@ import { TinymistEditor } from '../components/tinymist-editor';
 
 if (window.$components) {
     window.$components.register({TinymistEditor});
-    window.$components.init();
+    const tinymistElement = document.querySelector('[component="tinymist-editor"]');
+    if (tinymistElement instanceof HTMLElement) {
+        window.$components.init(tinymistElement);
+    }
 }
 
 export { TinymistEditor };

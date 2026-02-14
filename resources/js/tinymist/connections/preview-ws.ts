@@ -4,6 +4,7 @@
 export class PreviewBridgeClient {
     private socket: WebSocket | null = null;
     private token: string = '';
+    private tabToken: string = '';
     private port: number = 4020;
     private pageId: number;
     private path: string = '/ws/tinymist/preview/';
@@ -23,9 +24,11 @@ export class PreviewBridgeClient {
     constructor(
         pageId: number,
         token: string,
+        tabToken?: string
     ) {
         this.pageId = pageId;
         this.token = token;
+        this.tabToken = tabToken || "";
 
         this.handleSyncConnect = this.handleSyncConnect.bind(this);
         this.disconnect = this.disconnect.bind(this);
@@ -40,9 +43,9 @@ export class PreviewBridgeClient {
         window.$events.listen("tinymist-preview-send-data", this.handleOutgoingData);
     }
 
-    private async handleSyncConnect(token?: string): Promise<void> {
+    private async handleSyncConnect(token?: string, tabToken?: string): Promise<void> {
         try {
-            await this.connect(token);
+            await this.connect(token, tabToken);
         } catch (err) {
             console.error("[Preview WS] Failed to connect:", err);
             window.$events.emit("tinymist-console-log",{ type: "error", message: "[Preview WS] connection failed", details: err });
@@ -52,7 +55,7 @@ export class PreviewBridgeClient {
     /**
      * Connect to the WebSocket server
      */
-    async connect(token?: string): Promise<void> {
+    async connect(token?: string, tabToken?: string): Promise<void> {
         return new Promise((resolve, reject) => {
             if (!this.reconnectAllowed) {
                 reject("[Preview WS] Connect: Reconnection not allowed");
@@ -74,7 +77,7 @@ export class PreviewBridgeClient {
                 const baseUrl = isLocal
                     ? `${protocol}//${hostname}:${this.port}`
                     : `${protocol}//${hostWithPort}${this.path}`;
-                const wsUrl = `${baseUrl}?token=${encodeURIComponent(this.token)}`;
+                const wsUrl = `${baseUrl}?token=${encodeURIComponent(this.token)}&tabToken=${encodeURIComponent(tabToken || "")}`;
 
                 console.log('[Preview WS] Connecting to:', wsUrl.replace(this.token, 'TOKEN_HIDDEN'));
 

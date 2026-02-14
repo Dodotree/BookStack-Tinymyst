@@ -27,6 +27,10 @@ export class TinymistEditor extends Component {
     private tokenManager: TinymistTokenManager | null = null;
     private fileSyncClient: TinymistFileSyncClient | null = null;
 
+    private previewBootstrapInFlight: boolean = false;
+    private previewBootstrapAttempts: number = 0;
+    private readonly previewBootstrapMaxAttempts: number = 2;
+
     // Connection health monitoring
     private bridgeConnected: boolean = false;
     private fileSyncConnected: boolean = false;
@@ -42,22 +46,24 @@ export class TinymistEditor extends Component {
                 throw new Error("[Preview Control] Page ID not found, exiting setup");
             }
 
-            const wsToken = this.$opts.wsToken as string;
-            if (!wsToken) {
-                throw new Error("[Preview Control] WS token not found, cannot connect preview bridge");
-            }
+            const wsToken = this.$opts.wsToken as string | undefined;
             if (!this.previewBridgeClient) {
                 this.previewBridgeClient = new PreviewBridgeClient(
                     parseInt(pageId, 10),
-                    wsToken
+                    wsToken || "",
+                    this.tabToken
                 );
             }
 
             if (!this.previewControlPlane) {
                 this.previewControlPlane = new PreviewControlPlane();
+                new PreviewDataPlane();
             }
-            new PreviewDataPlane();
 
+            if (!wsToken) {
+                console.warn("[Preview Control] WS token not found; deferring preview connection");
+                return;
+            }
             window.$events.emit("tinymist-preview-connect", wsToken);
 
         } catch (error) {
@@ -87,7 +93,7 @@ export class TinymistEditor extends Component {
     }
 
     async initializeFileSyncClient() {
-        const wsToken = this.$opts.wsToken as string;
+        const wsToken = this.$opts.wsToken as string | undefined;
         const pageId = this.$opts.pageId;
 
         if (!pageId) {
@@ -95,22 +101,18 @@ export class TinymistEditor extends Component {
             return;
         }
 
+        if (!this.fileSyncClient) {
+            this.fileSyncClient = new TinymistFileSyncClient(
+                parseInt(pageId, 10),
+                wsToken || "",
+                this.tabToken
+            );
+        }
+
         if (!wsToken) {
             console.warn("[File Sync / LSP] No WS token available, deferring connection");
             return;
         }
-
-        if (this.fileSyncClient) {
-            return;
-        }
-
-        // Create file sync client
-        this.fileSyncClient = new TinymistFileSyncClient(
-            parseInt(pageId, 10),
-            wsToken,
-            this.tabToken
-        );
-
         window.$events.emit("tinymist-sync-connect", wsToken);
     }
 
@@ -154,6 +156,10 @@ export class TinymistEditor extends Component {
 
         this.setupPreviewSockets();
         this.setupFileSyncLSP();
+
+        if (!this.$opts.wsToken) {
+            this.ensurePreviewReady("missing-token");
+        }
     }
 
     async setupPreviewSockets() {
@@ -176,6 +182,59 @@ export class TinymistEditor extends Component {
             console.error("Failed to initialize file sync LSP:", error);
             window.$events.emit("tinymist-console-log",
                 { type: "error", message: "Failed to initialize file sync LSP", details: error });
+        }
+    }
+
+    private async ensurePreviewReady(reason: string): Promise<void> {
+        if (this.previewBootstrapInFlight || this.previewBootstrapAttempts >= this.previewBootstrapMaxAttempts) {
+            return;
+        }
+
+        this.previewBootstrapInFlight = true;
+        this.previewBootstrapAttempts += 1;
+
+        try {
+            const pageId = this.$opts.pageId;
+            if (!pageId) {
+                throw new Error("[Preview Control] No page ID for preview bootstrap");
+            }
+
+            const content = (this.getText ? this.getText() : this.editor?.value) || "";
+            const response = await window.$http.post('/ajax/tinymist/start-preview', {
+                page_id: pageId,
+                content,
+            }) as any;
+
+            const data = response?.data ?? response;
+            const wsToken = data?.ws_token as string | undefined;
+
+            if (!data?.success || !wsToken) {
+                window.$events.emit("tinymist-console-log", {
+                    type: "error",
+                    message: "[Preview Control] bootstrap failed",
+                    details: data,
+                });
+                return;
+            }
+
+            this.$opts.wsToken = wsToken;
+            this.tokenManager?.setToken(wsToken);
+            window.$events.emit("tinymist-preview-connect", wsToken);
+            window.$events.emit("tinymist-sync-connect", wsToken);
+            window.$events.emit("tinymist-console-log", {
+                type: "info",
+                message: "[Preview Control] bootstrap succeeded",
+                details: reason,
+            });
+        } catch (error) {
+            console.error("[Preview Control] bootstrap failed:", error);
+            window.$events.emit("tinymist-console-log", {
+                type: "error",
+                message: "[Preview Control] bootstrap failed",
+                details: error,
+            });
+        } finally {
+            this.previewBootstrapInFlight = false;
         }
     }
 

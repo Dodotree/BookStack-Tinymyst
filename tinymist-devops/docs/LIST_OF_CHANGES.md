@@ -149,6 +149,9 @@ TINYMIST_MAX_SIZE=1024
 - `resources/js/components/page-editor.js` (MODIFIED)
   - Updated `getEditorComponent()` to check for `tinymist-editor`
 
+- `resources/js/services/component.js` (MODIFIED)
+  - Protection from double initiation of components (that led to double events including toggle)
+
 ### Frontend - Views
 
 - `resources/views/pages/parts/tinymist-editor.blade.php` (NEW)
