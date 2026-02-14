@@ -3,6 +3,8 @@
 
 Initialize request (JSON-RPC) tree (expanded):
 
+```log
+
 initialize
 ├─ jsonrpc: "2.0"
 ├─ id: number|string
@@ -168,9 +170,11 @@ initialize
 		│  ├─ markdown?: { parser: string, version?: string }
 		│  └─ positionEncodings?: string[]
 		└─ experimental?: any
+```
 
-# Notifications Diagram (expanded)
+## Notifications Diagram (expanded)
 
+```log
 LSP standard
 ├─ initialized
 │  └─ params: {}
@@ -247,11 +251,11 @@ Tinymist-specific
 │  └─ params: Outline
 └─ tinymist/devEvent
 	└─ params: { type, ... }
+```
 
-
-
-First request (full)
-Request:
+```js
+// First request (full)
+// Request:
 {
     "jsonrpc":"2.0",
     "id":1,
@@ -263,7 +267,7 @@ Request:
     }
 }
 
-Reply:
+//Reply:
 {
     "jsonrpc":"2.0",
     "id":1,"result":{
@@ -272,8 +276,8 @@ Reply:
     }
 }
 
-Second request (delta, successful)
-Request:
+// Second request (delta, successful)
+// Request:
 {
     "jsonrpc":"2.0",
     "id":2,
@@ -286,7 +290,7 @@ Request:
     }
 }
 
-Reply:
+// Reply:
 {
     "jsonrpc":"2.0",
     "id":2,
@@ -298,8 +302,8 @@ Reply:
     }
 }
 
-Third request (delta can’t be computed → full returned)
-Request:
+// Third request (delta can’t be computed → full returned)
+// Request:
 {
     "jsonrpc":"2.0",
     "id":3,
@@ -312,7 +316,7 @@ Request:
     }
 }
 
-Reply:
+// Reply:
 {
     "jsonrpc":"2.0",
     "id":3,
@@ -321,11 +325,13 @@ Reply:
         "data":[0,0,4,1,0,0,5,2,0]
     }
 }
+```
 
-textDocument/publishDiagnostics
+### textDocument/publishDiagnostics
 
 params shape (LSP 3.17):
 
+```js
 {
     uri: string
     version?: number
@@ -343,3 +349,4 @@ params shape (LSP 3.17):
         }, ...
     ]
 }
+```

@@ -208,6 +208,11 @@ export class PreviewRenderer {
                     data_selection: { body: true, defs: true, css: false, js: false },
                 });
 
+                // It comes as SVG string with data-reuse-from="data-tid hash" attributes
+                // Probably it needs a morphing library
+                // const svgDiff = session.renderSvgDiff({data_selection: { body: true, defs: true, css: false, js: false }});
+                // console.log('[Preview WASM] SVG diff:', svgDiff);
+
                 this.updateSVG(svg);
 
                 // const svgDoc = this.previewElement.querySelector('svg.typst-doc');
@@ -243,7 +248,15 @@ export class PreviewRenderer {
     }
 
     updateSVG(svg: string, docVersion?: number) {
-        this.previewElement.innerHTML = svg;
+        this.previewElement.querySelector(".text-muted.p-m")?.remove();
+        let svgHost = this.previewElement.querySelector(".tinymist-preview-svg") as HTMLElement | null;
+        if (!svgHost) {
+            svgHost = document.createElement("div");
+            svgHost.className = "tinymist-preview-svg";
+            this.previewElement.appendChild(svgHost);
+        }
+
+        svgHost.innerHTML = svg;
         this.baseSvgWidth = null;
         this.baseSvgHeight = null;
         this.applyZoomToSvg();

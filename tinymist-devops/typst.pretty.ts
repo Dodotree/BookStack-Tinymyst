@@ -1,4 +1,4 @@
-// reconstruction of typst.svg.gs which WASM appends to rendered SVG by default
+// reconstruction of typst.svg.js which WASM appends to rendered SVG by default
 
 const ignoredEvent = function () {
   const history: Record<string, number> = {};

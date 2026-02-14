@@ -413,13 +413,10 @@ The implementation uses these WASM modules (imported as needed):
 // WASM rendering module
 import type { RenderSession, SvgDiff } from '@myriaddreamin/typst.ts/rs';
 import { initWasm } from '@myriaddreamin/typst.ts/rs';
-
 // Typst DOM utilities
 import type { TypstDocumentContext } from '@myriaddreamin/typst-dom';
-
 // SVG patching utilities
 import { patchSvgContainer } from '@myriaddreamin/typst-dom/svg';
-
 // Vector-to-SVG conversion
 import { vec2svg } from 'reflexo-vec2svg';
 ```
@@ -607,6 +604,63 @@ so load the copy of js and css once and set `data_selection` css and js to false
 
 ```
 
+### Experimental renderSvgDiff
+
+Not tested yet, looks like another bunch of nonsense. Most likely it's possible to use data-tid with some morphing library. That is if session.renderSvgDiff works at all.
+
+Q: Is there any performance benefit in using this approach instead of full replacement of svg?
+A: Yes—when updates are frequent or SVGs are large. renderSvgDiff + patchRoot reuses existing DOM nodes (via data-tid) and only updates changed parts, avoiding full SVG parsing, layout, and GC churn. For small docs or infrequent updates, full replacement is simpler and often fast enough, and the diff/patch overhead may not pay off.
+
+```ts
+import { createTypstRenderer } from 'typst';
+import { patchRoot } from 'typst/render/svg/patch.mjs';
+
+const mount = document.getElementById('preview')!;
+
+const renderer = createTypstRenderer();
+await renderer.init();
+
+// 1) create a session with initial vector artifact (full SIR/vector blob)
+const session = await renderer.runWithSession(
+  { format: 'vector', artifactContent: initialVectorBytes },
+  async s => s,
+);
+
+// 2) initial full SVG render
+const fullSvg = await session.renderSvg({});
+mount.innerHTML = fullSvg;
+
+// 3) on each websocket diff‑v1 message:
+ws.onmessage = async ev => {
+  const diffV1 = new Uint8Array(ev.data); // vector delta bytes
+
+  // apply diff‑v1 inside WASM
+  session.manipulateData({
+    action: 'merge',
+    data: diffV1,
+  });
+
+  // render SVG diff string for current view
+  const patchStr = session.renderSvgDiff({
+    // optional window for partial rendering
+    // window: { lo: { x, y }, hi: { x2, y2 } },
+  });
+
+  // patch DOM
+  const tmp = document.createElement('div');
+  tmp.innerHTML = patchStr;
+  const nextSvg = tmp.firstElementChild as SVGElement;
+
+  const prevSvg = mount.firstElementChild as SVGElement | null;
+  if (prevSvg) {
+    patchRoot(prevSvg, nextSvg);
+  } else {
+    mount.innerHTML = patchStr;
+  }
+};
+
+```
+
 ## Everything below is not easily accessible reality for browser, will see
 
 **Transformation:** Binary Strategy → WASM Color Analysis → DOM Filter
@@ -678,7 +732,7 @@ Beware that inline helper script (if enabled) can alter document tree even more
 ]
 ```
 
-#### Paging
+#### Paging and includes
 
 AI: Tinymist preview renders the whole document; it doesn’t have a “render only page 2” mode. If you need a single page, export with Typst CLI and a page range (e.g., --pages 2) instead.
 To find what text corresponds to page 2, use preview/source sync: click in the preview to jump to the source, or use the editor’s “sync/reveal in preview” command to scroll the preview to the current source position.

@@ -247,6 +247,7 @@ export class TinymistEditorUI {
                 content: currentContent,
             });
         } else {
+            console.log(this.snapshots, this.snapshots.at(-1), this.snapshots.at(-1)?.afterTransactions);
             window.$events.emit("tinymist-text-diff", {
                 changes: this.snapshots.at(-1)?.afterTransactions,
                 docVersion: this.docVersion,
@@ -263,6 +264,7 @@ export class TinymistEditorUI {
     }
 
     private resetSyncState(docVersion: number): void {
+        console.log(`[Editor Sync State] Resetting sync state to docVersion ${docVersion}`);
         this.docVersion = docVersion;
         const currentContent = this.getText();
         this.snapshots = [{
@@ -301,7 +303,13 @@ export class TinymistEditorUI {
         if (this.snapshots.length === 0) {
             return;
         }
-        this.snapshots = this.snapshots.filter((s) => s.docVersion >= docVersion);
+        console.log(`[Editor Sync State] Pruning snapshots up to docVersion ${docVersion}`);
+        const pruned = this.snapshots.filter((s) => s.docVersion >= docVersion);
+        if(pruned.length === 0) {
+            this.resetSyncState(docVersion);
+            return;
+        }
+        this.snapshots = pruned;
     }
 
     onCursorPositionChange(state: any) {
