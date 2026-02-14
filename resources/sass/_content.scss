@@ -204,19 +204,19 @@ body .page-content img,
  * Tinymist (Typst) Document Display
  * Styles for viewing compiled Typst documents as SVG
  */
-.tinymist-document {
-  width: 100%;
-  max-width: 100%;
-  margin: vars.$m 0;
-  padding: vars.$m;
-  @include mixins.lightDark(background-color, #ffffff, #2d2d2d);
-  border-radius: 4px;
-  overflow-x: auto;
+.page-content .tinymist-document {
+  // width: 100%;
+  // max-width: 100%;
+  // margin: vars.$m 0;
+  // padding: vars.$m;
+  // @include mixins.lightDark(background-color, #ffffff, #2d2d2d);
+  // border-radius: 4px;
+  // overflow-x: auto;
 
   svg {
-    display: block;
-    width: 100%;
-    height: auto;
+    // display: block;
+    // width: 100%;
+    // height: auto;
     // Don't add background to SVG - the container provides it
 
     // In dark mode, invert colors but preserve hue for better readability
@@ -227,6 +227,7 @@ body .page-content img,
 
   // Also apply dark mode filter when BookStack's dark mode is active
   html.dark-mode & svg {
+    background-color: #222;
     filter: invert(0.9) hue-rotate(180deg);
   }
 }

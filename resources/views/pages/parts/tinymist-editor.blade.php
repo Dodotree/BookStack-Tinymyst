@@ -22,17 +22,29 @@
                     <span>{{ trans('entities.pages_tinymist_editor') ?? 'Typst Editor' }}</span>
                 </div>
                 <div class="buttons flex-container-row items-stretch">
+                    <button class="text-button" type="button" data-action="insertImage" title="Insert Image">
+                        @icon('image')
+                    </button>
+                    <button class="text-button" type="button" data-action="insertLink" title="Insert Link">
+                        @icon('editor/link')
+                    </button>
                     <button class="text-button" type="button" data-action="insertHeading" title="Insert Heading">
-                        @icon('header')
+                        @icon('editor/header')
                     </button>
                     <button class="text-button" type="button" data-action="insertBold" title="Bold">
-                        <strong>B</strong>
+                        @icon('editor/bold')
                     </button>
                     <button class="text-button" type="button" data-action="insertItalic" title="Italic">
-                        <em>I</em>
+                        @icon('editor/italic')
                     </button>
                     <button class="text-button" type="button" data-action="insertMath" title="Math Formula">
-                        <span class="text-mono">$x$</span>
+                        @icon('editor/paragraph')
+                    </button>
+                    <button class="text-button" type="button" data-action="insertCodeBlock" title="Code Block">
+                        @icon('editor/code-block')
+                    </button>
+                    <button class="text-button" type="button" data-action="changeCodeMirrorSettings" title="Editor Settings">
+                        @icon('settings')
                     </button>
                 </div>
             </div>
@@ -312,9 +324,7 @@
         background-color: #fff;
     }
 
-    html.dark-mode .tinymist-preview-content {
-        background-color: #222;
-    }
+
 
     .tinymist-preview-content.loading {
         opacity: 0.6;
@@ -339,9 +349,13 @@
     }
 
     /* Invert SVG colors in dark mode for better readability */
+    html.dark-mode .tinymist-preview-content {
+        background-color: #222;
+    }
     html.dark-mode .tinymist-preview-content svg {
         filter: invert(1) hue-rotate(180deg);
     }
+
 
     /* Console content area - scrollable */
     .tinymist-console-content {

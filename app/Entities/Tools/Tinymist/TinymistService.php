@@ -33,7 +33,7 @@ class TinymistService
     public function compileToSvg(string $source, array $options = []): array
     {
         $inputFile = $this->createTempFile($source, '.typ');
-        $outputFile = $inputFile . '.svg';
+        $outputTemplate = $inputFile . '-{p}.svg';
 
         try {
             // Use typst CLI for compilation with short diagnostic format
@@ -41,12 +41,14 @@ class TinymistService
                 '"%s" compile "%s" "%s" --format svg --diagnostic-format short 2>&1',
                 str_replace('"', '\"', $this->typstPath),
                 str_replace('"', '\"', $inputFile),
-                str_replace('"', '\"', $outputFile)
+                str_replace('"', '\"', $outputTemplate)
             );
 
             exec($command, $output, $returnCode);
 
-            if ($returnCode !== 0 || !file_exists($outputFile)) {
+            $svgFiles = glob($inputFile . '-*.svg') ?: [];
+
+            if ($returnCode !== 0 || count($svgFiles) === 0) {
                 // Parse errors from short diagnostic format
                 $diagnostics = $this->parseDiagnostics($output);
 
@@ -58,11 +60,27 @@ class TinymistService
                 ];
             }
 
-            $svg = file_get_contents($outputFile);
+            usort($svgFiles, function (string $a, string $b): int {
+                $pageA = (int)preg_replace('/^.*-(\d+)\.svg$/', '$1', $a);
+                $pageB = (int)preg_replace('/^.*-(\d+)\.svg$/', '$1', $b);
+                return $pageA <=> $pageB;
+            });
+
+            $svgParts = [];
+            foreach ($svgFiles as $svgFile) {
+                $svgContent = file_get_contents($svgFile);
+                if ($svgContent !== false) {
+                    $svgParts[] = $svgContent;
+                }
+            }
+
+            $svg = implode("\n", $svgParts);
 
             // Cleanup
             @unlink($inputFile);
-            @unlink($outputFile);
+            foreach ($svgFiles as $svgFile) {
+                @unlink($svgFile);
+            }
 
             return [
                 'success' => true,
@@ -78,7 +96,9 @@ class TinymistService
 
             // Cleanup on error
             @unlink($inputFile);
-            @unlink($outputFile);
+            foreach (glob($inputFile . '-*.svg') ?: [] as $svgFile) {
+                @unlink($svgFile);
+            }
 
             return [
                 'success' => false,

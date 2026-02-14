@@ -249,10 +249,10 @@ export class PreviewRenderer {
 
     updateSVG(svg: string, docVersion?: number) {
         this.previewElement.querySelector(".text-muted.p-m")?.remove();
-        let svgHost = this.previewElement.querySelector(".tinymist-preview-svg") as HTMLElement | null;
+        let svgHost = this.previewElement.querySelector(".tinymist-document") as HTMLElement | null;
         if (!svgHost) {
             svgHost = document.createElement("div");
-            svgHost.className = "tinymist-preview-svg";
+            svgHost.className = "tinymist-document";
             this.previewElement.appendChild(svgHost);
         }
 
