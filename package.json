@@ -17,7 +17,7 @@
     "fix": "eslint --fix \"resources/**/*.js\" \"resources/**/*.mjs\"",
     "ts:lint": "tsc --noEmit",
     "test": "jest",
-    "postinstall": "node dev/build/download-typst.js && node dev/build/download-tinymist.js",
+    "postinstall": "node tinymist-devops/download-typst.js && node tinymist-devops/download-tinymist.js",
     "ws:dev": "ts-node-dev --respawn --transpile-only --project tsconfig.server.json tinymist-devops/node/file-sync/server.ts",
     "ws:build": "tsc --project tsconfig.server.json",
     "ws:start": "node dev/build/file-sync/server.js",
