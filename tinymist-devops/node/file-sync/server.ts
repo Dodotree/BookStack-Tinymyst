@@ -114,7 +114,7 @@ function getSession(pageId: number): PageSession {
         return existing;
     }
 
-    const uri = `file:///${join(STORAGE_ROOT, `page_${pageId}.typ`)}`
+    const uri = `file:///${join(STORAGE_ROOT, `page_${pageId}`, "entry.typ")}`
     const session = new PageSession(pageId, uri, () => {
         sessions.delete(pageId);
     });
@@ -124,12 +124,8 @@ function getSession(pageId: number): PageSession {
 
 function getNotificationSession(params: unknown): PageSession | null {
     if (params && typeof params === "object" && "uri" in params && typeof params.uri === "string") {
-        const pageId = params.uri
-            .split("/")
-            .pop()
-            ?.split(".")[0]
-            .replace("page_", "");
-        // pageId is 1-based (not zero-based)
+        const match = params.uri.match(/page_(\d+)\/entry\.typ$/);
+        const pageId = match?.[1];
         if (!pageId || isNaN(Number(pageId))) {
             return null;
         }

@@ -93,6 +93,6 @@ export class FileManager {
    * Get file path for a page
    */
   private getFilePath(pageId: number): string {
-    return join(this.storageRoot, `page_${pageId}.typ`);
+    return join(this.storageRoot, `page_${pageId}`, "entry.typ");
   }
 }

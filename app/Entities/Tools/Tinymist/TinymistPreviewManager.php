@@ -3,10 +3,8 @@
 namespace BookStack\Entities\Tools\Tinymist;
 
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Process;
-use Symfony\Component\Process\Process as SymfonyProcess;
 use BookStack\Entities\Models\Page;
+use BookStack\Uploads\FileStorage;
 
 class TinymistPreviewManager
 {
@@ -69,11 +67,14 @@ class TinymistPreviewManager
      * If an existing file is newer than the page updated time, it is preserved and used.
      */
     public function ensurePreviewFileContent(
-        int $pageId,
+        Page $page,
         string $dbContent,
         ?\DateTimeInterface $pageUpdatedAt
     ): string {
-        $filePath = storage_path("app/tinymist/page_{$pageId}.typ");
+        $pageId = $page->id;
+        $pageDir = storage_path("app/tinymist/page_{$pageId}");
+        $filePath = $pageDir . DIRECTORY_SEPARATOR . 'entry.typ';
+        $legacyPath = storage_path("app/tinymist/page_{$pageId}.typ");
         $directory = dirname($filePath);
 
         if (!is_dir($directory)) {
@@ -81,7 +82,18 @@ class TinymistPreviewManager
         }
 
         if (!file_exists($filePath)) {
+            if (file_exists($legacyPath)) {
+                $legacyContent = @file_get_contents($legacyPath);
+                if (is_string($legacyContent)) {
+                    file_put_contents($filePath, $legacyContent);
+                    @unlink($legacyPath);
+                    $this->syncAttachmentFiles($page, $pageDir);
+                    return $legacyContent;
+                }
+            }
+
             file_put_contents($filePath, $dbContent);
+            $this->syncAttachmentFiles($page, $pageDir);
             return $dbContent;
         }
 
@@ -90,11 +102,49 @@ class TinymistPreviewManager
 
         if ($fileMtime > $dbTimestamp) {
             $fileContent = @file_get_contents($filePath);
+            $this->syncAttachmentFiles($page, $pageDir);
             return is_string($fileContent) ? $fileContent : $dbContent;
         }
 
         file_put_contents($filePath, $dbContent);
+        $this->syncAttachmentFiles($page, $pageDir);
         return $dbContent;
+    }
+
+    protected function syncAttachmentFiles(Page $page, string $pageDir): void
+    {
+        $storage = app()->make(FileStorage::class);
+
+        foreach ($page->attachments as $attachment) {
+            if ($attachment->external) {
+                continue;
+            }
+
+            $sourcePath = $storage->getSystemPath($attachment->path);
+            if ($sourcePath === '' || !file_exists($sourcePath)) {
+                continue;
+            }
+
+            $fileName = basename($attachment->getFileName());
+            if ($fileName === 'entry.typ') {
+                Log::warning('Skipping attachment named entry.typ to avoid overwriting editor file', [
+                    'page_id' => $page->id,
+                    'attachment_id' => $attachment->id,
+                ]);
+                continue;
+            }
+
+            $destPath = $pageDir . DIRECTORY_SEPARATOR . $fileName;
+            if (file_exists($destPath)) {
+                $sourceMtime = @filemtime($sourcePath) ?: 0;
+                $destMtime = @filemtime($destPath) ?: 0;
+                if ($destMtime >= $sourceMtime) {
+                    continue;
+                }
+            }
+
+            @copy($sourcePath, $destPath);
+        }
     }
 
 }

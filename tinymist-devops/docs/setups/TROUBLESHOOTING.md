@@ -5,7 +5,7 @@
 ```bash
 
 npm install
-# for linux without .exe
+tinymist preview --control-port 33636 --data-port 33637 --no-open storage/app/tinymist/page_5/entry.typ
 ./vendor/bin/typst.exe --version  # Should show: typst 0.x.x
 ./vendor/bin/tinymist.exe --version  # Should show: tinymist v0.x.x
 
@@ -23,13 +23,13 @@ php -r "echo shell_exec('./vendor/bin/tinymist --version');"
 # php can execute
 
 # Try starting manually to see error
-tinymist preview --control-port 33636 --data-port 33637 --no-open storage/app/tinymist/page_5.typ
+tinymist preview --control-port 33636 --data-port 33637 --no-open storage/app/tinymist/page_5/entry.typ
 
 # Check file syntax
-tinymist compile storage/app/tinymist/page_5.typ --format svg -o /tmp/test.svg
+tinymist compile storage/app/tinymist/page_5/entry.typ --format svg -o /tmp/test.svg
 
 # Check for corrupted content
-file storage/app/tinymist/page_5.typ
+file storage/app/tinymist/page_5/entry.typ
 # Should be: ASCII text or UTF-8 Unicode text
 
 # Check config
@@ -97,12 +97,12 @@ chmod -R 775 storage/app/tinymist/
 chown -R www-data:www-data storage/app/tinymist/
 
 # Check file exists and is writable
-ls -lah storage/app/tinymist/page_5.typ
+ls -lah storage/app/tinymist/page_5/entry.typ
 # Should be readable/writable by www-data (or PHP user)
 
 # Fix permissions
-chown www-data:www-data storage/app/tinymist/page_5.typ
-chmod 644 storage/app/tinymist/page_5.typ
+chown www-data:www-data storage/app/tinymist/page_5/entry.typ
+chmod 644 storage/app/tinymist/page_5/entry.typ
 
 # Verify directory permissions
 ls -lad storage/app/tinymist/

@@ -14,7 +14,7 @@ This folder contains the Node.js services used for Tinymist real‑time preview 
 
 1) **Editor opens (browser)**
    - Frontend calls `POST /ajax/tinymist/start-preview`.
-   - Laravel writes the Typst file to `storage/app/tinymist/page_<id>.typ`.
+  - Laravel writes the Typst file to `storage/app/tinymist/page_<id>/entry.typ`.
 
 2) **Preview process starts (server)**
 
@@ -41,7 +41,7 @@ Browser (Tinymist editor)
   |  POST /ajax/tinymist/start-preview
   v
 Laravel (TinymistPreviewManager)
-  |  writes storage/app/tinymist/page_<id>.typ
+  |  writes storage/app/tinymist/page_<id>/entry.typ
   |  spawns tinymist preview process
   v
 Tinymist preview process (localhost)
@@ -59,7 +59,7 @@ Browser editor input
   |  WebSocket changes
   v
 File Sync Server (tinymist-devops/node/file-sync)
-  |  writes page_<id>.typ
+  |  writes page_<id>/entry.typ
   v
 Tinymist preview process watches file
   |  emits diff/new SVG via Data WS
@@ -72,7 +72,7 @@ Browser preview updates
 ## How the Preview Process Begins
 
 - `POST /ajax/tinymist/start-preview` calls `TinymistPreviewManager::startPreviewServer()`.
-- The manager ensures `storage/app/tinymist/page_<id>.typ` exists and spawns:
+- The manager ensures `storage/app/tinymist/page_<id>/entry.typ` exists and spawns:
   - `tinymist preview --control-plane-host HOST:PORT --data-plane-host HOST:PORT --partial-rendering true <relative_file_path>`
 
 ## How WebSocket Updates Are Produced

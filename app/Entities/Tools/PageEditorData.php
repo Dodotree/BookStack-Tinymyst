@@ -127,7 +127,7 @@ class PageEditorData
 
             // Save current content to file (prefer newer file content if present)
             $content = $page->markdown ?? '== Empty document from PageEditorData';
-            $content = $manager->ensurePreviewFileContent($pageId, $content, $page->updated_at);
+            $content = $manager->ensurePreviewFileContent($page, $content, $page->updated_at);
             $page->markdown = $content;
 
             // Debug logging

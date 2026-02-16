@@ -215,7 +215,7 @@ class PreviewSession {
         private readonly options: PreviewClientOptions,
         private readonly remove: (pageId: number) => void
     ) {
-        const filePath = resolve(join(options.storageRoot, `page_${pageId}.typ`));
+        const filePath = resolve(join(options.storageRoot, `page_${pageId}`, "entry.typ"));
         if (!existsSync(filePath)) {
             throw new Error(`Typst document not found for page ${pageId} at ${filePath}`);
         }

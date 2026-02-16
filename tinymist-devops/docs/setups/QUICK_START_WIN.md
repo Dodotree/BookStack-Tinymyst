@@ -87,10 +87,9 @@ If missing, re-run npm install.
 
 ### Clear Tinymist working files
 
-- Delete storage/app/tinymist/ to reset local preview state
 
-Note: The editor content is loaded from storage/app/tinymist/page_<id>.typ if it exists and is newer than DB. Delete the file to force DB content.
-
+Note: The editor content is loaded from storage/app/tinymist/page_<id>/entry.typ if it exists and is newer than DB. Delete the file to force DB content.
+- The file sync service writes to `storage/app/tinymist/page_<id>/entry.typ`.
 ### Find or kill stray Tinymist processes (Windows)
 
 PowerShell:
