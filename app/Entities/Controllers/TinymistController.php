@@ -74,81 +74,12 @@ class TinymistController extends Controller
      */
     public function status()
     {
-        $available = $this->tinymist->isAvailable();
+        $available = $this->tinymist->isTypstAvailable();
 
         return response()->json([
             'available' => $available,
             'enabled' => config('tinymist.enabled', false),
         ]);
-    }
-
-    /**
-     * Start preview server for a page (called when user opens editor)
-     */
-    public function startPreview(Request $request)
-    {
-        $request->validate([
-            'page_id' => 'required|integer|exists:pages,id',
-            'content' => 'string|nullable',
-            'restart' => 'boolean',
-        ]);
-
-        $pageId = $request->input('page_id');
-        $content = $request->input('content', '// Empty document');
-        $restart = $request->input('restart', false);
-        $pid = $request->input('pid', 0);
-
-        try {
-            $manager = app(TinymistPreviewManager::class);
-            $page = Page::query()->findOrFail($pageId);
-            $token = $manager->generateTinymistWsToken($page);
-            $manager->updateTinymistPreviewFile($pageId, $content);
-
-            return response()->json([
-                'success' => true,
-                'status' => 'token_ready',
-                'ws_token' => $token['ws_token'] ?? null,
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Failed to start preview server', [
-                'page_id' => $pageId,
-                'error' => $e->getMessage(),
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'error' => $e->getMessage(),
-            ], 500);
-        }
-    }
-
-    /**
-     * Stop preview server for a page (called when user closes editor or saves)
-     */
-    public function stopPreview(Request $request)
-    {
-        $request->validate([
-            'pid' => 'required|integer|min:1',
-        ]);
-
-        $pid = $request->input('pid');
-
-        try {
-            $manager = app(TinymistPreviewManager::class);
-            $manager->stopPreviewServer($pid);
-
-            return response()->json(['success' => true]);
-        } catch (\Exception $e) {
-            Log::error('Failed to stop preview server', [
-                'pid' => $pid,
-                'error' => $e->getMessage(),
-            ]);
-
-            return response()->json([
-                'success' => false,
-                'error' => $e->getMessage(),
-            ], 500);
-        }
     }
 
     /**

@@ -12,7 +12,7 @@ config({ path: join(process.cwd(), ".env") });
 type ConnectionContext = {
     socket: WebSocket;
     pageId: number;
-    tabToken: string;
+    uniqueTabId: string;
     lastSeen: number;
 };
 
@@ -174,7 +174,7 @@ class PageSession {
         }
 
         const content = fileManager.loadDocument(this.pageId);
-        const { someoneElse, lastSeen } = this.getLatestConnectionInfo(ctx.tabToken);
+        const { someoneElse, lastSeen } = this.getLatestConnectionInfo(ctx.uniqueTabId);
 
         this.browsers.add(ctx);
         this.clearIdleTimer();
@@ -470,14 +470,14 @@ class PageSession {
         }
     }
 
-    private getLatestConnectionInfo(newTabToken: string): {
+    private getLatestConnectionInfo(newUniqueTabId: string): {
         someoneElse: boolean;
         lastSeen: number;
     } {
         let someoneElse = false;
         let lastSeen = 0;
         for (const ctx of this.browsers) {
-            if (ctx.tabToken !== newTabToken) {
+            if (ctx.uniqueTabId !== newUniqueTabId) {
                 someoneElse = true;
             }
             lastSeen = Math.max(lastSeen, ctx.lastSeen);
@@ -535,7 +535,7 @@ function pruneStaleConnections() {
         if (now - ctx.lastSeen > STALE_TIMEOUT_MS) {
             console.warn("Closing stale connection", {
                 pageId: ctx.pageId,
-                tabToken: ctx.tabToken,
+                uniqueTabId: ctx.uniqueTabId,
             });
             ws.close(4000, "Idle timeout");
             connections.delete(ws);
@@ -567,7 +567,7 @@ async function bootstrap() {
             const ctx = {
                 socket,
                 pageId: payload.page_id,
-                tabToken: payload.tabToken ?? "",
+                uniqueTabId: payload.uniqueTabId ?? "",
                 lastSeen: Date.now(),
             };
             connections.set(socket, ctx);

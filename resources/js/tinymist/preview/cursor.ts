@@ -148,7 +148,7 @@ export class PreviewCursor {
                 kindMap[Number(step.kind)] ?? '???',
                 step.index + 1 // Convert to 1-based index for CSS
             ]);
-            console.warn('[Preview WASM] pathToSelector pairs:', pairs);
+            console.log('[Preview WASM] pathToSelector pairs:', pairs);
 
             const pageStep = pairs.shift();
             const topGroupStep = pairs.shift();

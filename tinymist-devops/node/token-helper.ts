@@ -10,7 +10,7 @@ export type AuthToken = {
     user_id: number;
     page_id: number;
     exp: number;
-    tabToken?: string;
+    uniqueTabId?: string;
 };
 
 export function verifyRequestToken(request: IncomingMessage): AuthToken {
@@ -46,7 +46,9 @@ export function verifyRequestToken(request: IncomingMessage): AuthToken {
         console.error("Invalid token during connection", err);
         throw new Error("INVALID_TOKEN", { cause: err });
     }
-    payload.tabToken = url.searchParams.get("tabToken") || "";
+
+    // Not really part of the auth token, it's just more convenient to keep identifiers together
+    payload.uniqueTabId = url.searchParams.get("uniqueTabId") || "";
     return payload;
 }
 

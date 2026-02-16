@@ -277,7 +277,7 @@ class TinymistService
     /**
      * Check if typst CLI is available.
      */
-    public function isAvailable(): bool
+    public function isTypstAvailable(): bool
     {
         try {
             $command = sprintf('"%s" --version 2>&1', str_replace('"', '\"', $this->typstPath));

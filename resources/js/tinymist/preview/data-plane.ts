@@ -4,8 +4,6 @@ export class PreviewDataPlane {
     constructor() {
         this.handleBridgeDataMessage = this.handleBridgeDataMessage.bind(this);
         window.$events.listen("tinymist-preview-data-message", this.handleBridgeDataMessage);
-        // this.handleConnected = this.handleConnected.bind(this);
-        // window.$events.listen("tinymist-preview-data-connected", this.handleConnected);
     }
 
     private handleBridgeDataMessage(msg: Uint8Array): void {

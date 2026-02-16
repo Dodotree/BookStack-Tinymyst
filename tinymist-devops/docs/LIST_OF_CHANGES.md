@@ -117,7 +117,7 @@ TINYMIST_MAX_SIZE=1024
 - `app/Entities/Tools/Tinymist/TinymistService.php` (NEW)
   - `compileToSvg(string $source): array` - Compiles Typst to SVG
   - `validate(string $source): array` - Validates Typst syntax
-  - `isAvailable(): bool` - Checks if Typst CLI is available
+  - `isTypstAvailable(): bool` - Checks if Typst CLI is available
   - Uses PHP `exec()` to run: `typst compile input.typ output.svg --format svg`
 
 ### Backend - Controller & Routes

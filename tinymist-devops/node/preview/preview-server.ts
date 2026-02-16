@@ -481,14 +481,10 @@ async function bootstrap() {
             }
 
             const pageId = tokenPayload?.page_id;
+            console.log(`[Preview Bridge] token payload`, tokenPayload);
 
             if (!pageId || !Number.isFinite(pageId)) {
                 socket.close(1008, "Missing pageId");
-                return;
-            }
-
-            if (tokenPayload && tokenPayload.page_id !== pageId) {
-                socket.close(1008, "PageId mismatch");
                 return;
             }
 

@@ -19,7 +19,9 @@ export class TinymistTokenManager {
         }
 
         this.disconnect = this.disconnect.bind(this);
+        this.renewToken = this.renewToken.bind(this);
         window.$events.listen("tinymist-all-disconnect", this.disconnect);
+        window.$events.listen("tinymist-invalid-token", this.renewToken);
 
         if (token) {
             this.scheduleTokenRenewal();
