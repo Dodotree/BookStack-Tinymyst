@@ -355,14 +355,10 @@
     html.dark-mode .tinymist-preview-content svg {
         filter: invert(1) hue-rotate(180deg);
     }
-
-    /* Inverting only the text and shapes makes them blurry, for now images are inverted in dark mode */
-    /* html.dark-mode .tinymist-preview-content svg {
-        filter: none;
-    }
-    html.dark-mode .tinymist-preview-content svg :is(.typst-text, .typst-shape) {
+    /* Inverting only the text and shapes makes them blurry, for now images are double inverted */
+    html.dark-mode .tinymist-preview-content svg image{
         filter: invert(1) hue-rotate(180deg);
-    } */
+    }
 
 
     /* Console content area - scrollable */
