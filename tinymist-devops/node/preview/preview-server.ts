@@ -456,7 +456,7 @@ class PreviewSessionManager {
 
 async function bootstrap() {
 
-    await cleanupOrphanedPreviewProcesses();
+    // await cleanupOrphanedPreviewProcesses();
 
     const sessionManager = new PreviewSessionManager(managerOptions);
 
