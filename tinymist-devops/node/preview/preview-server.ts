@@ -474,14 +474,21 @@ async function bootstrap() {
         try {
 
             let tokenPayload: AuthToken | null = null;
+            let tokenError: Error | null = null;
             try {
                 tokenPayload = verifyRequestToken(request);
             } catch (error) {
                 tokenPayload = null;
+                tokenError = error instanceof Error ? error : new Error(String(error));
             }
 
             const pageId = tokenPayload?.page_id;
             console.log(`[Preview Bridge] token payload`, tokenPayload);
+
+            if (tokenError) {
+                socket.close(1008, "INVALID_TOKEN");
+                return;
+            }
 
             if (!pageId || !Number.isFinite(pageId)) {
                 socket.close(1008, "Missing pageId");
