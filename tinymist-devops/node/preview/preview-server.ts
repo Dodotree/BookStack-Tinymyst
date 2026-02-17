@@ -128,6 +128,8 @@ function execCommand(command: string): Promise<string> {
 
 async function cleanupOrphanedPreviewProcesses(): Promise<void> {
     try {
+        const selfPid = process.pid;
+        const tinymistPath = resolve(TINYMIST_CLI_PATH);
         if (process.platform === "win32") {
             const output = await execCommand("powershell -NoProfile -Command \"Get-CimInstance Win32_Process -Filter \\\"name='tinymist.exe'\\\" | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress\"");
             if (!output.trim()) {
@@ -141,7 +143,7 @@ async function cleanupOrphanedPreviewProcesses(): Promise<void> {
                     continue;
                 }
                 const pid = Number(proc.ProcessId);
-                if (Number.isFinite(pid) && pid > 0) {
+                if (Number.isFinite(pid) && pid > 0 && pid !== selfPid) {
                     try {
                         await execCommand(`taskkill /F /PID ${pid}`);
                         console.log(`[Preview Bridge] Cleaned orphan tinymist preview process ${pid}`);
@@ -164,7 +166,11 @@ async function cleanupOrphanedPreviewProcesses(): Promise<void> {
                 continue;
             }
             const pid = Number(line.slice(0, spaceIndex).trim());
-            if (!Number.isFinite(pid) || pid <= 0) {
+            if (!Number.isFinite(pid) || pid <= 0 || pid === selfPid) {
+                continue;
+            }
+            const cmd = line.slice(spaceIndex + 1).trim();
+            if (!cmd.includes(tinymistPath)) {
                 continue;
             }
             try {
@@ -456,7 +462,7 @@ class PreviewSessionManager {
 
 async function bootstrap() {
 
-    // await cleanupOrphanedPreviewProcesses();
+    await cleanupOrphanedPreviewProcesses();
 
     const sessionManager = new PreviewSessionManager(managerOptions);
 
