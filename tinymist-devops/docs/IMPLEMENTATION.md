@@ -227,3 +227,7 @@ $command = sprintf(
 | **Frontend Component** | ✅ Complete | `tinymist-editor.ts` |
 | **Frontend View** | ✅ Complete | `tinymist-editor.blade.php` |
 | **Frontend Integration** | ✅ Complete | `index.ts`, `page-editor.js`, `form.blade.php` |
+
+## Observed occasional problems
+
+- The preview can stop watching the file. Since we do not terminate the session right away, the effect can persist until preview server discards the process
