@@ -248,7 +248,10 @@ export class PreviewRenderer {
     }
 
     updateSVG(svg: string, docVersion?: number) {
+        // Remove "Loading..." and error messages
+        // TODO: optimize so those shouldn't run on each change
         this.previewElement.querySelector(".text-muted.p-m")?.remove();
+        this.previewElement.querySelector(".tinymist-error")?.remove();
         let svgHost = this.previewElement.querySelector(".tinymist-document") as HTMLElement | null;
         if (!svgHost) {
             svgHost = document.createElement("div");

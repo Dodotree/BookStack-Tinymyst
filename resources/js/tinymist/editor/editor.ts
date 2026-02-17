@@ -177,9 +177,17 @@ export class TinymistEditorUI {
     }
 
     syncFullStateFromServer(payload: { content: string; docVersion?: number }) {
-        if (payload.content !== this.getText()) {
+        const currentText = this.getText();
+        const shouldReplace = payload.content !== currentText;
+        const hasDocVersion = typeof payload.docVersion === "number";
+        const shouldReset = hasDocVersion && payload.docVersion !== this.docVersion;
+
+        if (shouldReplace) {
             this.setText(payload.content, true); // Sets' flag to true to avoid emitting change events
-            this.resetSyncState(payload.docVersion || this.docVersion);
+        }
+
+        if (shouldReplace || shouldReset) {
+            this.resetSyncState(payload.docVersion ?? this.docVersion);
             window.$events.emit("tinymist-console-log",
                 { type: "info", message: "[File Sync / LSP] Document synchronized from server" });
         }

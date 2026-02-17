@@ -71,9 +71,9 @@ export class TinymistEditor extends Component {
         this.syncContentToTextarea = editorUI.syncContentToTextarea.bind(editorUI);
 
         new TinymistConsole(this.$refs.console);
-        new TinymistFallbackCompiler();
-
+        // Even if the page was not saved yet, Bookstack still creates a page ID for draft pages
         const pageId = Number(this.$opts.pageId);
+        new TinymistFallbackCompiler(pageId);
 
         if (!pageId) {
             window.$events.emit('tinymist-console-log', {
@@ -102,7 +102,9 @@ export class TinymistEditor extends Component {
      */
     async getContent() {
         // Sync CodeMirror content to textarea before returning
-        return this.syncContentToTextarea();
+        return {
+            tinymist: this.syncContentToTextarea(),
+        };
     }
 
     destroy() {

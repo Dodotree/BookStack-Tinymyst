@@ -10,18 +10,20 @@
  */
 export class TinymistFallbackCompiler {
     private enabled: boolean = true;
+    private pageId: number = 0;
 
-    constructor() {
+    constructor(pageId: number) {
+        this.pageId = pageId;
         window.$events.listen("tinymist-fallback-enable", (enabled: boolean) => this.enabled = enabled);
         window.$events.listen("tinymist-fallback-compile", async ({ docVersion, content }: { docVersion: number; content: string }) => {
-            await this.compile(docVersion, content);
+            await this.compile(docVersion, content, this.pageId);
         });
     }
 
     /**
      * Compile Typst source to SVG
      */
-    async compile(docVersion: number, content: string): Promise<void> {
+    async compile(docVersion: number, content: string, pageId: number): Promise<void> {
         if (!this.enabled) {
             return;
         }
@@ -30,7 +32,7 @@ export class TinymistFallbackCompiler {
         window.$events.emit("tinymist-console-log",{ type: "info", message: "[Typst] Compiling..." });
 
         try {
-            const response = await window.$http.post('/ajax/tinymist/compile', { content, docVersion });
+            const response = await window.$http.post('/ajax/tinymist/compile', { content, docVersion, pageId });
 
             console.log(`[Typst] Compilation #${docVersion} completed (processing...)`);
 

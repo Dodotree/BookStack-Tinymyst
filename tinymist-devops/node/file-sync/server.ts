@@ -331,6 +331,13 @@ class PageSession {
                 code: errorMessage,
                 message: `Failed to apply changes: ${msg.changes}`,
             });
+            const content = fileManager.loadDocument(this.pageId);
+            this.send(ctx.socket, {
+                type: "fullState",
+                pageId: this.pageId,
+                docVersion: this.docVersion,
+                content,
+            });
             return;
         }
 

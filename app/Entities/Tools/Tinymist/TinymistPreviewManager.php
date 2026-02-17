@@ -102,6 +102,18 @@ class TinymistPreviewManager
 
         if ($fileMtime > $dbTimestamp) {
             $fileContent = @file_get_contents($filePath);
+            if (is_string($fileContent)) {
+                $fileEmpty = trim($fileContent) === '';
+                $dbEmpty = trim((string)$dbContent) === '';
+                if ($fileEmpty && !$dbEmpty) {
+                    Log::warning('Tinymist preview file empty but DB has content, restoring DB copy', [
+                        'page_id' => $page->id,
+                    ]);
+                    file_put_contents($filePath, $dbContent);
+                    $this->syncAttachmentFiles($page, $pageDir);
+                    return $dbContent;
+                }
+            }
             $this->syncAttachmentFiles($page, $pageDir);
             return is_string($fileContent) ? $fileContent : $dbContent;
         }

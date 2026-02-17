@@ -7,9 +7,7 @@ export class PreviewDataPlane {
     }
 
     private handleBridgeDataMessage(msg: Uint8Array): void {
-        if (Boolean((window as any)?.tinymistPreviewDebug)) {
-            console.log("[Preview Data] Data message", { bytes: msg.byteLength });
-        }
+        console.log("[Preview Data] Data message", { bytes: msg.byteLength });
         this.processingQueue = this.processingQueue
             .then(async () => {
                 await this.handleBinaryMessage(msg);

@@ -19,9 +19,7 @@ export class PreviewControlPlane {
     }
 
     private handleControlMessage(raw: string): void {
-        if (Boolean((window as any)?.tinymistPreviewDebug)) {
-            console.log("[Preview Control] Control message", { length: raw.length });
-        }
+        console.log("[Preview Control] Control message", { length: raw.length });
         try {
             const msg = JSON.parse(raw);
             if (msg.type === 'pong' || msg.type === 'tokenUpdated' || msg.type === 'previewRestarted') {

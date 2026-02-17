@@ -32,8 +32,19 @@ class TinymistService
      */
     public function compileToSvg(string $source, array $options = []): array
     {
-        $inputFile = $this->createTempFile($source, '.typ');
-        $outputTemplate = $inputFile . '-{p}.svg';
+        $pageId = isset($options['pageId']) ? (int)$options['pageId'] : 0;
+        $useStorage = $pageId > 0;
+
+        if ($useStorage) {
+            $inputFile = $this->writeSourceToStorage($pageId, $source);
+            $outputTemplate = dirname($inputFile) . DIRECTORY_SEPARATOR . 'render-{p}.svg';
+        } else {
+            $inputFile = $this->createTempFile($source, '.typ');
+            $outputTemplate = $inputFile . '-{p}.svg';
+        }
+        $outputGlob = $useStorage
+            ? (dirname($inputFile) . DIRECTORY_SEPARATOR . 'render-*.svg')
+            : ($inputFile . '-*.svg');
 
         try {
             // Use typst CLI for compilation with short diagnostic format
@@ -46,7 +57,7 @@ class TinymistService
 
             exec($command, $output, $returnCode);
 
-            $svgFiles = glob($inputFile . '-*.svg') ?: [];
+            $svgFiles = glob($outputGlob) ?: [];
 
             if ($returnCode !== 0 || count($svgFiles) === 0) {
                 // Parse errors from short diagnostic format
@@ -77,7 +88,9 @@ class TinymistService
             $svg = implode("\n", $svgParts);
 
             // Cleanup
-            @unlink($inputFile);
+            if (!$useStorage) {
+                @unlink($inputFile);
+            }
             foreach ($svgFiles as $svgFile) {
                 @unlink($svgFile);
             }
@@ -95,8 +108,10 @@ class TinymistService
             ]);
 
             // Cleanup on error
-            @unlink($inputFile);
-            foreach (glob($inputFile . '-*.svg') ?: [] as $svgFile) {
+            if (!$useStorage) {
+                @unlink($inputFile);
+            }
+            foreach (glob($outputGlob) ?: [] as $svgFile) {
                 @unlink($svgFile);
             }
 
@@ -132,6 +147,18 @@ class TinymistService
         $tempFile = tempnam($this->tempDir, 'tinymist_') . $extension;
         file_put_contents($tempFile, $content);
         return $tempFile;
+    }
+
+    protected function writeSourceToStorage(int $pageId, string $content): string
+    {
+        $directory = storage_path("app/tinymist/page_{$pageId}");
+        if (!is_dir($directory)) {
+            mkdir($directory, 0755, true);
+        }
+
+        $filePath = $directory . DIRECTORY_SEPARATOR . 'entry.typ';
+        file_put_contents($filePath, $content);
+        return $filePath;
     }
 
     /**

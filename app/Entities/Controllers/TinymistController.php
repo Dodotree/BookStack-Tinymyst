@@ -23,6 +23,7 @@ class TinymistController extends Controller
     public function compile(Request $request)
     {
         $content = $request->input('content', '');
+        $pageId = (int)$request->input('page_id', 0);
         $docVersion = $request->input('docVersion');
 
         // Validate content is not empty
@@ -47,7 +48,8 @@ class TinymistController extends Controller
         }
 
         // Compile the content
-        $result = $this->tinymist->compileToSvg($content);
+        $options = $pageId > 0 ? ['pageId' => $pageId] : [];
+        $result = $this->tinymist->compileToSvg($content, $options);
 
         if (!is_null($docVersion)) {
             $result['docVersion'] = $docVersion;

@@ -54,7 +54,7 @@ class PageContent
     }
 
     /**
-     * Update the content of the page with new provided Tinymist (Typst) source.
+     * Save the content of the page with new provided Tinymist (Typst) source.
      */
     public function setNewTinymist(string $source, User $updater): void
     {
@@ -62,7 +62,7 @@ class PageContent
 
         // Compile to SVG using TinymistService
         $tinymist = app(\BookStack\Entities\Tools\Tinymist\TinymistService::class);
-        $result = $tinymist->compileToSvg($source);
+        $result = $tinymist->compileToSvg($source, ['pageId' => $this->page->id]);
 
         if ($result['success']) {
             // Wrap SVG in container div

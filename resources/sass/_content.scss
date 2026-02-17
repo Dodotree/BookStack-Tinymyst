@@ -229,6 +229,10 @@ body .page-content img,
   html.dark-mode & svg {
     background-color: #222;
     filter: invert(0.9) hue-rotate(180deg);
+    /* Inverting only the text and shapes makes them blurry, for now images are double inverted */
+    image{
+        filter: invert(1) hue-rotate(180deg);
+    }
   }
 }
 

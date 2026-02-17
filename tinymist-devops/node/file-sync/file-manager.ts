@@ -23,7 +23,8 @@ export class FileManager {
     const filePath = this.getFilePath(pageId);
     try {
       const content = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
-      return content
+      // Normalize line endings to avoid ChangeSet length mismatches on Windows.
+      return content.replace(/\r\n?/g, "\n");
     } catch (err) {
       console.error("Failed to read document", { pageId, err });
       throw new Error("DOC_READ_FAILED");
