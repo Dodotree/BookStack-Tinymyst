@@ -220,6 +220,7 @@ Route::middleware('auth')->group(function () {
     // Importing
     Route::get('/import', [ExportControllers\ImportController::class, 'start']);
     Route::post('/import', [ExportControllers\ImportController::class, 'upload']);
+    Route::post('/import/single', [ExportControllers\ImportController::class, 'uploadSingle']);
     Route::get('/import/{id}', [ExportControllers\ImportController::class, 'show']);
     Route::post('/import/{id}', [ExportControllers\ImportController::class, 'run']);
     Route::delete('/import/{id}', [ExportControllers\ImportController::class, 'delete']);

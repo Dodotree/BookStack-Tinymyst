@@ -4,6 +4,7 @@ namespace BookStack\Entities\Tools\Tinymist;
 
 use Illuminate\Support\Facades\Log;
 use BookStack\Entities\Models\Page;
+use BookStack\Uploads\Attachment;
 use BookStack\Uploads\FileStorage;
 
 class TinymistPreviewManager
@@ -125,38 +126,66 @@ class TinymistPreviewManager
 
     protected function syncAttachmentFiles(Page $page, string $pageDir): void
     {
-        $storage = app()->make(FileStorage::class);
-
         foreach ($page->attachments as $attachment) {
-            if ($attachment->external) {
-                continue;
-            }
-
-            $sourcePath = $storage->getSystemPath($attachment->path);
-            if ($sourcePath === '' || !file_exists($sourcePath)) {
-                continue;
-            }
-
-            $fileName = basename($attachment->getFileName());
-            if ($fileName === 'entry.typ') {
-                Log::warning('Skipping attachment named entry.typ to avoid overwriting editor file', [
-                    'page_id' => $page->id,
-                    'attachment_id' => $attachment->id,
-                ]);
-                continue;
-            }
-
-            $destPath = $pageDir . DIRECTORY_SEPARATOR . $fileName;
-            if (file_exists($destPath)) {
-                $sourceMtime = @filemtime($sourcePath) ?: 0;
-                $destMtime = @filemtime($destPath) ?: 0;
-                if ($destMtime >= $sourceMtime) {
-                    continue;
-                }
-            }
-
-            @copy($sourcePath, $destPath);
+            $this->syncSingleAttachment($page, $pageDir, $attachment);
         }
+    }
+
+    public function syncNewAttachmentToPreviewDir(Page $page, Attachment $attachment): void
+    {
+        $pageDir = storage_path("app/tinymist/page_{$page->id}");
+        if (!is_dir($pageDir)) {
+            mkdir($pageDir, 0755, true);
+        }
+
+        $this->syncSingleAttachment($page, $pageDir, $attachment);
+    }
+
+    public function removeAttachmentFromPreviewDir(Page $page, string $attachmentFileName): void
+    {
+        $fileName = basename($attachmentFileName);
+        if ($fileName === '' || $fileName === 'entry.typ') {
+            return;
+        }
+
+        $pageDir = storage_path("app/tinymist/page_{$page->id}");
+        $destPath = $pageDir . DIRECTORY_SEPARATOR . $fileName;
+        if (file_exists($destPath) && is_file($destPath)) {
+            @unlink($destPath);
+        }
+    }
+
+    protected function syncSingleAttachment(Page $page, string $pageDir, Attachment $attachment): void
+    {
+        if ($attachment->external) {
+            return;
+        }
+
+        $storage = app()->make(FileStorage::class);
+        $sourcePath = $storage->getSystemPath($attachment->path);
+        if ($sourcePath === '' || !file_exists($sourcePath)) {
+            return;
+        }
+
+        $fileName = basename($attachment->getFileName());
+        if ($fileName === 'entry.typ') {
+            Log::warning('Skipping attachment named entry.typ to avoid overwriting editor file', [
+                'page_id' => $page->id,
+                'attachment_id' => $attachment->id,
+            ]);
+            return;
+        }
+
+        $destPath = $pageDir . DIRECTORY_SEPARATOR . $fileName;
+        if (file_exists($destPath)) {
+            $sourceMtime = @filemtime($sourcePath) ?: 0;
+            $destMtime = @filemtime($destPath) ?: 0;
+            if ($destMtime >= $sourceMtime) {
+                return;
+            }
+        }
+
+        @copy($sourcePath, $destPath);
     }
 
 }

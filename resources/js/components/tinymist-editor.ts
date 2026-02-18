@@ -17,6 +17,7 @@ export class TinymistEditor extends Component {
     syncContentToTextarea!: () => string;
 
     private uniqueTabId: string = this.createUniqueTabId();
+    private attachmentRefreshHandler: ((data: { pageId?: number, html?: string }) => void) | null = null;
 
     private connectionsManager: TinymistConnectionsManager | null = null;
 
@@ -74,6 +75,7 @@ export class TinymistEditor extends Component {
         // Even if the page was not saved yet, Bookstack still creates a page ID for draft pages
         const pageId = Number(this.$opts.pageId);
         new TinymistFallbackCompiler(pageId);
+        this.setupFileDropdown(pageId);
 
         if (!pageId) {
             window.$events.emit('tinymist-console-log', {
@@ -109,6 +111,44 @@ export class TinymistEditor extends Component {
 
     destroy() {
         this.connectionsManager?.destroy();
+        if (this.attachmentRefreshHandler) {
+            window.$events.remove('attachments-page-updated', this.attachmentRefreshHandler);
+            this.attachmentRefreshHandler = null;
+        }
+    }
+
+    private setupFileDropdown(pageId: number): void {
+        const fileSelect = this.$refs.fileList as HTMLSelectElement | undefined;
+        if (!fileSelect || !pageId) {
+            return;
+        }
+
+        const refresh = (data: { pageId?: number, html?: string }) => {
+            if (!data || Number(data.pageId) !== pageId) {
+                return;
+            }
+            this.refreshFileDropdown(fileSelect, data.html || '');
+        };
+        this.attachmentRefreshHandler = refresh;
+        window.$events.listen('attachments-page-updated', refresh);
+    }
+
+    private refreshFileDropdown(fileSelect: HTMLSelectElement, attachmentsHtml: string): void {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(attachmentsHtml, 'text/html');
+        const attachmentNames = Array.from(doc.querySelectorAll('a'))
+            .map(link => (link.textContent || '').trim())
+            .filter(name => name.length > 0 && name !== 'entry.typ');
+
+        const uniqueAttachmentNames = [...new Set(attachmentNames)];
+        const selectedValue = fileSelect.value || 'entry.typ';
+
+        fileSelect.innerHTML = '';
+        fileSelect.add(new Option('entry.typ', 'entry.typ'));
+        uniqueAttachmentNames.forEach(name => fileSelect.add(new Option(name, name)));
+
+        const hasPrevious = Array.from(fileSelect.options).some(option => option.value === selectedValue);
+        fileSelect.value = hasPrevious ? selectedValue : 'entry.typ';
     }
 
 }

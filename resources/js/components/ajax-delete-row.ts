@@ -23,6 +23,9 @@ export class AjaxDeleteRow extends Component {
             if (typeof resp.data === 'object' && resp.data.message) {
                 window.$events.emit('success', resp.data.message);
             }
+            this.$emit('success', {
+                id: this.row.dataset.id,
+            });
             this.row.remove();
         }).catch(() => {
             this.row.style.removeProperty('opacity');

@@ -261,6 +261,25 @@ sudo bash renew-ssl.sh
 sudo certbot certificates
 ```
 
+#### Typst and Tinymist package system uploads
+
+Every time there is and #import @namespace statement it will upload packages from Typst Universe. To prevent that
+
+```bash
+sudo systemctl edit tinymist-preview.service
+
+# Add
+[Service]
+IPAddressDeny=any
+IPAddressAllow=localhost
+
+sudo systemctl daemon-reload
+sudo systemctl restart tinymist-preview.service
+```
+
+Other options are firejail or iptables owner match (block by user)
+Block outbound traffic for the Linux user that runs Tinymist.
+
 ### Make builds
 
 ```bash
@@ -475,3 +494,5 @@ npm run build
 php artisan optimize:clear
 php artisan queue:restart
 systemctl restart php8.3-fpm.service
+
+

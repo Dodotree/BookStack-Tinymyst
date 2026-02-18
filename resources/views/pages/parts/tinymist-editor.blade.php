@@ -18,8 +18,23 @@
         {{-- Editor Pane --}}
         <div class="tinymist-editor-pane flex-fill flex-container-column">
             <div class="editor-toolbar flex-container-row items-stretch justify-space-between">
-                <div class="editor-toolbar-label text-mono bold px-m py-xs">
-                    <span>{{ trans('entities.pages_tinymist_editor') ?? 'Typst Editor' }}</span>
+                <div class="tinymist-toolbar-title-wrap flex-container-row items-center">
+                    <div class="editor-toolbar-label text-mono bold px-m py-xs">
+                        <span>{{ trans('entities.pages_tinymist_editor') ?? 'Typst Editor' }}</span>
+                    </div>
+                    <select refs="tinymist-editor@fileList"
+                            class="tinymist-file-select text-small"
+                            aria-label="Typst files">
+                        <option value="entry.typ">entry.typ</option>
+                        @foreach($page->attachments as $attachment)
+                            @if(!$attachment->external)
+                                @php($fileName = $attachment->getFileName())
+                                @if($fileName !== 'entry.typ')
+                                    <option value="{{ $fileName }}">{{ $fileName }}</option>
+                                @endif
+                            @endif
+                        @endforeach
+                    </select>
                 </div>
                 <div class="buttons flex-container-row items-stretch">
                     <button class="text-button" type="button" data-action="insertImage" title="Insert Image">
@@ -232,6 +247,15 @@
 
     html.dark-mode .tinymist-panel-divider-horizontal {
         background-color: #000;
+    }
+
+    .tinymist-file-select {
+        min-width: 150px;
+        max-width: 320px;
+        height: 28px;
+        margin-right: 8px;
+        padding-top: 0;
+        padding-bottom: 0;
     }
 
     /* Fix textarea wrapper to fill height */

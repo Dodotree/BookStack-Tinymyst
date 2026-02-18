@@ -19,6 +19,7 @@ export class Attachments extends Component {
         const reloadListBound = this.reloadList.bind(this);
         this.container.addEventListener('dropzone-upload-success', reloadListBound);
         this.container.addEventListener('ajax-form-success', reloadListBound);
+        this.container.addEventListener('ajax-delete-row-success', reloadListBound);
 
         this.container.addEventListener('sortable-list-sort', event => {
             this.updateOrder(event.detail.ids);
@@ -63,6 +64,10 @@ export class Attachments extends Component {
         window.$http.get(`/attachments/get/page/${this.pageId}`).then(resp => {
             this.listPanel.innerHTML = resp.data;
             window.$components.init(this.listPanel);
+            window.$events.emit('attachments-page-updated', {
+                pageId: Number(this.pageId),
+                html: String(resp.data || ''),
+            });
         });
     }
 
