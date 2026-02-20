@@ -51,16 +51,27 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
         });
 
         this.sendChanges = this.sendChanges.bind(this);
+        this.openFile = this.openFile.bind(this);
         window.$events.listen("tinymist-text-diff", this.sendChanges);
+        window.$events.listen("tinymist-sync-open-file", this.openFile);
+    }
+
+    openFile(payload: { fileName: string }): void {
+        this.sendJson({
+            type: 'openFile',
+            pageId: this.pageId,
+            fileName: payload.fileName,
+        });
     }
 
     /**
      * Send changes to the server
      */
-    sendChanges(payload: { changes: any; docVersion: number }): void {
+    sendChanges(payload: { changes: any; docVersion: number; fileName: string }): void {
         const message = {
             type: 'changes',
             pageId: this.pageId,
+            fileName: payload.fileName,
             docVersion: payload.docVersion,
             changes: payload.changes.toJSON(),
         };
@@ -77,6 +88,14 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
         try {
             const msg = JSON.parse(data);
             const docVersion = "docVersion" in msg ? Number(msg.docVersion) : undefined;
+            const fileName = typeof msg.fileName === 'string' && msg.fileName.trim().length > 0
+                ? msg.fileName.trim()
+                : undefined;
+
+            if((docVersion === undefined || !fileName) && ['fullState', 'semanticTokens', 'semanticTokensDelta', 'diagnostics'].includes(msg.type)) {
+                console.warn(`[File Sync / LSP] Missing docVersion ${docVersion} or fileName ${fileName} for message type: ${msg.type}`, msg );
+                return;
+            }
 
             switch (msg.type) {
                 case 'pong':
@@ -84,45 +103,49 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
                     break;
 
                 case 'ack':
-                    console.log('[File Sync / LSP] Change acknowledged', { docVersion });
+                    console.log('[File Sync / LSP] Change acknowledged', { docVersion, fileName });
                     break;
 
                 case 'fullState':
-                    console.log('[File Sync / LSP] Received full state from server', { docVersion });
+                    console.log('[File Sync / LSP] Received full state from server', { docVersion, fileName });
                     window.$events.emit("tinymist-sync-full-state", {
+                        fileName,
                         content: msg.content,
                         docVersion,
                     });
                     break;
 
                 case 'semanticTokens':
-                    console.log('[File Sync / LSP] Received semantic tokens from server', { docVersion, resultId: msg.resultId, tokenCount: msg.tokens?.length || 0 });
+                    console.log('[File Sync / LSP] Received semantic tokens from server', { docVersion, fileName, resultId: msg.resultId, tokenCount: msg.tokens?.length || 0 });
                     window.$events.emit("tinymist-lsp-semantic-tokens", {
+                        fileName,
                         tokens: msg.tokens || [],
                         resultId: msg.resultId,
                         docVersion,
                     });
-                    window.$events.emit("tinymist-prune-snapshots", docVersion);
+                    window.$events.emit("tinymist-prune-snapshots", { fileName, docVersion });
                     break;
 
                 case 'semanticTokensDelta':
-                    console.log('[File Sync / LSP] Received semantic tokens delta from server', { docVersion, editCount: msg.edits?.length || 0 });
+                    console.log('[File Sync / LSP] Received semantic tokens delta from server', { docVersion, fileName, editCount: msg.edits?.length || 0 });
                     window.$events.emit("tinymist-lsp-semantic-tokens-delta", {
+                        fileName,
                         edits: msg.edits || [],
                         resultId: msg.resultId,
                         previousResultId: msg.previousResultId,
                         docVersion,
                     });
-                    window.$events.emit("tinymist-prune-snapshots", docVersion);
+                    window.$events.emit("tinymist-prune-snapshots", { fileName, docVersion });
                     break;
 
                 case 'diagnostics':
-                    console.log('[File Sync / LSP] Received diagnostics from server', { docVersion, diagnosticCount: msg.diagnostics?.length || 0 });
+                    console.log('[File Sync / LSP] Received diagnostics from server', { docVersion, fileName, diagnosticCount: msg.diagnostics?.length || 0 });
                     window.$events.emit("tinymist-lsp-diagnostics", {
+                        fileName,
                         diagnostics: msg.diagnostics || [],
                         docVersion,
                     });
-                    window.$events.emit("tinymist-prune-snapshots", docVersion);
+                    window.$events.emit("tinymist-prune-snapshots", { fileName, docVersion });
                     break;
 
                 case 'error':

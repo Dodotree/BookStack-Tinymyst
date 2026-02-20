@@ -171,22 +171,27 @@ export class SemanticTokenProcessor {
     private encodedTokens: number[] | null = null;
     private lineSignatures: Map<number, string> = new Map();
     private currentResultId: string | null = null;
-    private getSnapshotContext: ((docVersion: number) => { snapshot: string; changeSet: ChangeSet });
+    private getSnapshotContext: ((docVersion: number, fileName: string) => { snapshot: string; changeSet: ChangeSet });
+    private activeFileName: string;
 
     constructor(editorView: EditorView | null = null) {
         // placeholders until attachEditorView is called
         this.editorView = editorView;
         this.getSnapshotContext = () => ({ snapshot: "", changeSet: ChangeSet.empty(0) });
+        this.activeFileName = "entry.typ";
 
         this.processSemanticTokens = this.processSemanticTokens.bind(this);
         this.processSemanticTokensDelta = this.processSemanticTokensDelta.bind(this);
         window.$events.listen("tinymist-lsp-semantic-tokens", this.processSemanticTokens);
         window.$events.listen("tinymist-lsp-semantic-tokens-delta", this.processSemanticTokensDelta);
+        window.$events.listen("tinymist-active-file-change", (fileName: string) => {
+            this.activeFileName = fileName;
+        });
     }
 
     attachEditorView(
         view: EditorView,
-        getSnapshotContext: (docVersion: number) => { snapshot: string; changeSet: ChangeSet }
+        getSnapshotContext: (docVersion: number, fileName: string) => { snapshot: string; changeSet: ChangeSet },
     ): void {
         this.editorView = view;
         this.getSnapshotContext = getSnapshotContext;
@@ -245,14 +250,18 @@ export class SemanticTokenProcessor {
     }
 
     processSemanticTokens(
-        payload: { tokens: number[]; resultId?: string; docVersion: number }
+        payload: { tokens: number[]; resultId?: string; docVersion: number; fileName: string }
     ) {
+
+        if (payload.fileName !== this.activeFileName) {
+            return;
+        }
         const tokens = Array.isArray(payload) ? payload : payload.tokens;
         if (!Array.isArray(tokens) || !this.editorView) {
             return;
         }
         const highlights = this.buildHighlights(tokens);
-        const snapshotCtx = this.getSnapshotContext(payload.docVersion);
+        const snapshotCtx = this.getSnapshotContext(payload.docVersion, payload.fileName);
         const mappedHighlights = this.mapRegionsToCurrent(
                     highlights,
                     snapshotCtx.snapshot,
@@ -270,6 +279,7 @@ export class SemanticTokenProcessor {
         resultId?: string;
         previousResultId?: string;
         docVersion: number;
+        fileName: string;
     }) {
         if (!payload || !Array.isArray(payload.edits) || !this.encodedTokens || !this.editorView) {
             return;
@@ -277,6 +287,7 @@ export class SemanticTokenProcessor {
 
         if (payload.previousResultId && this.currentResultId && payload.previousResultId !== this.currentResultId) {
             console.warn("[Semantic Tokens] Delta resultId mismatch", {
+                fileName: payload.fileName,
                 expected: this.currentResultId,
                 received: payload.previousResultId,
             });
@@ -285,7 +296,7 @@ export class SemanticTokenProcessor {
 
         const updatedTokens = this.applySemanticTokensEdits(this.encodedTokens, payload.edits);
         const highlights = this.buildHighlights(updatedTokens);
-        const snapshotCtx = this.getSnapshotContext(payload.docVersion);
+        const snapshotCtx = this.getSnapshotContext(payload.docVersion, payload.fileName );
         const mappedHighlights = this.mapRegionsToCurrent(
             highlights,
             snapshotCtx.snapshot,

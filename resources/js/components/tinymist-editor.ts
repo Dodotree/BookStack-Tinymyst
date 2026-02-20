@@ -18,6 +18,10 @@ export class TinymistEditor extends Component {
 
     private uniqueTabId: string = this.createUniqueTabId();
     private attachmentRefreshHandler: ((data: { pageId?: number, html?: string }) => void) | null = null;
+    private fileSyncStatusHandler: ((status: { what?: string; connected?: boolean }) => void) | null = null;
+    private editorUI: TinymistEditorUI | null = null;
+    private fileSelect: HTMLSelectElement | null = null;
+    private fileSyncConnected = false;
 
     private connectionsManager: TinymistConnectionsManager | null = null;
 
@@ -67,9 +71,10 @@ export class TinymistEditor extends Component {
         );
 
         const editorUI = new TinymistEditorUI(this.elem, this.editor);
+        this.editorUI = editorUI;
         // Since all Bookstack editors require getText()
-        this.getText = editorUI.getText.bind(editorUI);
-        this.syncContentToTextarea = editorUI.syncContentToTextarea.bind(editorUI);
+        this.getText = editorUI.getEntryText;
+        this.syncContentToTextarea = editorUI.syncEntryContentToTextarea;
 
         new TinymistConsole(this.$refs.console);
         // Even if the page was not saved yet, Bookstack still creates a page ID for draft pages
@@ -92,6 +97,14 @@ export class TinymistEditor extends Component {
             uniqueTabId: this.uniqueTabId,
         });
 
+        this.fileSyncStatusHandler = (status: { what?: string; connected?: boolean }) => {
+            if (status?.what !== 'file-lsp-ws') {
+                return;
+            }
+            this.fileSyncConnected = Boolean(status.connected);
+        };
+        window.$events.listen('tinymist-status', this.fileSyncStatusHandler);
+
         this.connectionsManager.start();
 
         // WASM can be useless if the preview bridge fails to initialize
@@ -103,7 +116,7 @@ export class TinymistEditor extends Component {
      * Get content for saving (called by page-editor).
      */
     async getContent() {
-        // Sync CodeMirror content to textarea before returning
+        // Sync CodeMirror entry.typ content to textarea before returning
         return {
             tinymist: this.syncContentToTextarea(),
         };
@@ -111,6 +124,10 @@ export class TinymistEditor extends Component {
 
     destroy() {
         this.connectionsManager?.destroy();
+        if (this.fileSyncStatusHandler) {
+            window.$events.remove('tinymist-status', this.fileSyncStatusHandler);
+            this.fileSyncStatusHandler = null;
+        }
         if (this.attachmentRefreshHandler) {
             window.$events.remove('attachments-page-updated', this.attachmentRefreshHandler);
             this.attachmentRefreshHandler = null;
@@ -122,6 +139,13 @@ export class TinymistEditor extends Component {
         if (!fileSelect || !pageId) {
             return;
         }
+        this.fileSelect = fileSelect;
+
+        fileSelect.addEventListener('change', () => {
+            const selectedFile = this.fileSyncConnected ?
+                (fileSelect.value || 'entry.typ').trim() : 'entry.typ';
+            window.$events.emit("tinymist-active-file-change", selectedFile);
+        });
 
         const refresh = (data: { pageId?: number, html?: string }) => {
             if (!data || Number(data.pageId) !== pageId) {

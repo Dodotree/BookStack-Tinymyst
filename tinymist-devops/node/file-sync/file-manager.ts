@@ -19,8 +19,8 @@ export class FileManager {
   /**
    * Load document from disk
    */
-  loadDocument(pageId: number): string {
-    const filePath = this.getFilePath(pageId);
+  loadDocument(pageId: number, fileName: string = "entry.typ"): string {
+    const filePath = this.getFilePath(pageId, fileName);
     try {
       const content = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
       // Normalize line endings to avoid ChangeSet length mismatches on Windows.
@@ -34,8 +34,8 @@ export class FileManager {
   /**
    * Persist document to disk
    */
-  persistDocument(pageId: number, content: string): void {
-    const filePath = this.getFilePath(pageId);
+  persistDocument(pageId: number, content: string, fileName: string = "entry.typ"): void {
+    const filePath = this.getFilePath(pageId, fileName);
     try {
       mkdirSync(dirname(filePath), { recursive: true });
       writeFileSync(filePath, content, "utf8");
@@ -50,10 +50,11 @@ export class FileManager {
    */
   applyChanges(
     pageId: number,
+    fileName: string,
     changeSetJson: unknown
   ): { updated: string; contentChanges: LspContentChange[] } {
 
-    const currentContent = this.loadDocument(pageId);
+    const currentContent = this.loadDocument(pageId, fileName);
     const text = Text.of(currentContent.split("\n"));
 
     let changeSet: ChangeSet;
@@ -93,7 +94,22 @@ export class FileManager {
   /**
    * Get file path for a page
    */
-  private getFilePath(pageId: number): string {
-    return join(this.storageRoot, `page_${pageId}`, "entry.typ");
+  private getFilePath(pageId: number, fileName: string): string {
+    const safeFileName = this.normalizeFileName(fileName);
+    return join(this.storageRoot, `page_${pageId}`, safeFileName);
+  }
+
+  private normalizeFileName(fileName: string): string {
+    const trimmed = (fileName || "").trim();
+    if (trimmed.length === 0) {
+      throw new Error("INVALID_FILE_NAME");
+    }
+
+    const normalized = trimmed.replace(/\\/g, "/");
+    if (normalized.includes("/") || normalized.includes("..")) {
+      throw new Error("INVALID_FILE_NAME");
+    }
+
+    return normalized;
   }
 }

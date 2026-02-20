@@ -14,19 +14,26 @@ type ConnectionContext = {
     pageId: number;
     uniqueTabId: string;
     lastSeen: number;
+    lastFileName: string;
 };
 
 type IncomingMessagePayload =
     | { type: "ping" }
     | {
-        type: "changes";
-        pageId: number;
-        docVersion: number;
-        changes: unknown; // serialized ChangeSet
-    }
-    | {
         type: "updateToken";
         token: string;
+    }
+    | {
+        type: "openFile";
+        pageId: number;
+        fileName: string;
+    }
+    | {
+        type: "changes";
+        pageId: number;
+        fileName: string;
+        docVersion: number;
+        changes: unknown; // serialized ChangeSet
     };
 
 type OutgoingMessagePayload =
@@ -34,19 +41,22 @@ type OutgoingMessagePayload =
     | {
         type: "ack";
         pageId: number;
+        fileName: string;
         docVersion: number;
     }
     | {
         type: "fullState";
         pageId: number;
+        fileName: string;
         docVersion: number;
         content: string;
-        someoneElse?: boolean;
+        fromDifferentTab?: boolean;
         lastSeen?: number;
     }
     | {
         type: "semanticTokens";
         pageId: number;
+        fileName: string;
         docVersion: number;
         resultId?: string;
         tokens: number[];
@@ -54,6 +64,7 @@ type OutgoingMessagePayload =
     | {
         type: "semanticTokensDelta";
         pageId: number;
+        fileName: string;
         docVersion: number;
         previousResultId?: string;
         resultId?: string;
@@ -62,8 +73,8 @@ type OutgoingMessagePayload =
     | {
         type: "diagnostics";
         pageId: number;
+        fileName: string;
         docVersion: number;
-        uri: string;
         diagnostics: Array<unknown>;
     }
     | {
@@ -88,6 +99,15 @@ const connections = new Map<WebSocket, ConnectionContext>();
 const sessions = new Map<number, PageSession>();
 const fileManager = new FileManager(STORAGE_ROOT);
 let lspClient: LSPClient | null = null;
+
+const defaultFileName = "entry.typ";
+
+function normalizeFileName(fileName: string): string {
+    if (!fileName || fileName.trim().length === 0 || fileName.includes("\\") || fileName.includes("/") || fileName.includes("..")) {
+        throw new Error("INVALID_FILE_NAME");
+    }
+    return fileName.trim();
+}
 
 function broadcastToAllSessions(payload: OutgoingMessagePayload): void {
     for (const session of sessions.values()) {
@@ -114,38 +134,59 @@ function getSession(pageId: number): PageSession {
         return existing;
     }
 
-    const uri = `file:///${join(STORAGE_ROOT, `page_${pageId}`, "entry.typ")}`
-    const session = new PageSession(pageId, uri, () => {
+    const session = new PageSession(pageId, () => {
         sessions.delete(pageId);
     });
     sessions.set(pageId, session);
     return session;
 }
 
-function getNotificationSession(params: unknown): PageSession | null {
+function findNotificationSession(params: unknown): { session: PageSession; fileName: string } | null {
     if (params && typeof params === "object" && "uri" in params && typeof params.uri === "string") {
-        const match = params.uri.match(/page_(\d+)\/entry\.typ$/);
+
+        // we have to identify the session based on the file URI, which contains the pageId and fileName
+        const decodedUri = decodeURIComponent(params.uri);
+        const match = decodedUri.match(/page_(\d+)\/([^/]+)$/);
         const pageId = match?.[1];
+        const fileName = match?.[2];
         if (!pageId || isNaN(Number(pageId))) {
+            console.warn("Received LSP notification with invalid or missing pageId in URI:", params.uri);
             return null;
         }
-        return sessions.get(Number(pageId)) || null;
+        const session = sessions.get(Number(pageId)) || null;
+        if (!session || !fileName) {
+            console.warn("Received LSP notification with invalid or missing fileName in URI, or no session found:", params.uri);
+            return null;
+        }
+        let normalized;
+        try {
+            normalized = normalizeFileName(fileName);
+        } catch (err) {
+            console.warn("Received LSP notification for invalid file name in URI:", params.uri);
+            return null;
+        }
+        return { session, fileName: normalized };
     }
     return null;
 }
 
+type FileSessionState = {
+    fileName: string;
+    uri: string;
+    docVersion: number;
+    semanticTokenResultId?: string;
+    semanticTokenTimer?: NodeJS.Timeout;
+    lspOpen: boolean;
+};
+
 class PageSession {
     private readonly browsers: Set<ConnectionContext> = new Set();
+    private readonly fileStates: Map<string, FileSessionState> = new Map();
     private idleTimer: NodeJS.Timeout | null = null;
     private destroyed = false;
-    private docVersion = 0;
-    private semanticTokenResultId?: string;
-    private semanticTokenTimer?: NodeJS.Timeout;
-    private lspOpen = false;
 
     constructor(
         private readonly pageId: number,
-        private readonly uri: string,
         private readonly remove: () => void
     ) {}
 
@@ -156,11 +197,61 @@ class PageSession {
         }
     }
 
-    sendAck(ws: WebSocket) {
+    private sendAck(ws: WebSocket, fileName: string, docVersion: number) {
         this.send(ws, {
             type: "ack",
             pageId: this.pageId,
-            docVersion: this.docVersion,
+            fileName,
+            docVersion,
+        });
+    }
+
+    private getFileUri(fileName: string): string {
+        const absolutePath = join(STORAGE_ROOT, `page_${this.pageId}`, fileName).replace(/\\/g, "/");
+        return encodeURI(`file:///${absolutePath}`);
+    }
+
+    private isTypFile(fileName: string): boolean {
+        return fileName.toLowerCase().endsWith(".typ");
+    }
+
+    private getFileState(fileName: string): FileSessionState {
+        const existing = this.fileStates.get(fileName);
+        if (existing) {
+            return existing;
+        }
+
+        const created: FileSessionState = {
+            fileName: fileName,
+            uri: this.getFileUri(fileName),
+            docVersion: 1,
+            lspOpen: false,
+        };
+        this.fileStates.set(fileName, created);
+        return created;
+    }
+
+    private sendFullState(
+        ws: WebSocket,
+        fileName: string,
+        fromDifferentTab?: boolean, // only on connection/reconnection
+        lastSeen?: number      // only on connection/reconnection
+    ): void {
+        const state = this.getFileState(fileName);
+        const content = fileManager.loadDocument(this.pageId, state.fileName);
+
+        if (lspClient && this.isTypFile(state.fileName) && !state.lspOpen) {
+            this.openLspDocument(state, content, false);
+        }
+
+        this.send(ws, {
+            type: "fullState",
+            pageId: this.pageId,
+            fileName: state.fileName,
+            docVersion: state.docVersion,
+            content,
+            fromDifferentTab,
+            lastSeen,
         });
     }
 
@@ -168,23 +259,13 @@ class PageSession {
         if (this.destroyed) {
             throw new Error("Session has been destroyed");
         }
-
-        const content = fileManager.loadDocument(this.pageId);
-        const { someoneElse, lastSeen } = this.getLatestConnectionInfo(ctx.uniqueTabId);
+        const { fromDifferentTab, lastSeen } = this.getLatestConnectionInfo(ctx.uniqueTabId);
 
         this.browsers.add(ctx);
         this.clearIdleTimer();
 
-        this.send(ctx.socket, {
-            type: "fullState",
-            pageId: this.pageId,
-            docVersion: this.docVersion,
-            content,
-            someoneElse,
-            lastSeen,
-        });
-
-        this.scheduleSemanticTokens(true);
+        this.sendFullState(ctx.socket, defaultFileName, fromDifferentTab, lastSeen);
+        this.scheduleSemanticTokens(defaultFileName, true);
     }
 
     removeConnection(ctx: ConnectionContext): void {
@@ -213,6 +294,9 @@ class PageSession {
             case "ping":
                 this.send(ctx.socket, { type: "pong" });
                 return;
+            case "openFile":
+                this.handleOpenFile(ctx, msg);
+                return;
             case "changes":
                 this.handleChanges(ctx, msg);
                 return;
@@ -229,7 +313,7 @@ class PageSession {
         }
     }
 
-    handleLspNotification(method: string, params: any): void {
+    handleLspNotification(method: string, params: any, fileName: string): void {
         if (method === "textDocument/publishDiagnostics") {
             console.log(
                 "[LSP] Diagnostics:",
@@ -238,7 +322,7 @@ class PageSession {
             );
 
             this.broadcastDiagnostics(
-                params.uri,
+                fileName,
                 Array.isArray(params.diagnostics) ? params.diagnostics : []
             );
         }
@@ -251,7 +335,7 @@ class PageSession {
         try {
             verifyNewToken(msg.token, ctx.pageId);
             // Send acknowledgment
-            this.sendAck(ctx.socket);
+            this.sendAck(ctx.socket, defaultFileName, this.getFileState(defaultFileName).docVersion);
         } catch (err) {
             console.error("[File Sync] Token update failed:", err);
             this.send(ctx.socket, {
@@ -268,24 +352,57 @@ class PageSession {
         }
     }
 
-    broadcastDiagnostics(uri: string, diagnostics: Array<unknown>): void {
+    broadcastDiagnostics(fileName: string, diagnostics: Array<unknown>): void {
+        const state = this.getFileState(fileName);
         this.broadcast({
             type: "diagnostics",
             pageId: this.pageId,
-            docVersion: this.docVersion,
-            uri,
+            fileName: state.fileName,
+            docVersion: state.docVersion,
             diagnostics,
         });
     }
 
     handleLspRestart(): void {
-        this.lspOpen = false;
-        this.semanticTokenResultId = undefined;
-        if (this.browsers.size > 0) {
-            const content = fileManager.loadDocument(this.pageId);
-            this.openLspDocument(content, true);
-            this.scheduleSemanticTokens(true);
+        for (const state of this.fileStates.values()) {
+            state.lspOpen = false;
+            state.semanticTokenResultId = undefined;
+            if (this.browsers.size > 0 && this.isTypFile(state.fileName)) {
+                // TODO: we have to make sure there's some tab that actually has this file open
+                const content = fileManager.loadDocument(this.pageId, state.fileName);
+                this.openLspDocument(state, content, true);
+                this.scheduleSemanticTokens(state.fileName, true);
+            }
         }
+    }
+
+    private handleOpenFile(
+        ctx: ConnectionContext,
+        msg: Extract<IncomingMessagePayload, { type: "openFile" }>
+    ): void {
+        if (msg.pageId !== ctx.pageId) {
+            this.send(ctx.socket, {
+                type: "error",
+                code: "PAGE_MISMATCH",
+                message: "Page mismatch",
+            });
+            return;
+        }
+
+        let fileName;
+        try {
+            fileName = normalizeFileName(msg.fileName);
+        } catch (err) {
+            this.send(ctx.socket, {
+                type: "error",
+                code: "INVALID_FILE_NAME",
+                message: "Invalid file name",
+            });
+            return;
+        }
+        console.log(`[LSP] Opening file ${fileName} for page ${ctx.pageId}`);
+        this.sendFullState(ctx.socket, fileName);
+        this.scheduleSemanticTokens(fileName, true);
     }
 
     private handleChanges(
@@ -301,19 +418,27 @@ class PageSession {
             return;
         }
 
-        if (msg.docVersion <= this.docVersion) {
+        let fileName;
+        try {
+            fileName = normalizeFileName(msg.fileName);
+        } catch (err) {
+            this.send(ctx.socket, {
+                type: "error",
+                code: "INVALID_FILE_NAME",
+                message: "Invalid file name",
+            });
+            return;
+        }
+
+        const state = this.getFileState(fileName);
+
+        if (msg.docVersion <= state.docVersion) {
             this.send(ctx.socket, {
                 type: "error",
                 code: "VERSION_OUTDATED",
-                message: "Client version outdated, request full resync",
+                message: `Client version outdated (current: ${state.docVersion}, requested: ${msg.docVersion}), request full resync`,
             });
-            const content = fileManager.loadDocument(this.pageId);
-            this.send(ctx.socket, {
-                type: "fullState",
-                pageId: this.pageId,
-                docVersion: this.docVersion,
-                content,
-            });
+            this.sendFullState(ctx.socket, state.fileName);
             return;
         }
 
@@ -322,6 +447,7 @@ class PageSession {
         try {
             ({ updated, contentChanges } = fileManager.applyChanges(
                 this.pageId,
+                state.fileName,
                 msg.changes
             ));
         } catch (err) {
@@ -331,18 +457,12 @@ class PageSession {
                 code: errorMessage,
                 message: `Failed to apply changes: ${msg.changes}`,
             });
-            const content = fileManager.loadDocument(this.pageId);
-            this.send(ctx.socket, {
-                type: "fullState",
-                pageId: this.pageId,
-                docVersion: this.docVersion,
-                content,
-            });
+            this.sendFullState(ctx.socket, state.fileName);
             return;
         }
 
         try {
-            fileManager.persistDocument(this.pageId, updated);
+            fileManager.persistDocument(this.pageId, updated, state.fileName);
         } catch (err) {
             this.send(ctx.socket, {
                 type: "error",
@@ -352,22 +472,26 @@ class PageSession {
             return;
         }
 
-        this.docVersion = msg.docVersion;
-        this.sendAck(ctx.socket);
+        state.docVersion = msg.docVersion;
+        this.sendAck(ctx.socket, state.fileName, state.docVersion);
 
         if (!lspClient) {
             notifyAllLspStatus("down", "client not initialized");
             return;
         }
 
+        if (!this.isTypFile(state.fileName)) {
+            return;
+        }
+
         try {
-            if (!this.lspOpen) {
-                this.openLspDocument(updated, false);
+            if (!state.lspOpen) {
+                this.openLspDocument(state, updated, false);
             } else {
                 lspClient.sendNotification("textDocument/didChange", {
                     textDocument: {
-                        uri: this.uri,
-                        version: this.docVersion,
+                        uri: state.uri,
+                        version: state.docVersion,
                     },
                     contentChanges,
                 });
@@ -376,56 +500,68 @@ class PageSession {
             console.error("[LSP] Failed to send document change notification:", err);
         }
 
-        this.scheduleSemanticTokens(false);
+        this.scheduleSemanticTokens(state.fileName, false);
     }
 
-    private openLspDocument(text: string, force: boolean): void {
+    private openLspDocument(state: FileSessionState, text: string, force: boolean): void {
         if (!lspClient) {
             return;
         }
-        if (this.lspOpen && !force) {
+        if (!this.isTypFile(state.fileName)) {
+            return;
+        }
+        if (state.lspOpen && !force) {
             return;
         }
         lspClient.sendNotification("textDocument/didOpen", {
             textDocument: {
-                uri: this.uri,
-                languageId: "typst",
-                version: this.docVersion,
+                uri: state.uri,
+                languageId: "typst", // don't need any other language support from the back end
+                version: state.docVersion,
                 text,
             },
         });
-        this.lspOpen = true;
+        state.lspOpen = true;
     }
 
-    private scheduleSemanticTokens(forceFull: boolean): void {
-        if (this.semanticTokenTimer) {
-            clearTimeout(this.semanticTokenTimer);
+    private scheduleSemanticTokens(fileName: string, forceFull: boolean): void {
+        const state = this.getFileState(fileName);
+        if (!this.isTypFile(state.fileName)) {
+            return;
         }
 
-        this.semanticTokenTimer = setTimeout(() => {
-            this.requestSemanticTokens(forceFull).catch((err) => {
+        if (state.semanticTokenTimer) {
+            clearTimeout(state.semanticTokenTimer);
+        }
+
+        console.log(`[LSP] Scheduling semantic token request for page ${this.pageId} file ${state.fileName} (forceFull=${forceFull})`);
+
+        state.semanticTokenTimer = setTimeout(() => {
+            this.requestSemanticTokens(state.fileName, forceFull).catch((err) => {
                 console.error("[LSP] Failed to get semantic tokens:", err);
             });
         }, SEMANTIC_TOKEN_DEBOUNCE_MS);
     }
 
-    private async requestSemanticTokens(forceFull: boolean): Promise<void> {
+    private async requestSemanticTokens(fileName: string, forceFull: boolean): Promise<void> {
         if (!lspClient) {
             notifyAllLspStatus("down", "client not initialized");
             return;
         }
 
+        const state = this.getFileState(fileName);
+
         if (forceFull) {
-            this.semanticTokenResultId = undefined;
+            state.semanticTokenResultId = undefined;
         }
 
-        const previousResultId = this.semanticTokenResultId;
+        const previousResultId = state.semanticTokenResultId;
         const method = previousResultId
             ? "textDocument/semanticTokens/full/delta"
             : "textDocument/semanticTokens/full";
 
         console.log(
-            `[LSP] Requesting semantic tokens for page ${this.pageId} (${method})`
+            `[LSP] Requesting semantic tokens for page ${this.pageId} file ${state.fileName} (${method})`
         );
         let tokensResult:
             | {
@@ -436,23 +572,28 @@ class PageSession {
             | undefined;
         try {
             tokensResult = await lspClient.sendRequest(method, {
-                textDocument: { uri: this.uri },
+                textDocument: { uri: state.uri },
                 ...(previousResultId ? { previousResultId } : {}),
             });
+            // console.log(
+            //     `[LSP] Received semantic tokens response for page ${this.pageId} file ${state.fileName}`,
+            //     tokensResult
+            // );
         } catch (err) {
             console.error("[LSP] Error requesting semantic tokens:", err);
             return;
         }
 
         if (tokensResult?.resultId) {
-            this.semanticTokenResultId = tokensResult.resultId;
+            state.semanticTokenResultId = tokensResult.resultId;
         }
 
         if (tokensResult?.edits && tokensResult.edits.length) {
             this.broadcast({
                 type: "semanticTokensDelta",
                 pageId: this.pageId,
-                docVersion: this.docVersion,
+                fileName: state.fileName,
+                docVersion: state.docVersion,
                 previousResultId,
                 resultId: tokensResult.resultId,
                 edits: tokensResult.edits,
@@ -464,7 +605,8 @@ class PageSession {
             this.broadcast({
                 type: "semanticTokens",
                 pageId: this.pageId,
-                docVersion: this.docVersion,
+                fileName: state.fileName,
+                docVersion: state.docVersion,
                 resultId: tokensResult.resultId,
                 tokens: tokensResult.data,
             });
@@ -474,19 +616,19 @@ class PageSession {
     }
 
     private getLatestConnectionInfo(newUniqueTabId: string): {
-        someoneElse: boolean;
+        fromDifferentTab: boolean;
         lastSeen: number;
     } {
-        let someoneElse = false;
+        let fromDifferentTab = false;
         let lastSeen = 0;
         for (const ctx of this.browsers) {
             if (ctx.uniqueTabId !== newUniqueTabId) {
-                someoneElse = true;
+                fromDifferentTab = true;
             }
             lastSeen = Math.max(lastSeen, ctx.lastSeen);
         }
 
-        return { someoneElse, lastSeen };
+        return { fromDifferentTab, lastSeen };
     }
 
     private scheduleIdleStop(): void {
@@ -512,21 +654,28 @@ class PageSession {
         }
         this.destroyed = true;
         this.clearIdleTimer();
-        if (this.semanticTokenTimer) {
-            clearTimeout(this.semanticTokenTimer);
-            this.semanticTokenTimer = undefined;
-        }
         this.browsers.clear();
-        if (this.lspOpen && lspClient) {
-            try {
-                lspClient.sendNotification("textDocument/didClose", {
-                    textDocument: { uri: this.uri },
-                });
-            } catch (err) {
-                console.error("[LSP] Failed to close document:", err);
+
+        if (lspClient) {
+            for (const state of this.fileStates.values()) {
+                if (state.semanticTokenTimer) {
+                    clearTimeout(state.semanticTokenTimer);
+                    state.semanticTokenTimer = undefined;
+                }
+
+                if (state.lspOpen) {
+                    try {
+                        lspClient.sendNotification("textDocument/didClose", {
+                            textDocument: { uri: state.uri },
+                        });
+                    } catch (err) {
+                        console.error("[LSP] Failed to close document:", err);
+                    }
+                }
             }
         }
-        this.lspOpen = false;
+
+        this.fileStates.clear();
         this.remove();
     }
 }
@@ -572,6 +721,7 @@ async function bootstrap() {
                 pageId: payload.page_id,
                 uniqueTabId: payload.uniqueTabId ?? "",
                 lastSeen: Date.now(),
+                lastFileName: defaultFileName,
             };
             connections.set(socket, ctx);
             const session = getSession(ctx.pageId);
@@ -640,8 +790,8 @@ async function initializeLSPClient(): Promise<void> {
         stderrLogFile: logFile,
         onNotification: (method, params) => {
             console.log(`[LSP] Notification: ${method}`, params);
-            const session = getNotificationSession(params);
-            session?.handleLspNotification(method, params);
+            const resolved = findNotificationSession(params);
+            resolved?.session.handleLspNotification(method, params, resolved.fileName);
         },
         onError: (error) => {
             console.error("[LSP] Error:", error);

@@ -21,6 +21,21 @@ import { php } from "@codemirror/lang-php";
 import { SemanticTokenProcessor, highlightField } from "./semantic-tokens";
 import { DiagnosticsProcessor } from "./diagnostics";
 
+type FileSnapshot = {
+    docVersion: number;
+    snapshot: string;
+    afterTransactions: ChangeSet;
+};
+
+type FileSyncState = {
+    fileName: string;
+    docVersion: number;
+    currentContent: string;
+    loaded: boolean;
+    pendingSendTimer: ReturnType<typeof setTimeout> | null;
+    snapshots: FileSnapshot[];
+};
+
 
 export class TinymistEditorUI {
     elem: HTMLElement;
@@ -31,13 +46,9 @@ export class TinymistEditorUI {
     private previewPanEnabled = false;
     private fallbackEnabled = false;
 
-    private docVersion = 0;
-    private pendingSendTimer: ReturnType<typeof setTimeout> | null = null;
-    private snapshots: Array<{
-        docVersion: number;
-        snapshot: string;
-        afterTransactions: ChangeSet;
-    }> = [];
+    private readonly entryFileName = "entry.typ";
+    private activeFileName = this.entryFileName;
+    private readonly fileStates: Map<string, FileSyncState> = new Map();
     private readonly maxSnapshots = 3;
     private readonly changeDebounceMs = 150;
     private readonly fallbackDebounceMs = 800;
@@ -46,19 +57,33 @@ export class TinymistEditorUI {
         this.elem = elem;
         this.editor = editor;
 
-        this.setupCodeMirror();
+        // Hook for diagnostics and semantic tokens to get editor state context for mapping
+        this.getSnapshotContext = this.getSnapshotContext.bind(this);
+        // Those are hooks for Bookstack's native form submission and for fallback mode
+        this.getEntryText = this.getEntryText.bind(this);
+        this.syncEntryContentToTextarea = this.syncEntryContentToTextarea.bind(this);
 
-        // Setup event listeners
+        this.updateListenerForCodeMirror = this.updateListenerForCodeMirror.bind(this);
+        this.syncFullStateFromServer = this.syncFullStateFromServer.bind(this);
+        this.pruneSnapshots = this.pruneSnapshots.bind(this);
+        this.onInput = this.onInput.bind(this);
+        this.buttonsListener = this.buttonsListener.bind(this);
+        this.setActiveFile = this.setActiveFile.bind(this);
+        this.destroy = this.destroy.bind(this);
+
+        this.setupCodeMirror();
         this.setupListeners();
 
-        // Setup form submit handler to sync CodeMirror content to textarea
-        this.setupFormSubmitHandler();
+        this.diagnosticsProcessor.attachEditorView(
+            this.editorView!,
+            this.getSnapshotContext,
+        );
+        this.semanticTokens.attachEditorView(
+            this.editorView!,
+            this.getSnapshotContext,
+        );
 
-        this.diagnosticsProcessor.attachEditorView(this.editorView!, this.getSnapshotContext.bind(this));
-        this.semanticTokens.attachEditorView(this.editorView!, this.getSnapshotContext.bind(this));
-
-        // Initial snapshot
-        this.resetSyncState(this.docVersion);
+        this.resetSyncStateForFile({ fileName: this.entryFileName, docVersion: 1, content: this.editor.value });
     }
 
     async setupCodeMirror() {
@@ -92,15 +117,7 @@ export class TinymistEditorUI {
                     highlightField, // Add custom highlighting support
                     keymap.of(defaultKeymap),
                     EditorView.editable.of(true), // Make editor editable
-                    EditorView.updateListener.of((update) => {
-                        if (update.docChanged) {
-                            this.onDocumentChange(update.transactions);
-                        }
-                        // Track cursor position changes
-                        if (update.selectionSet) {
-                            this.onCursorPositionChange(update.state);
-                        }
-                    }),
+                    EditorView.updateListener.of(this.updateListenerForCodeMirror),
                 ],
             });
 
@@ -116,216 +133,282 @@ export class TinymistEditorUI {
             window.$events.emit("tinymist-console-log", { type: "info", message: "CodeMirror editor initialized" });
 
         } catch (error) {
+            this.editor.style.display = "block";
+            this.editor.addEventListener("input", this.onInput);
             console.error("Failed to initialize CodeMirror:", error);
             window.$events.emit("tinymist-console-log",
                 { type: "error", message: "Failed to initialize CodeMirror editor", details: error });
         }
     }
 
+    updateListenerForCodeMirror(update: any) {
+        if (update.docChanged) {
+            this.onInput();
+            this.onDocumentChange(update.transactions);
+        }
+        // Track cursor position changes
+        if (update.selectionSet) {
+            this.onCursorPositionChange(update.state);
+        }
+    }
+
     setupListeners() {
-        this.syncFullStateFromServer = this.syncFullStateFromServer.bind(this);
         window.$events.listen("tinymist-sync-full-state", this.syncFullStateFromServer);
-        this.pruneSnapshots = this.pruneSnapshots.bind(this);
         window.$events.listen("tinymist-prune-snapshots", this.pruneSnapshots);
         window.$events.listen("tinymist-fallback-enable", (enabled: boolean) => this.fallbackEnabled = enabled);
+        window.$events.listen("tinymist-active-file-change", this.setActiveFile);
 
-        if (!this.editorView) {
-            // Fall back to textarea if CodeMirror fails, otherwise onInput() called from CodeMirror update listener
-            this.editor.style.display = "block";
-            this.editor.addEventListener("input", () => this.onInput());
-        }
-
-        // Button actions
-        this.elem.addEventListener("click", (event) => {
-            if (!event.target) return;
-            const button = (event.target as Element).closest("button[data-action]");
-            if (button === null) return;
-
-            const action = button.getAttribute("data-action");
-            if (action === "insertBold") this.insertMarkup("*", "*");
-            if (action === "insertItalic") this.insertMarkup("_", "_");
-            if (action === "insertMath") this.insertMarkup("$", "$");
-            if (action === "insertHeading") this.insertHeading();
-            if (action === "clearConsole") window.$events.emit("tinymist-console-clear");
-            if (action === "toggleConsole") this.toggleConsole(button as HTMLButtonElement);
-            if (action === "previewZoomIn") window.$events.emit("tinymist-preview-zoom-in");
-            if (action === "previewZoomOut") window.$events.emit("tinymist-preview-zoom-out");
-            if (action === "previewZoomReset") window.$events.emit("tinymist-preview-zoom-reset");
-            if (action === "previewPanToggle") this.togglePreviewPan(button as HTMLButtonElement);
-        });
+        // Button actions, it counts on event bubbling to the container
+        this.elem.addEventListener("click", this.buttonsListener);
 
         // Clean up connections on page navigation
-        window.addEventListener("beforeunload", () => {
-            this.destroy();
-        });
-
+        window.addEventListener("beforeunload", this.destroy);
         // Also listen to pagehide for better mobile support
-        window.addEventListener("pagehide", () => {
-            this.destroy();
-        });
-    }
-
-    setupFormSubmitHandler() {
-        // Find the form containing this editor
-        const form = this.elem.closest("form");
-        if (!form) return;
+        window.addEventListener("pagehide", this.destroy);
 
         // Before form submit, sync CodeMirror content to textarea
-        form.addEventListener("submit", () => {
-            this.syncContentToTextarea();
-        });
+        this.elem.closest("form")?.addEventListener("submit", this.syncEntryContentToTextarea);
     }
 
-    syncFullStateFromServer(payload: { content: string; docVersion?: number }) {
-        const currentText = this.getText();
-        const shouldReplace = payload.content !== currentText;
-        const hasDocVersion = typeof payload.docVersion === "number";
-        const shouldReset = hasDocVersion && payload.docVersion !== this.docVersion;
+    removeListeners() {
+        window.$events.remove("tinymist-sync-full-state", this.syncFullStateFromServer);
+        window.$events.remove("tinymist-prune-snapshots", this.pruneSnapshots);
+        window.$events.remove("tinymist-active-file-change", this.setActiveFile);
+        this.editor.removeEventListener("input", this.onInput);
+        this.elem.removeEventListener("click", this.buttonsListener);
+        window.removeEventListener("beforeunload", this.destroy);
+        window.removeEventListener("pagehide", this.destroy);
+        // Before form submit, sync CodeMirror content to textarea
+        this.elem.closest("form")?.removeEventListener("submit", this.syncEntryContentToTextarea);
+    }
 
-        if (shouldReplace) {
-            this.setText(payload.content, true); // Sets' flag to true to avoid emitting change events
+    onInput() {
+        // Notify Bookstack page editor of changes, also fallback is using it
+        if (this.activeFileName === this.entryFileName) {
+            window.$events.emit("editor-tinymist-change", "");
         }
+    }
 
-        if (shouldReplace || shouldReset) {
-            this.resetSyncState(payload.docVersion ?? this.docVersion);
+    buttonsListener(event: Event) {
+        if (!event.target) return;
+        const button = (event.target as Element).closest("button[data-action]");
+        if (button === null) return;
+
+        const action = button.getAttribute("data-action");
+        switch (action) {
+            case "insertBold":
+                this.insertMarkup("*", "*");
+                break;
+            case "insertItalic":
+                this.insertMarkup("_", "_");
+                break;
+            case "insertMath":
+                this.insertMarkup("$", "$");
+                break;
+            case "insertHeading":
+                this.insertHeading();
+                break;
+            case "clearConsole":
+                window.$events.emit("tinymist-console-clear");
+                break;
+            case "toggleConsole":
+                this.toggleConsole(button as HTMLButtonElement);
+                break;
+            case "previewZoomIn":
+                window.$events.emit("tinymist-preview-zoom-in");
+                break;
+            case "previewZoomOut":
+                window.$events.emit("tinymist-preview-zoom-out");
+                break;
+            case "previewZoomReset":
+                window.$events.emit("tinymist-preview-zoom-reset");
+                break;
+            case "previewPanToggle":
+                this.togglePreviewPan(button as HTMLButtonElement);
+                break;
+            default:
+                console.warn(`Unknown button action: ${action}`);
+        }
+    }
+
+    syncFullStateFromServer(payload: { content: string; docVersion: number; fileName: string }) {
+        const state = this.getOrCreateFileState(payload.fileName);
+        state.loaded = true;
+        state.currentContent = payload.content;
+        this.resetSyncStateForFile(payload);
+
+        if (payload.fileName === this.activeFileName) {
+            const currentText = this.editor.value;
+            if (payload.content !== currentText) {
+                this.setText(payload.content, true);
+            }
             window.$events.emit("tinymist-console-log",
                 { type: "info", message: "[File Sync / LSP] Document synchronized from server" });
         }
     }
 
-    public syncContentToTextarea() {
-        if (this.editorView) {
-            const content = this.editorView.state.doc.toString();
-            this.editor.value = content;
-        }
+    // Those are hooks for Bookstack's native form submission and for fallback mode
+    public syncEntryContentToTextarea() {
+        const entryContent = this.getEntryText();
+        this.editor.value = entryContent;
         return this.editor.value;
     }
-
-    /**
-     * Get current editor content
-     */
-    public getText(): string {
-        if (this.editorView) {
-            return this.editorView.state.doc.toString();
+    public getEntryText(): string {
+        if (this.activeFileName === this.entryFileName) {
+            return this.editor.value;
         }
-        return this.editor.value;
+        return this.getOrCreateFileState(this.entryFileName).currentContent;
     }
 
-    onInput() {
-        // Notify Bookstack page editor of changes, also fallback is using it
-        window.$events.emit("editor-tinymist-change", "");
+    public setActiveFile(fileName: string): void {
+        if (fileName === this.activeFileName) {
+            return;
+        }
+
+        this.flushPendingChanges(this.activeFileName);
+
+        this.activeFileName = fileName;
+        const state = this.getOrCreateFileState(fileName);
+        this.semanticTokens.clearHighlights();
+        this.diagnosticsProcessor.triggerLinting([]);
+
+        if (state.loaded) {
+            this.setText(state.currentContent, true);
+        } else {
+            this.setText("", true);
+        }
+
+        window.$events.emit("tinymist-sync-open-file", { fileName: fileName });
     }
 
     onDocumentChange(transactions: readonly Transaction[]) {
         if (transactions.some((tr) => tr.annotation(Transaction.userEvent) === "tinymist-sync")) {
             return;
         }
-        this.onInput();
-        // Send changes to WebSocket server
+        const state = this.getOrCreateFileState(this.activeFileName);
+        state.currentContent = this.editor.value;
+
+        // Eventually changes from transactions sent to WebSocket server
         if (transactions.some((tr) => tr.docChanged)) {
             transactions.forEach((tr) => {
                 if (tr.changes && !tr.changes.empty) {
-                    this.queueChanges(tr.changes);
+                    this.queueChanges(tr.changes, this.activeFileName);
                 }
             });
         }
     }
 
-    private queueChanges(changes: ChangeSet): void {
-        const lastSnapshot = this.snapshots.at(-1);
+    private queueChanges(changes: ChangeSet, fileName: string): void {
+        const state = this.getOrCreateFileState(fileName);
+        const lastSnapshot = state.snapshots.at(-1);
         if (lastSnapshot) {
-            this.snapshots[this.snapshots.length - 1].afterTransactions =
+            state.snapshots[state.snapshots.length - 1].afterTransactions =
                 lastSnapshot.afterTransactions ? lastSnapshot.afterTransactions.compose(changes) : changes;
         }
 
-        if (this.pendingSendTimer) {
-            clearTimeout(this.pendingSendTimer);
+        if (state.pendingSendTimer) {
+            clearTimeout(state.pendingSendTimer);
         }
-        this.pendingSendTimer = setTimeout(() => {
-            this.flushPendingChanges();
+        state.pendingSendTimer = setTimeout(() => {
+            this.flushPendingChanges(fileName);
         }, this.fallbackEnabled ? this.fallbackDebounceMs : this.changeDebounceMs);
     }
 
-    private flushPendingChanges(): void {
-        this.docVersion += 1;
-        const currentContent = this.getText();
-        if(this.fallbackEnabled) {
+    private flushPendingChanges(fileName: string): void {
+        const state = this.getOrCreateFileState(fileName);
+        if (state.pendingSendTimer) {
+            clearTimeout(state.pendingSendTimer);
+            state.pendingSendTimer = null;
+        }
+
+        state.docVersion += 1;
+
+        // After applying changes back end will be at current docVersion with current content
+        if (this.fallbackEnabled && fileName === this.entryFileName) {
             window.$events.emit("tinymist-fallback-compile", {
-                docVersion: this.docVersion,
-                content: currentContent,
+                content: state.currentContent,
+                docVersion: state.docVersion,
             });
-        } else {
-            console.log(this.snapshots, this.snapshots.at(-1), this.snapshots.at(-1)?.afterTransactions);
+        } else if (!this.fallbackEnabled) {
             window.$events.emit("tinymist-text-diff", {
-                changes: this.snapshots.at(-1)?.afterTransactions,
-                docVersion: this.docVersion,
+                fileName,
+                changes: state.snapshots.at(-1)?.afterTransactions,
+                docVersion: state.docVersion,
             });
         }
-        this.snapshots.push({
-            docVersion: this.docVersion,
-            snapshot: currentContent,
-            afterTransactions: ChangeSet.empty(currentContent.length),
+
+        state.snapshots.push({
+            docVersion: state.docVersion,
+            snapshot: state.currentContent,
+            afterTransactions: ChangeSet.empty(state.currentContent.length),
         });
-        if (this.snapshots.length > this.maxSnapshots) {
-            this.snapshots = this.snapshots.slice(-this.maxSnapshots);
+        if (state.snapshots.length > this.maxSnapshots) {
+            state.snapshots = state.snapshots.slice(-this.maxSnapshots);
         }
     }
 
-    private resetSyncState(docVersion: number): void {
-        console.log(`[Editor Sync State] Resetting sync state to docVersion ${docVersion}`);
-        this.docVersion = docVersion;
-        const currentContent = this.getText();
-        this.snapshots = [{
-            docVersion: this.docVersion,
-            snapshot: currentContent,
-            afterTransactions: ChangeSet.empty(currentContent.length),
+    private resetSyncStateForFile(payload: {fileName: string, docVersion: number, content: string}): void {
+        const state = this.getOrCreateFileState(payload.fileName);
+        console.log(`[Editor Sync State] Resetting sync state for ${payload.fileName} to docVersion ${payload.docVersion}`);
+        state.docVersion = payload.docVersion;
+        state.currentContent = payload.content;
+        state.loaded = true;
+        state.snapshots = [{
+            docVersion: payload.docVersion,
+            snapshot: payload.content,
+            afterTransactions: ChangeSet.empty(payload.content.length),
         }];
-        if (this.pendingSendTimer) {
-            clearTimeout(this.pendingSendTimer);
-            this.pendingSendTimer = null;
+        if (state.pendingSendTimer) {
+            clearTimeout(state.pendingSendTimer);
+            state.pendingSendTimer = null;
         }
     }
 
-    private getSnapshotContext(docVersion: number): { snapshot: string; changeSet: ChangeSet } {
-        const index = this.snapshots.findIndex((s) => s.docVersion === docVersion);
+    private getSnapshotContext(docVersion: number, fileName: string): { snapshot: string; changeSet: ChangeSet } {
+        const state = this.getOrCreateFileState(fileName);
+        const index = state.snapshots.findIndex((s) => s.docVersion === docVersion);
         if (index === -1) {
-            const currentContent = this.getText();
-            return {
-                snapshot: currentContent,
-                changeSet: ChangeSet.empty(currentContent.length),
-            };
+            console.error('Snapshot not found', state);
+            throw new Error(`No snapshot found for docVersion ${docVersion} in file ${fileName}`);
         }
-        let pending = this.snapshots[index].afterTransactions;
-        for (let i = index + 1; i < this.snapshots.length; i++) {
-            if (this.snapshots[i].afterTransactions) {
-                pending = pending.compose(this.snapshots[i].afterTransactions);
+        let pending = state.snapshots[index].afterTransactions;
+        for (let i = index + 1; i < state.snapshots.length; i++) {
+            if (state.snapshots[i].afterTransactions) {
+                pending = pending.compose(state.snapshots[i].afterTransactions);
             }
         }
         return {
-            snapshot: this.snapshots[index].snapshot,
+            snapshot: state.snapshots[index].snapshot,
             changeSet: pending,
         };
     }
 
-    private pruneSnapshots(docVersion: number): void {
-        if (this.snapshots.length === 0) {
+    private pruneSnapshots(payload: { fileName: string; docVersion: number }): void {
+        const state = this.getOrCreateFileState(payload.fileName);
+
+        if (!Number.isFinite(payload.docVersion) || state.snapshots.length === 0) {
             return;
         }
-        console.log(`[Editor Sync State] Pruning snapshots up to docVersion ${docVersion}`);
-        const pruned = this.snapshots.filter((s) => s.docVersion >= docVersion);
-        if(pruned.length === 0) {
-            this.resetSyncState(docVersion);
+        if (payload.docVersion > state.docVersion) {
+            console.warn(`[Editor Sync State] DocVersion out of sync for ${payload.fileName} current: ${state.docVersion}, requested prune: ${payload.docVersion}`);
             return;
         }
-        this.snapshots = pruned;
+
+        // Leave at least one snapshot
+        const pruned = state.snapshots.filter((s) => s.docVersion >= Math.min(payload.docVersion, state.docVersion-1));
+        state.snapshots = pruned;
     }
 
     onCursorPositionChange(state: any) {
+        if (this.activeFileName !== this.entryFileName) {
+            return;
+        }
         // Get cursor position and line
         const pos = state.selection.main.head;
         const line = state.doc.lineAt(pos);
         window.$events.emit("tinymist-control", {
             event: "changeCursorPosition",
+            fileName: this.entryFileName,
             line: line.number - 1, // 0-indexed
             character: pos - line.from,
         });
@@ -465,11 +548,42 @@ export class TinymistEditorUI {
     }
 
     destroy() {
-        if (this.pendingSendTimer) {
-            clearTimeout(this.pendingSendTimer);
-            this.pendingSendTimer = null;
+        for (const fileState of this.fileStates.values()) {
+            if (fileState.pendingSendTimer) {
+                clearTimeout(fileState.pendingSendTimer);
+                fileState.pendingSendTimer = null;
+            }
         }
         this.semanticTokens.clearHighlights();
         this.semanticTokens.detachEditorView();
+        this.removeListeners();
+        if (this.editorView) {
+            this.editorView.destroy();
+            this.editorView = null;
+        }
+    }
+
+    private getOrCreateFileState(fileName: string): FileSyncState {
+        const existing = this.fileStates.get(fileName);
+        if (existing) {
+            return existing;
+        }
+
+        const currentContent = fileName === this.entryFileName ? this.editor.value : "";
+        const created: FileSyncState = {
+            fileName: fileName,
+            docVersion: 1,
+            currentContent: currentContent,
+            loaded: fileName === this.entryFileName,
+            pendingSendTimer: null,
+            snapshots: [{
+                docVersion: 1,
+                snapshot: currentContent,
+                afterTransactions: ChangeSet.empty(currentContent.length),
+            }],
+        };
+
+        this.fileStates.set(fileName, created);
+        return created;
     }
 }

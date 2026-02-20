@@ -12,18 +12,26 @@ import { ChangeSet } from "@codemirror/state";
 
 export class DiagnosticsProcessor {
     private editorView: EditorView | null;
-    private getSnapshotContext: ((docVersion: number) => { snapshot: string; changeSet: ChangeSet });
+    private getSnapshotContext: ((docVersion: number, fileName: string) => { snapshot: string; changeSet: ChangeSet });
+    private activeFileName: string;
 
     constructor(editorView: EditorView | null = null) {
         this.editorView = editorView;
         this.getSnapshotContext = () => ({ snapshot: "", changeSet: ChangeSet.empty(0) });
+        this.activeFileName = "entry.typ";
 
         this.mapDiagnosticsToCurrent = this.mapDiagnosticsToCurrent.bind(this);
         window.$events.listen("tinymist-diagnostics", this.mapDiagnosticsToCurrent);
         window.$events.listen("tinymist-lsp-diagnostics", this.mapDiagnosticsToCurrent);
+        window.$events.listen("tinymist-active-file-change", (fileName: string) => {
+            this.activeFileName = fileName;
+        });
     }
 
-    attachEditorView(view: EditorView, getSnapshotContext: (docVersion: number) => { snapshot: string; changeSet: ChangeSet }): void {
+    attachEditorView(
+        view: EditorView,
+        getSnapshotContext: (docVersion: number, fileName: string) => { snapshot: string; changeSet: ChangeSet },
+    ): void {
         this.editorView = view;
         this.getSnapshotContext = getSnapshotContext;
     }
@@ -58,12 +66,16 @@ export class DiagnosticsProcessor {
         return offset;
     }
 
-    private mapDiagnosticsToCurrent = (payload: { diagnostics: any[]; docVersion?: number }) => {
+    private mapDiagnosticsToCurrent = (payload: { diagnostics: any[]; docVersion?: number; fileName: string }) => {
         if (!payload || !Array.isArray(payload.diagnostics) ||!this.editorView || typeof payload.docVersion !== "number") {
             return;
         }
 
-        const context = this.getSnapshotContext(payload.docVersion);
+        if (payload.fileName !== this.activeFileName) {
+            return;
+        }
+
+        const context = this.getSnapshotContext(payload.docVersion, payload.fileName);
         const currentDoc = this.editorView.state.doc;
 
         const mappedDiagnostics = payload.diagnostics.map((diag) => {
