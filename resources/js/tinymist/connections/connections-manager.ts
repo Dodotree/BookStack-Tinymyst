@@ -132,7 +132,7 @@ export class TinymistConnectionsManager {
             window.$events.emit('tinymist-fallback-enable', false);
             window.$events.emit('tinymist-console-log', {
                 type: 'success',
-                message: '[File Sync / LSP] active, fallback off',
+                message: '[WS manager] connections active, fallback off',
             });
         }
     }

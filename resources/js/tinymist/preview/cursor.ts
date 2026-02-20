@@ -128,7 +128,7 @@ export class PreviewCursor {
         const cursorPath = [4, 0, 1, 3, 0, 12]; // sample
         const path = new Uint32Array(cursorPath);
         const loc = session.getSourceLoc(path);
-        console.log(loc); // e.g. "1f2a3b4c" (span id as hex) or undefined
+        console.debug(loc); // e.g. "1f2a3b4c" (span id as hex) or undefined
     */
 
     private pathToSelector(paths: any): void {
@@ -148,7 +148,7 @@ export class PreviewCursor {
                 kindMap[Number(step.kind)] ?? '???',
                 step.index + 1 // Convert to 1-based index for CSS
             ]);
-            console.log('[Preview WASM] pathToSelector pairs:', pairs);
+            // console.debug('[Preview WASM] pathToSelector pairs:', pairs);
 
             const pageStep = pairs.shift();
             const topGroupStep = pairs.shift();
@@ -180,9 +180,9 @@ export class PreviewCursor {
             //     .forEach(element => {
             //         element.classList.add('typst-wrap');
             //     });
-            console.debug('[Preview WASM] selector of the text node:', textSelector);
+            // console.debug('[Preview WASM] selector of the text node:', textSelector);
             const textNode = document.querySelector(textSelector);
-            console.debug('[Preview WASM] works?', textNode);
+            // console.debug('[Preview WASM] works?', textNode);
 
             if (!textNode) {
                 console.warn('[Preview WASM] Text node not found for selector:', textSelector);
@@ -199,17 +199,17 @@ export class PreviewCursor {
      * Show cursor circle at the specified glyph position
      */
     private showCursor(): void {
-        console.log('[Preview WASM] showCursor with params:', this.cursorParams, this.overlaySvg, 'cursorCircle exists:', !!this.cursorCircle);
+        // console.debug('[Preview WASM] showCursor with params:', this.cursorParams, this.overlaySvg, 'cursorCircle exists:', !!this.cursorCircle);
 
         const textNode = document.querySelector(this.cursorParams.textSelector);
         if (!textNode) return;
 
-        console.log(`[Preview WASM] text char ${this.cursorParams.charIndex}`, textNode);
+        // console.debug(`[Preview WASM] text char ${this.cursorParams.charIndex}`, textNode);
 
         const glyphNode = textNode.querySelector(`:nth-child(${this.cursorParams.charIndex} of use,path)`) as SVGGraphicsElement | null;
         if (!glyphNode) return;
 
-        console.log('[Preview WASM] glyph node for cursor:', glyphNode);
+        // console.debug('[Preview WASM] glyph node for cursor:', glyphNode);
 
         this.ensureOverlay();
 
@@ -234,7 +234,7 @@ export class PreviewCursor {
         const cx = glyphRect.left - overlayRect.left + glyphRect.width / 2;
         const cy = glyphRect.top - overlayRect.top + glyphRect.height / 2;
         const r = Math.min(30, Math.max(15, Math.max(glyphRect.width, glyphRect.height) / 2));
-        console.log(`[Preview WASM] glyphRect:`, glyphRect, `overlayRect:`, overlayRect, `calculated cx: ${cx}, cy: ${cy}, r: ${r}`);
+        // console.debug(`[Preview WASM] glyphRect:`, glyphRect, `overlayRect:`, overlayRect, `calculated cx: ${cx}, cy: ${cy}, r: ${r}`);
 
         // Update circle position
         this.cursorCircle.setAttribute('cx', cx.toFixed(2));
@@ -252,7 +252,7 @@ export class PreviewCursor {
         this.previewElement.removeEventListener('scroll', this.onViewportChange);
         window.removeEventListener('resize', this.onViewportChange);
 
-        console.log("[Preview WASM] Cursor disposed");
+        // console.debug("[Preview WASM] Cursor disposed");
     }
 
 }

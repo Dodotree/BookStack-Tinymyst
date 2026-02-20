@@ -154,7 +154,7 @@ export class PreviewRenderer {
 
     private async handleBinaryMessage(command: string, payload: Uint8Array) {
 
-            console.log(`[Preview WASM] Message command "${command}" (payload ${payload.length} bytes)`);
+            // console.log(`[Preview WASM] Message command "${command}" (payload ${payload.length} bytes)`);
             if (!this.renderer) {
                 console.warn("[Preview WASM] Renderer not ready");
                 return;

@@ -7,7 +7,7 @@ export class PreviewDataPlane {
     }
 
     private handleBridgeDataMessage(msg: Uint8Array): void {
-        console.log("[Preview Data] Data message", { bytes: msg.byteLength });
+        console.log(`[Preview Data] Data message (length: ${msg.byteLength} bytes) adding to processing queue`);
         this.processingQueue = this.processingQueue
             .then(async () => {
                 await this.handleBinaryMessage(msg);
@@ -35,19 +35,21 @@ export class PreviewDataPlane {
 
             switch (command) {
                 case 'diff-v1':
-                    console.log(`[Preview Data] Received diff-v1 (${payload.length} bytes)`);
+                    // console.log(`[Preview Data] Received diff-v1 (${payload.length} bytes)`);
+
                     // Try to peek at the diff content (it's binary, but might have readable parts)
-                    try {
-                        const sample = new TextDecoder('utf-8', { fatal: false }).decode(payload.slice(0, Math.min(200, payload.length)));
-                        console.log('[Preview Data] Diff sample:', sample.substring(0, 100));
-                    } catch (e) {
-                        console.log('[Preview Data] Could not decode diff sample');
-                    }
+                    // try {
+                    //     const sample = new TextDecoder('utf-8', { fatal: false }).decode(payload.slice(0, Math.min(200, payload.length)));
+                    //     console.log('[Preview Data] Diff sample:', sample.substring(0, 100));
+                    // } catch (e) {
+                    //     console.log('[Preview Data] Could not decode diff sample');
+                    // }
+
                     window.$events.emit("tinymist-data-binary", { command, payload });
                     break;
 
                 case 'new':
-                    console.log(`[Preview Data] Received new document (${payload.length} bytes)`);
+                    // console.log(`[Preview Data] Received new document (${payload.length} bytes)`);
                     window.$events.emit("tinymist-data-binary", { command, payload });
                     break;
 
@@ -56,7 +58,7 @@ export class PreviewDataPlane {
                     const decoded = new TextDecoder().decode(payload);
                     try {
                         const parsed = JSON.parse(decoded);
-                        console.info('[Preview Data] Cursor paths parsed:', parsed);
+                        // console.info('[Preview Data] Cursor paths parsed:', parsed);
                         window.$events.emit("tinymist-data-cursor-paths", parsed);
                     } catch (err) {
                         console.error('[Preview Data] Cursor paths not valid JSON:', err);

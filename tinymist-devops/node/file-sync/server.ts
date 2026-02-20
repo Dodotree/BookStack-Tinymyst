@@ -575,10 +575,9 @@ class PageSession {
                 textDocument: { uri: state.uri },
                 ...(previousResultId ? { previousResultId } : {}),
             });
-            // console.log(
-            //     `[LSP] Received semantic tokens response for page ${this.pageId} file ${state.fileName}`,
-            //     tokensResult
-            // );
+            console.log(
+                `[LSP] Received semantic tokens response for page ${this.pageId} file ${state.fileName}`
+            );
         } catch (err) {
             console.error("[LSP] Error requesting semantic tokens:", err);
             return;
@@ -586,6 +585,7 @@ class PageSession {
 
         if (tokensResult?.resultId) {
             state.semanticTokenResultId = tokensResult.resultId;
+            console.log(`[LSP] resultId: ${tokensResult.resultId} data length: ${tokensResult.data?.length ?? 0} edits: ${tokensResult.edits?.length ?? 0}`);
         }
 
         if (tokensResult?.edits && tokensResult.edits.length) {
@@ -611,7 +611,7 @@ class PageSession {
                 tokens: tokensResult.data,
             });
         } else {
-            console.warn(`[LSP] No semantic tokens returned for page ${this.pageId}`);
+            console.warn(`[LSP] No semantic tokens returned for page ${this.pageId} file ${state.fileName}`);
         }
     }
 
@@ -789,9 +789,9 @@ async function initializeLSPClient(): Promise<void> {
         cwd: process.cwd(),
         stderrLogFile: logFile,
         onNotification: (method, params) => {
-            console.log(`[LSP] Notification: ${method}`, params);
             const resolved = findNotificationSession(params);
             resolved?.session.handleLspNotification(method, params, resolved.fileName);
+            console.log(`[LSP] Notification: ${method}, filename: ${resolved?.fileName}`);
         },
         onError: (error) => {
             console.error("[LSP] Error:", error);

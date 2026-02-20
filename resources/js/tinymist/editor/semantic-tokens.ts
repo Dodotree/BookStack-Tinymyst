@@ -281,6 +281,9 @@ export class SemanticTokenProcessor {
         docVersion: number;
         fileName: string;
     }) {
+        if (payload.fileName !== this.activeFileName) {
+            return;
+        }
         if (!payload || !Array.isArray(payload.edits) || !this.encodedTokens || !this.editorView) {
             return;
         }
@@ -296,12 +299,18 @@ export class SemanticTokenProcessor {
 
         const updatedTokens = this.applySemanticTokensEdits(this.encodedTokens, payload.edits);
         const highlights = this.buildHighlights(updatedTokens);
-        const snapshotCtx = this.getSnapshotContext(payload.docVersion, payload.fileName );
-        const mappedHighlights = this.mapRegionsToCurrent(
-            highlights,
-            snapshotCtx.snapshot,
-            snapshotCtx.changeSet
-        );
+        const mappedHighlights = highlights;
+
+        // It looks like updated tokes are already in the current document coordinates,
+        // Or getting there, while mapping updatedTokens throws RangeError (as if attempting to remove already removed position)
+        // so no need to map them back from snapshot to current document
+
+        // const snapshotCtx = this.getSnapshotContext(payload.docVersion, payload.fileName );
+        // const mappedHighlights = this.mapRegionsToCurrent(
+        //     highlights,
+        //     snapshotCtx.snapshot,
+        //     snapshotCtx.changeSet
+        // );
         const nextSignatures = this.buildLineSignatures(mappedHighlights);
         const changedLines = this.getChangedLines(this.lineSignatures, nextSignatures);
 

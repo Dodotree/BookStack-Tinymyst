@@ -135,9 +135,9 @@ export class TinymistEditorUI {
         } catch (error) {
             this.editor.style.display = "block";
             this.editor.addEventListener("input", this.onInput);
-            console.error("Failed to initialize CodeMirror:", error);
+            console.error("[Editor] Failed to initialize CodeMirror:", error);
             window.$events.emit("tinymist-console-log",
-                { type: "error", message: "Failed to initialize CodeMirror editor", details: error });
+                { type: "error", message: "[Editor] Failed to initialize CodeMirror editor", details: error });
         }
     }
 
@@ -227,7 +227,7 @@ export class TinymistEditorUI {
                 this.togglePreviewPan(button as HTMLButtonElement);
                 break;
             default:
-                console.warn(`Unknown button action: ${action}`);
+                console.warn(`[Editor]Unknown button action: ${action}`);
         }
     }
 
@@ -243,7 +243,7 @@ export class TinymistEditorUI {
                 this.setText(payload.content, true);
             }
             window.$events.emit("tinymist-console-log",
-                { type: "info", message: "[File Sync / LSP] Document synchronized from server" });
+                { type: "info", message: "[Editor] Document synchronized from server" });
         }
     }
 
@@ -349,7 +349,7 @@ export class TinymistEditorUI {
 
     private resetSyncStateForFile(payload: {fileName: string, docVersion: number, content: string}): void {
         const state = this.getOrCreateFileState(payload.fileName);
-        console.log(`[Editor Sync State] Resetting sync state for ${payload.fileName} to docVersion ${payload.docVersion}`);
+        console.log(`[Editor] Resetting sync state for ${payload.fileName} to docVersion ${payload.docVersion}`);
         state.docVersion = payload.docVersion;
         state.currentContent = payload.content;
         state.loaded = true;
@@ -368,7 +368,7 @@ export class TinymistEditorUI {
         const state = this.getOrCreateFileState(fileName);
         const index = state.snapshots.findIndex((s) => s.docVersion === docVersion);
         if (index === -1) {
-            console.error('Snapshot not found', state);
+            console.error('[Editor] Snapshot not found', state);
             throw new Error(`No snapshot found for docVersion ${docVersion} in file ${fileName}`);
         }
         let pending = state.snapshots[index].afterTransactions;
@@ -390,7 +390,7 @@ export class TinymistEditorUI {
             return;
         }
         if (payload.docVersion > state.docVersion) {
-            console.warn(`[Editor Sync State] DocVersion out of sync for ${payload.fileName} current: ${state.docVersion}, requested prune: ${payload.docVersion}`);
+            console.warn(`[Editor] DocVersion out of sync for ${payload.fileName} current: ${state.docVersion}, requested prune: ${payload.docVersion}`);
             return;
         }
 

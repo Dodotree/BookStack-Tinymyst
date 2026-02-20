@@ -28,12 +28,16 @@ export class PreviewBridgeClient extends TinymistWebSocketClient {
 
     protected handleMessage(data: any): void {
         const forwardControl = (payload: string) => {
-            console.log("[Preview WS] Forwarding control message", { length: payload.length });
+            // console.log(`[Preview WS] Forwarding control payload length: ${payload.length}`);
+            if (payload.length === '{"type":"pong"}'.length && payload.includes('"type":"pong"')) {
+                console.log(`[Preview WS] Received pong`);
+                return;
+            }
             window.$events.emit("tinymist-preview-control-message", payload);
         };
 
         const forwardData = (buffer: ArrayBuffer) => {
-            console.log("[Preview WS] Forwarding data message", { bytes: buffer.byteLength });
+            // console.log(`[Preview WS] Forwarding data buffer length: ${buffer.byteLength}`);
             window.$events.emit("tinymist-preview-data-message", new Uint8Array(buffer));
         };
 
@@ -75,13 +79,13 @@ export class PreviewBridgeClient extends TinymistWebSocketClient {
     }
 
     private handleOutgoingControl(message: string): void {
-        console.log("[Preview WS] Sending control message", { length: message.length });
+        console.log(`[Preview WS] Sending control message length: ${message.length}`);
         this.sendRaw(message);
     }
 
     private handleOutgoingData(message: string | Uint8Array): void {
         const bytes = typeof message === "string" ? message.length : message.byteLength;
-        console.log("[Preview WS] Sending data message", { bytes });
+        console.log(`[Preview WS] Sending data message bytes: ${bytes}`);
         this.sendRaw(message);
     }
 }

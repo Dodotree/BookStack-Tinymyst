@@ -19,7 +19,7 @@ export class PreviewControlPlane {
     }
 
     private handleControlMessage(raw: string): void {
-        console.log("[Preview Control] Control message", { length: raw.length });
+        console.log(`[Preview Control] Control message length: ${raw.length}`, raw.length < 40 ? raw : 'too long to display');
         try {
             const msg = JSON.parse(raw);
             if (msg.type === 'pong' || msg.type === 'tokenUpdated' || msg.type === 'previewRestarted') {
