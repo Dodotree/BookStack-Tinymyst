@@ -31,8 +31,11 @@ type FileSyncState = {
     fileName: string;
     docVersion: number;
     currentContent: string;
+    savedContentHash: string;
+    lastEmittedDirty: boolean;
     loaded: boolean;
     pendingSendTimer: ReturnType<typeof setTimeout> | null;
+    pendingDirtyTimer: ReturnType<typeof setTimeout> | null;
     snapshots: FileSnapshot[];
 };
 
@@ -51,6 +54,7 @@ export class TinymistEditorUI {
     private readonly fileStates: Map<string, FileSyncState> = new Map();
     private readonly maxSnapshots = 3;
     private readonly changeDebounceMs = 150;
+    private readonly dirtyStateDebounceMs = 300;
     private readonly fallbackDebounceMs = 800;
 
     constructor(elem: HTMLElement, editor: HTMLTextAreaElement) {
@@ -68,6 +72,8 @@ export class TinymistEditorUI {
         this.pruneSnapshots = this.pruneSnapshots.bind(this);
         this.onInput = this.onInput.bind(this);
         this.buttonsListener = this.buttonsListener.bind(this);
+        this.insertFromEditorEvent = this.insertFromEditorEvent.bind(this);
+        this.resetAttachmentFileFromServer = this.resetAttachmentFileFromServer.bind(this);
         this.setActiveFile = this.setActiveFile.bind(this);
         this.destroy = this.destroy.bind(this);
 
@@ -157,6 +163,8 @@ export class TinymistEditorUI {
         window.$events.listen("tinymist-prune-snapshots", this.pruneSnapshots);
         window.$events.listen("tinymist-fallback-enable", (enabled: boolean) => this.fallbackEnabled = enabled);
         window.$events.listen("tinymist-active-file-change", this.setActiveFile);
+        window.$events.listen("editor::insert", this.insertFromEditorEvent);
+        window.$events.listen("tinymist-attachment-reset-file", this.resetAttachmentFileFromServer);
 
         // Button actions, it counts on event bubbling to the container
         this.elem.addEventListener("click", this.buttonsListener);
@@ -174,6 +182,8 @@ export class TinymistEditorUI {
         window.$events.remove("tinymist-sync-full-state", this.syncFullStateFromServer);
         window.$events.remove("tinymist-prune-snapshots", this.pruneSnapshots);
         window.$events.remove("tinymist-active-file-change", this.setActiveFile);
+        window.$events.remove("editor::insert", this.insertFromEditorEvent);
+        window.$events.remove("tinymist-attachment-reset-file", this.resetAttachmentFileFromServer);
         this.editor.removeEventListener("input", this.onInput);
         this.elem.removeEventListener("click", this.buttonsListener);
         window.removeEventListener("beforeunload", this.destroy);
@@ -287,6 +297,7 @@ export class TinymistEditorUI {
         }
         const state = this.getOrCreateFileState(this.activeFileName);
         state.currentContent = this.editor.value;
+        this.queueDirtyStateEmit(this.activeFileName);
 
         // Eventually changes from transactions sent to WebSocket server
         if (transactions.some((tr) => tr.docChanged)) {
@@ -352,6 +363,7 @@ export class TinymistEditorUI {
         console.log(`[Editor] Resetting sync state for ${payload.fileName} to docVersion ${payload.docVersion}`);
         state.docVersion = payload.docVersion;
         state.currentContent = payload.content;
+        state.savedContentHash = this.hashString(payload.content);
         state.loaded = true;
         state.snapshots = [{
             docVersion: payload.docVersion,
@@ -362,6 +374,72 @@ export class TinymistEditorUI {
             clearTimeout(state.pendingSendTimer);
             state.pendingSendTimer = null;
         }
+        if (state.pendingDirtyTimer) {
+            clearTimeout(state.pendingDirtyTimer);
+            state.pendingDirtyTimer = null;
+        }
+        state.lastEmittedDirty = false;
+        this.emitDirtyState(payload.fileName, false);
+    }
+
+    private queueDirtyStateEmit(fileName: string): void {
+        if (fileName === this.entryFileName) {
+            return;
+        }
+        const state = this.getOrCreateFileState(fileName);
+        if (state.pendingDirtyTimer) {
+            clearTimeout(state.pendingDirtyTimer);
+        }
+        state.pendingDirtyTimer = setTimeout(() => {
+            state.pendingDirtyTimer = null;
+            const nextDirty = this.hashString(state.currentContent) !== state.savedContentHash;
+            if (nextDirty === state.lastEmittedDirty) {
+                return;
+            }
+            state.lastEmittedDirty = nextDirty;
+            this.emitDirtyState(fileName, nextDirty);
+        }, this.dirtyStateDebounceMs);
+    }
+
+    private emitDirtyState(fileName: string, isDirty: boolean): void {
+        window.$events.emit("tinymist-attachment-dirty-state", {
+            fileName,
+            isDirty,
+        });
+    }
+
+    private resetAttachmentFileFromServer(payload: { fileName?: string }): void {
+        const fileName = String(payload?.fileName || "").trim();
+        if (!fileName || fileName === this.entryFileName) {
+            return;
+        }
+
+        const state = this.getOrCreateFileState(fileName);
+        if (state.pendingSendTimer) {
+            clearTimeout(state.pendingSendTimer);
+            state.pendingSendTimer = null;
+        }
+        if (state.pendingDirtyTimer) {
+            clearTimeout(state.pendingDirtyTimer);
+            state.pendingDirtyTimer = null;
+        }
+
+        state.loaded = false;
+        state.snapshots = [{
+            docVersion: state.docVersion,
+            snapshot: "",
+            afterTransactions: ChangeSet.empty(0),
+        }];
+        state.currentContent = "";
+        state.lastEmittedDirty = false;
+        this.emitDirtyState(fileName, false);
+
+        if (this.activeFileName === fileName) {
+            this.semanticTokens.clearHighlights();
+            this.diagnosticsProcessor.triggerLinting([]);
+        }
+
+        window.$events.emit("tinymist-sync-open-file", { fileName });
     }
 
     private getSnapshotContext(docVersion: number, fileName: string): { snapshot: string; changeSet: ChangeSet } {
@@ -434,6 +512,39 @@ export class TinymistEditorUI {
             button.setAttribute("title", this.previewPanEnabled ? "Disable Hand Tool" : "Enable Hand Tool");
         }
         window.$events.emit("tinymist-preview-pan-toggle", { enabled: this.previewPanEnabled });
+    }
+
+    private insertFromEditorEvent(eventContent: { typst?: string; markdown?: string; html?: string }): void {
+        const insertText = (eventContent?.typst || eventContent?.markdown || eventContent?.html || "").toString();
+        if (!insertText) {
+            return;
+        }
+        if (this.activeFileName !== this.entryFileName) {
+            console.warn("[Editor] Ignoring insert event for non-active file", { activeFile: this.activeFileName, eventFile: this.activeFileName });
+            return;
+        }
+
+        if (this.editorView) {
+            const selection = this.editorView.state.selection.main;
+            this.editorView.dispatch({
+                changes: {
+                    from: selection.from,
+                    to: selection.to,
+                    insert: insertText,
+                },
+                selection: {
+                    anchor: selection.from + insertText.length,
+                },
+            });
+            this.editorView.focus();
+            return;
+        }
+
+        const start = this.editor.selectionStart;
+        const end = this.editor.selectionEnd;
+        this.editor.setRangeText(insertText, start, end, "end");
+        this.editor.focus();
+        this.onInput();
     }
 
         /**
@@ -535,7 +646,7 @@ export class TinymistEditorUI {
     }
 
     /**
-     * Simple string hash function for content comparison // unused now
+     * Simple string hash function for content comparison.
      */
     hashString(str: string): string {
         let hash = 0;
@@ -552,6 +663,10 @@ export class TinymistEditorUI {
             if (fileState.pendingSendTimer) {
                 clearTimeout(fileState.pendingSendTimer);
                 fileState.pendingSendTimer = null;
+            }
+            if (fileState.pendingDirtyTimer) {
+                clearTimeout(fileState.pendingDirtyTimer);
+                fileState.pendingDirtyTimer = null;
             }
         }
         this.semanticTokens.clearHighlights();
@@ -574,8 +689,11 @@ export class TinymistEditorUI {
             fileName: fileName,
             docVersion: 1,
             currentContent: currentContent,
+            savedContentHash: this.hashString(currentContent),
+            lastEmittedDirty: false,
             loaded: fileName === this.entryFileName,
             pendingSendTimer: null,
+            pendingDirtyTimer: null,
             snapshots: [{
                 docVersion: 1,
                 snapshot: currentContent,

@@ -68,6 +68,19 @@
   position: relative;
   .drag-card-action {
     cursor: pointer;
+
+    &.disabled,
+    &[disabled] {
+      opacity: .45;
+      filter: grayscale(1);
+      cursor: not-allowed;
+      @include mixins.lightDark(color, #777, #888);
+    }
+
+    &.disabled:hover,
+    &[disabled]:hover {
+      background-color: transparent;
+    }
   }
   .handle, .drag-card-action {
     display: flex;

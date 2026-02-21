@@ -31,6 +31,25 @@ class FileStorage
         return $this->getStorageDisk()->size($this->adjustPathForStorageDisk($path));
     }
 
+    /**
+     * Write a local system file into the configured storage path.
+     */
+    public function writeFromLocalPath(string $targetPath, string $localSourcePath): void
+    {
+        $sourceStream = @fopen($localSourcePath, 'r');
+        if (!is_resource($sourceStream)) {
+            throw new FileUploadException(trans('errors.path_not_writable', ['filePath' => $localSourcePath]));
+        }
+
+        try {
+            $this->getStorageDisk()->writeStream($this->adjustPathForStorageDisk($targetPath), $sourceStream);
+        } catch (Exception $e) {
+            throw new FileUploadException(trans('errors.path_not_writable', ['filePath' => $targetPath]));
+        } finally {
+            fclose($sourceStream);
+        }
+    }
+
     public function delete(string $path, bool $removeEmptyDir = false): void
     {
         $storage = $this->getStorageDisk();

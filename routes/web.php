@@ -164,7 +164,10 @@ Route::middleware('auth')->group(function () {
     Route::put('/attachments/{id}', [UploadControllers\AttachmentController::class, 'update']);
     Route::get('/attachments/edit/{id}', [UploadControllers\AttachmentController::class, 'getUpdateForm']);
     Route::get('/attachments/get/page/{pageId}', [UploadControllers\AttachmentController::class, 'listForPage']);
+    Route::get('/attachments/dirty/page/{pageId}', [UploadControllers\AttachmentController::class, 'dirtyMapForPage']);
     Route::put('/attachments/sort/page/{pageId}', [UploadControllers\AttachmentController::class, 'sortForPage']);
+    Route::put('/attachments/{id}/save-from-preview', [UploadControllers\AttachmentController::class, 'saveFromPreview']);
+    Route::put('/attachments/{id}/undo-from-preview', [UploadControllers\AttachmentController::class, 'undoFromPreview']);
     Route::delete('/attachments/{id}', [UploadControllers\AttachmentController::class, 'delete']);
 
     // AJAX routes

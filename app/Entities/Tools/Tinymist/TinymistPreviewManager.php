@@ -141,6 +141,16 @@ class TinymistPreviewManager
         $this->syncSingleAttachment($page, $pageDir, $attachment);
     }
 
+    public function restoreAttachmentToPreviewDir(Page $page, Attachment $attachment): void
+    {
+        $pageDir = storage_path("app/tinymist/page_{$page->id}");
+        if (!is_dir($pageDir)) {
+            mkdir($pageDir, 0755, true);
+        }
+
+        $this->syncSingleAttachment($page, $pageDir, $attachment, true);
+    }
+
     public function removeAttachmentFromPreviewDir(Page $page, string $attachmentFileName): void
     {
         $fileName = basename($attachmentFileName);
@@ -155,7 +165,7 @@ class TinymistPreviewManager
         }
     }
 
-    protected function syncSingleAttachment(Page $page, string $pageDir, Attachment $attachment): void
+    protected function syncSingleAttachment(Page $page, string $pageDir, Attachment $attachment, bool $forceOverwrite = false): void
     {
         if ($attachment->external) {
             return;
@@ -177,7 +187,7 @@ class TinymistPreviewManager
         }
 
         $destPath = $pageDir . DIRECTORY_SEPARATOR . $fileName;
-        if (file_exists($destPath)) {
+        if (!$forceOverwrite && file_exists($destPath)) {
             $sourceMtime = @filemtime($sourcePath) ?: 0;
             $destMtime = @filemtime($destPath) ?: 0;
             if ($destMtime >= $sourceMtime) {

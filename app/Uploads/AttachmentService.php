@@ -109,6 +109,95 @@ class AttachmentService
     }
 
     /**
+     * Save updated attachment content from Tinymist preview storage back to BookStack attachment storage.
+     */
+    public function saveAttachmentFromTinymistPreview(Attachment $attachment): Attachment
+    {
+        $page = $attachment->page;
+        if ($attachment->external || !$page || $page->editor !== 'tinymist') {
+            return $attachment;
+        }
+
+        $fileName = basename($attachment->getFileName());
+        if ($fileName === '' || $fileName === 'entry.typ') {
+            return $attachment;
+        }
+
+        $previewPath = storage_path("app/tinymist/page_{$page->id}/{$fileName}");
+        if (!is_file($previewPath)) {
+            throw new FileUploadException(trans('errors.path_not_writable', ['filePath' => $previewPath]));
+        }
+
+        $this->storage->writeFromLocalPath($attachment->path, $previewPath);
+        $attachment->updated_by = user()->id;
+        $attachment->save();
+
+        return $attachment->refresh();
+    }
+
+    /**
+     * Undo Tinymist preview edits in storage/page_num/ folder, restoring the preview copy from saved attachment content.
+     */
+    public function undoTinymistPreviewAttachmentChanges(Attachment $attachment): Attachment
+    {
+        $page = $attachment->page;
+        if ($attachment->external || !$page || $page->editor !== 'tinymist') {
+            return $attachment;
+        }
+
+        $manager = app()->make(TinymistPreviewManager::class);
+        $manager->restoreAttachmentToPreviewDir($page, $attachment);
+
+        return $attachment;
+    }
+
+    /**
+     * Build a dirty-state map for page attachments by comparing Tinymist preview and stored attachment content.
+     *
+     * @return array<string, bool>
+     */
+    public function getTinymistAttachmentDirtyMap(Page $page): array
+    {
+        $dirtyMap = [];
+        if ($page->editor !== 'tinymist') {
+            return $dirtyMap;
+        }
+
+        foreach ($page->attachments as $attachment) {
+            if ($attachment->external) {
+                continue;
+            }
+
+            $fileName = basename($attachment->getFileName());
+            if ($fileName === '' || $fileName === 'entry.typ') {
+                continue;
+            }
+
+            $storedPath = $this->storage->getSystemPath($attachment->path);
+            $previewPath = storage_path("app/tinymist/page_{$page->id}/{$fileName}");
+
+            $storedExists = $storedPath !== '' && is_file($storedPath);
+            $previewExists = is_file($previewPath);
+
+            if (!$storedExists && !$previewExists) {
+                $dirtyMap[$fileName] = false;
+                continue;
+            }
+
+            if ($storedExists !== $previewExists) {
+                $dirtyMap[$fileName] = true;
+                continue;
+            }
+
+            $storedHash = @hash_file('sha256', $storedPath) ?: null;
+            $previewHash = @hash_file('sha256', $previewPath) ?: null;
+            $dirtyMap[$fileName] = $storedHash !== $previewHash;
+        }
+
+        return $dirtyMap;
+    }
+
+    /**
      * Save a new File attachment from a given link and name.
      */
     public function saveNewFromLink(string $name, string $link, int $page_id): Attachment

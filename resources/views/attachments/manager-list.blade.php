@@ -4,6 +4,7 @@
         <div component="ajax-delete-row"
              option:ajax-delete-row:url="{{ url('/attachments/' . $attachment->id) }}"
              data-id="{{ $attachment->id }}"
+               data-file-name="{{ $attachment->name }}"
              data-drag-content="{{ json_encode($attachment->editorContent()) }}"
              class="card drag-card">
             <div class="handle">@icon('grip')</div>
@@ -17,12 +18,40 @@
                         title="{{ trans('entities.attachments_insert_link') }}"
                         class="drag-card-action text-center text-link">@icon('link')</button>
                 @if(userCan(\BookStack\Permissions\Permission::AttachmentUpdate, $attachment))
+
                     <button component="event-emit-select"
                             option:event-emit-select:name="edit"
                             option:event-emit-select:id="{{ $attachment->id }}"
                             type="button"
                             title="{{ trans('common.edit') }}"
                             class="drag-card-action text-center text-link">@icon('edit')</button>
+                    <button component="event-emit-select"
+                        option:event-emit-select:name="save"
+                        option:event-emit-select:id="{{ $attachment->id }}"
+                        data-attachment-action="save"
+                        type="button"
+                        disabled
+                        aria-disabled="true"
+                        title="{{ trans('common.save') }}"
+                        class="drag-card-action text-center text-link">@icon('save')</button>
+                    <div component="dropdown" class="flex-fill relative">
+                    <button refs="dropdown@toggle"
+                        type="button"
+                        data-attachment-action="undo"
+                        disabled
+                        aria-disabled="true"
+                        title="{{ trans('common.undo') }}"
+                        data-action="open-undo-confirm"
+                        class="drag-card-action text-center text-warn">@icon('editor/undo')</button>
+                    <div refs="dropdown@menu" class="dropdown-menu">
+                        <p class="text-warn small px-m mb-xs">{{ trans('entities.attachments_discard_changes_confirm') }}</p>
+                        <button component="event-emit-select"
+                            option:event-emit-select:name="undo"
+                            option:event-emit-select:id="{{ $attachment->id }}"
+                            type="button"
+                            class="text-link small delete text-item">{{ trans('common.confirm') }}</button>
+                    </div>
+                    </div>
                 @endif
                 @if(userCan(\BookStack\Permissions\Permission::AttachmentDelete, $attachment))
                     <div component="dropdown" class="flex-fill relative">

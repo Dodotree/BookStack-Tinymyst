@@ -184,6 +184,21 @@ class AttachmentController extends Controller
     }
 
     /**
+     * Get dirty-state map for page attachments.
+     *
+     * @throws NotFoundException
+     */
+    public function dirtyMapForPage(int $pageId)
+    {
+        $page = $this->pageQueries->findVisibleByIdOrFail($pageId);
+        $this->checkOwnablePermission(Permission::PageUpdate, $page);
+
+        return response()->json([
+            'dirtyMap' => $this->attachmentService->getTinymistAttachmentDirtyMap($page),
+        ]);
+    }
+
+    /**
      * Update the attachment sorting.
      *
      * @throws ValidationException
@@ -201,6 +216,46 @@ class AttachmentController extends Controller
         $this->attachmentService->updateFileOrderWithinPage($attachmentOrder, $pageId);
 
         return response()->json(['message' => trans('entities.attachments_order_updated')]);
+    }
+
+    /**
+     * Save attachment from Tinymist preview file back into BookStack attachment storage.
+     */
+    public function saveFromPreview(string $attachmentId)
+    {
+        /** @var Attachment $attachment */
+        $attachment = Attachment::query()->findOrFail($attachmentId);
+        $this->checkOwnablePermission(Permission::PageView, $attachment->page);
+        $this->checkOwnablePermission(Permission::PageUpdate, $attachment->page);
+        $this->checkOwnablePermission(Permission::AttachmentUpdate, $attachment);
+
+        $attachment = $this->attachmentService->saveAttachmentFromTinymistPreview($attachment);
+
+        return response()->json([
+            'message' => trans('entities.attachments_preview_saved'),
+            'fileName' => $attachment->external ? '' : $attachment->getFileName(),
+            'pageId' => (int) $attachment->uploaded_to,
+        ]);
+    }
+
+    /**
+     * Undo Tinymist preview changes for attachment by restoring preview copy from saved attachment.
+     */
+    public function undoFromPreview(string $attachmentId)
+    {
+        /** @var Attachment $attachment */
+        $attachment = Attachment::query()->findOrFail($attachmentId);
+        $this->checkOwnablePermission(Permission::PageView, $attachment->page);
+        $this->checkOwnablePermission(Permission::PageUpdate, $attachment->page);
+        $this->checkOwnablePermission(Permission::AttachmentUpdate, $attachment);
+
+        $attachment = $this->attachmentService->undoTinymistPreviewAttachmentChanges($attachment);
+
+        return response()->json([
+            'message' => trans('entities.attachments_preview_undone'),
+            'fileName' => $attachment->external ? '' : $attachment->getFileName(),
+            'pageId' => (int) $attachment->uploaded_to,
+        ]);
     }
 
     /**

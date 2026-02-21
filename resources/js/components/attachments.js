@@ -11,6 +11,8 @@ export class Attachments extends Component {
         this.linksContainer = this.$refs.linksContainer;
         this.listPanel = this.$refs.listPanel;
         this.attachLinkButton = this.$refs.attachLinkButton;
+        this.attachmentServerDirtyByName = new Map();
+        this.attachmentSessionDirtyByName = new Map();
 
         this.setupListeners();
     }
@@ -39,12 +41,33 @@ export class Attachments extends Component {
             window.$events.emit('editor::insert', {
                 html: contentTypes['text/html'],
                 markdown: contentTypes['text/plain'],
+                typst: contentTypes['text/typst'],
             });
+        });
+
+        this.container.addEventListener('event-emit-select-undo', event => {
+            this.undoAttachmentFromPreview(Number(event.detail.id));
+        });
+
+        this.container.addEventListener('event-emit-select-save', event => {
+            this.saveAttachmentFromPreview(Number(event.detail.id));
+        });
+
+        window.$events.listen('tinymist-attachment-dirty-state', ({fileName, isDirty}) => {
+            const normalizedName = String(fileName || '').trim();
+            if (!normalizedName) {
+                return;
+            }
+            this.attachmentSessionDirtyByName.set(normalizedName, Boolean(isDirty));
+            this.applyDirtyStateForFile(normalizedName);
         });
 
         this.attachLinkButton.addEventListener('click', () => {
             this.showSection('links');
         });
+
+        this.applyAllDirtyStatesToList();
+        void this.refreshDirtyMapFromServer();
     }
 
     showSection(section) {
@@ -64,10 +87,12 @@ export class Attachments extends Component {
         window.$http.get(`/attachments/get/page/${this.pageId}`).then(resp => {
             this.listPanel.innerHTML = resp.data;
             window.$components.init(this.listPanel);
+            this.applyAllDirtyStatesToList();
             window.$events.emit('attachments-page-updated', {
                 pageId: Number(this.pageId),
                 html: String(resp.data || ''),
             });
+            void this.refreshDirtyMapFromServer();
         });
     }
 
@@ -88,6 +113,129 @@ export class Attachments extends Component {
 
     stopEdit() {
         this.showSection('list');
+    }
+
+    applyAllDirtyStatesToList() {
+        const rows = this.listPanel.querySelectorAll('[data-file-name]');
+        rows.forEach(row => {
+            const fileName = String(row.getAttribute('data-file-name') || '').trim();
+            if (!fileName) {
+                return;
+            }
+            const isDirty = this.isAttachmentDirty(fileName);
+            this.setRowActionState(row, isDirty);
+        });
+    }
+
+    applyDirtyStateForFile(fileName) {
+        const escapedFileName = window.CSS?.escape ? CSS.escape(fileName) : fileName.replace(/"/g, '\\"');
+        const row = this.listPanel.querySelector(`[data-file-name="${escapedFileName}"]`);
+        if (!row) {
+            return;
+        }
+        this.setRowActionState(row, this.isAttachmentDirty(fileName));
+    }
+
+    isAttachmentDirty(fileName) {
+        const normalizedName = String(fileName || '').trim();
+        if (!normalizedName) {
+            return false;
+        }
+        return Boolean(this.attachmentServerDirtyByName.get(normalizedName))
+            || Boolean(this.attachmentSessionDirtyByName.get(normalizedName));
+    }
+
+    setRowActionState(row, isDirty) {
+        const actionButtons = row.querySelectorAll('[data-attachment-action="save"], [data-attachment-action="undo"]');
+        actionButtons.forEach(button => {
+            button.disabled = !isDirty;
+            button.classList.toggle('disabled', !isDirty);
+            button.setAttribute('aria-disabled', (!isDirty).toString());
+        });
+    }
+
+    applyDirtyMap(dirtyMap) {
+        this.attachmentServerDirtyByName.clear();
+        const nextMap = dirtyMap && typeof dirtyMap === 'object' ? dirtyMap : {};
+        for (const [fileName, isDirty] of Object.entries(nextMap)) {
+            const normalizedName = String(fileName || '').trim();
+            if (!normalizedName) {
+                continue;
+            }
+            this.attachmentServerDirtyByName.set(normalizedName, Boolean(isDirty));
+        }
+        this.applyAllDirtyStatesToList();
+    }
+
+    async refreshDirtyMapFromServer() {
+        try {
+            const resp = await window.$http.get(`/attachments/dirty/page/${this.pageId}`);
+            this.applyDirtyMap(resp?.data?.dirtyMap || {});
+        } catch {
+            // Keep existing in-memory state if dirty map fetch fails.
+        }
+    }
+
+    getAttachmentRowById(attachmentId) {
+        const escapedId = window.CSS?.escape ? CSS.escape(String(attachmentId)) : String(attachmentId).replace(/"/g, '\\"');
+        return this.listPanel.querySelector(`[data-id="${escapedId}"]`);
+    }
+
+    getAttachmentFileNameById(attachmentId) {
+        const row = this.getAttachmentRowById(attachmentId);
+        if (!row) {
+            return '';
+        }
+        return String(row.getAttribute('data-file-name') || '').trim();
+    }
+
+    markAttachmentClean(fileName) {
+        const normalizedName = String(fileName || '').trim();
+        if (!normalizedName) {
+            return;
+        }
+        this.attachmentServerDirtyByName.set(normalizedName, false);
+        this.attachmentSessionDirtyByName.set(normalizedName, false);
+        this.applyDirtyStateForFile(normalizedName);
+    }
+
+    async saveAttachmentFromPreview(attachmentId) {
+        if (!Number.isFinite(attachmentId) || attachmentId <= 0) {
+            return;
+        }
+
+        try {
+            const resp = await window.$http.put(`/attachments/${attachmentId}/save-from-preview`);
+            const fileName = String(resp?.data?.fileName || this.getAttachmentFileNameById(attachmentId));
+            this.markAttachmentClean(fileName);
+            if (resp?.data?.message) {
+                window.$events.emit('success', resp.data.message);
+            }
+        } catch (error) {
+            window.$events.emit('error', error?.response?.data?.message || 'Failed to save attachment changes');
+        }
+    }
+
+    async undoAttachmentFromPreview(attachmentId) {
+        if (!Number.isFinite(attachmentId) || attachmentId <= 0) {
+            return;
+        }
+
+        try {
+            const resp = await window.$http.put(`/attachments/${attachmentId}/undo-from-preview`);
+            const fileName = String(resp?.data?.fileName || this.getAttachmentFileNameById(attachmentId));
+            this.markAttachmentClean(fileName);
+            if (fileName) {
+                window.$events.emit('tinymist-attachment-reset-file', {
+                    fileName,
+                });
+            }
+            if (resp?.data?.message) {
+                window.$events.emit('success', resp.data.message);
+            }
+        } catch (error) {
+            window.$events.emit('error', error?.response?.data?.message || 'Failed to undo attachment changes');
+        }
     }
 
 }
