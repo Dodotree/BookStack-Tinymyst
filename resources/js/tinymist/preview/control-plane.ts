@@ -8,12 +8,16 @@ type OutlineItem = {
 
 export class PreviewControlPlane {
     private static readonly FILEPATH_PLACEHOLDER = "__TINYMIST_FILE__";
+    private cursorSpotlightEnabled = true;
 
     constructor() {
         this.sendControlMessage = this.sendControlMessage.bind(this);
         this.handleControlMessage = this.handleControlMessage.bind(this);
         window.$events.listen("tinymist-preview-control-message", this.handleControlMessage);
         window.$events.listen("tinymist-control", this.sendControlMessage);
+        window.$events.listen("tinymist-cursor-spotlight-toggle", ({ enabled }: { enabled?: boolean }) => {
+            this.cursorSpotlightEnabled = Boolean(enabled);
+        });
         // this.disconnect = this.disconnect.bind(this);
         // window.$events.listen("tinymist-control-disconnect", this.disconnect);
     }
@@ -93,6 +97,9 @@ export class PreviewControlPlane {
 
             case "changeCursorPosition":
             case "panelScrollTo":
+                if (!this.cursorSpotlightEnabled) {
+                    return;
+                }
                 msg = {
                     event: message.event,
                     filepath: PreviewControlPlane.FILEPATH_PLACEHOLDER,

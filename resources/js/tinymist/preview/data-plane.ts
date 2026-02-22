@@ -1,9 +1,13 @@
 export class PreviewDataPlane {
     private processingQueue: Promise<void> = Promise.resolve();
+    private cursorSpotlightEnabled = true;
 
     constructor() {
         this.handleBridgeDataMessage = this.handleBridgeDataMessage.bind(this);
         window.$events.listen("tinymist-preview-data-message", this.handleBridgeDataMessage);
+        window.$events.listen("tinymist-cursor-spotlight-toggle", ({ enabled }: { enabled?: boolean }) => {
+            this.cursorSpotlightEnabled = Boolean(enabled);
+        });
     }
 
     private handleBridgeDataMessage(msg: Uint8Array): void {
@@ -55,6 +59,9 @@ export class PreviewDataPlane {
 
                 // Successful reply to Control Plane "changeCursorPosition" request
                 case 'cursor-paths': {
+                    if (!this.cursorSpotlightEnabled) {
+                        return;
+                    }
                     const decoded = new TextDecoder().decode(payload);
                     try {
                         const parsed = JSON.parse(decoded);

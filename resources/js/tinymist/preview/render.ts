@@ -43,12 +43,16 @@ export class PreviewRenderer {
     private panStartY = 0;
     private panStartScrollLeft = 0;
     private panStartScrollTop = 0;
+    private activeFileName = "entry.typ";
+    private cursorSpotlightUserEnabled = true;
+    private previewPaneElement: HTMLElement | null = null;
 
 
     constructor(
         previewElement: HTMLElement,
     ) {
         this.previewElement = previewElement;
+        this.previewPaneElement = this.previewElement.closest(".tinymist-preview-pane") as HTMLElement | null;
 
         this.handleSyncInit = this.handleSyncInit.bind(this);
         this.dispose = this.dispose.bind(this);
@@ -63,6 +67,8 @@ export class PreviewRenderer {
         this.handleZoomOut = this.handleZoomOut.bind(this);
         this.handleZoomReset = this.handleZoomReset.bind(this);
         this.handlePanToggle = this.handlePanToggle.bind(this);
+        this.handleActiveFileChange = this.handleActiveFileChange.bind(this);
+        this.handlePreviewPaneClick = this.handlePreviewPaneClick.bind(this);
         this.handlePanMouseDown = this.handlePanMouseDown.bind(this);
         this.handlePanMouseMove = this.handlePanMouseMove.bind(this);
         this.handlePanMouseUp = this.handlePanMouseUp.bind(this);
@@ -72,11 +78,17 @@ export class PreviewRenderer {
         window.$events.listen("tinymist-preview-zoom-out", this.handleZoomOut);
         window.$events.listen("tinymist-preview-zoom-reset", this.handleZoomReset);
         window.$events.listen("tinymist-preview-pan-toggle", this.handlePanToggle);
+        window.$events.listen("tinymist-active-file-change", this.handleActiveFileChange);
+
+        this.previewPaneElement?.addEventListener("click", this.handlePreviewPaneClick);
 
         this.previewElement.addEventListener("mousedown", this.handlePanMouseDown);
         this.previewElement.addEventListener("mousemove", this.handlePanMouseMove);
         this.previewElement.addEventListener("mouseup", this.handlePanMouseUp);
         this.previewElement.addEventListener("mouseleave", this.handlePanMouseUp);
+
+        this.applyCursorSpotlightState();
+        this.applyPanButtonState();
     }
 
     private async handleSyncInit(): Promise<void> {
@@ -277,6 +289,9 @@ export class PreviewRenderer {
         this.session = null;
         this.renderer = null;
 
+        this.previewPaneElement?.removeEventListener("click", this.handlePreviewPaneClick);
+        window.$events.remove("tinymist-active-file-change", this.handleActiveFileChange);
+
         console.log("[Preview WASM] Renderer disposed");
     }
 
@@ -298,6 +313,66 @@ export class PreviewRenderer {
             this.stopPanning();
         }
         this.previewElement.classList.toggle("tinymist-preview-pan-enabled", enabled);
+        this.applyPanButtonState();
+    }
+
+    private handleActiveFileChange(fileName: string): void {
+        this.activeFileName = String(fileName || "entry.typ").trim() || "entry.typ";
+        this.applyCursorSpotlightState();
+    }
+
+    private handlePreviewPaneClick(event: Event): void {
+        const button = (event.target as Element | null)?.closest("button[data-action]") as HTMLButtonElement | null;
+        if (!button) {
+            return;
+        }
+
+        const action = button.getAttribute("data-action");
+        switch (action) {
+            case "previewZoomIn":
+                this.handleZoomIn();
+                break;
+            case "previewZoomOut":
+                this.handleZoomOut();
+                break;
+            case "previewZoomReset":
+                this.handleZoomReset();
+                break;
+            case "previewPanToggle":
+                window.$events.emit("tinymist-preview-pan-toggle", { enabled: !this.panEnabled });
+                break;
+            case "previewCursorSpotlightToggle":
+                this.cursorSpotlightUserEnabled = !this.cursorSpotlightUserEnabled;
+                this.applyCursorSpotlightState();
+                break;
+            default:
+                break;
+        }
+    }
+
+    private applyPanButtonState(): void {
+        const button = this.previewPaneElement?.querySelector('button[data-action="previewPanToggle"]') as HTMLButtonElement | null;
+        if (!button) {
+            return;
+        }
+        button.setAttribute("aria-pressed", this.panEnabled.toString());
+        button.setAttribute("title", this.panEnabled ? "Disable Hand Tool" : "Enable Hand Tool");
+    }
+
+    private applyCursorSpotlightState(): void {
+        const enabled = this.cursorSpotlightUserEnabled && this.activeFileName === "entry.typ";
+
+        const button = this.previewPaneElement?.querySelector('button[data-action="previewCursorSpotlightToggle"]') as HTMLButtonElement | null;
+        if (button) {
+            button.setAttribute("aria-pressed", enabled.toString());
+            button.setAttribute("title", enabled ? "Disable Caret Spotlight" : "Enable Caret Spotlight");
+        }
+
+        window.$events.emit("tinymist-cursor-spotlight-toggle", {
+            enabled,
+            activeFile: this.activeFileName,
+            userEnabled: this.cursorSpotlightUserEnabled,
+        });
     }
 
     private setZoom(level: number): void {

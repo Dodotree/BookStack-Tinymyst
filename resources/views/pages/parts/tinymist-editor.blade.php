@@ -123,6 +123,9 @@
                 <button class="text-button" type="button" data-action="previewPanToggle" title="Enable Hand Tool" aria-pressed="false">
                     @icon('hand')
                 </button>
+                <button class="text-button" type="button" data-action="previewCursorSpotlightToggle" title="Disable Caret Spotlight" aria-pressed="true">
+                    @icon('editor/caret-spotlight')
+                </button>
             </div>
         </div>
 
@@ -361,6 +364,16 @@
 
     .tinymist-preview-content.tinymist-preview-panning {
         cursor: grabbing;
+    }
+
+    .tinymist-preview-pane button[data-action="previewPanToggle"][aria-pressed="true"],
+    .tinymist-preview-pane button[data-action="previewCursorSpotlightToggle"][aria-pressed="true"] {
+        color: #2d6f96;
+    }
+
+    html.dark-mode .tinymist-preview-pane button[data-action="previewPanToggle"][aria-pressed="true"],
+    html.dark-mode .tinymist-preview-pane button[data-action="previewCursorSpotlightToggle"][aria-pressed="true"] {
+        color: #7ec5f0;
     }
 
     /* SVG output - fill panel width, scrollable height */

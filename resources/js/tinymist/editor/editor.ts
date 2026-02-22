@@ -46,7 +46,6 @@ export class TinymistEditorUI {
     editorView: EditorView | null = null;
     private diagnosticsProcessor = new DiagnosticsProcessor();
     private semanticTokens = new SemanticTokenProcessor();
-    private previewPanEnabled = false;
     private fallbackEnabled = false;
 
     private readonly entryFileName = "entry.typ";
@@ -203,9 +202,16 @@ export class TinymistEditorUI {
         if (!event.target) return;
         const button = (event.target as Element).closest("button[data-action]");
         if (button === null) return;
+        if (button.closest(".tinymist-preview-pane")) return;
 
         const action = button.getAttribute("data-action");
         switch (action) {
+            case "insertImage":
+                this.insertImage();
+                break;
+            case "insertLink":
+                this.insertLink();
+                break;
             case "insertBold":
                 this.insertMarkup("*", "*");
                 break;
@@ -214,6 +220,9 @@ export class TinymistEditorUI {
                 break;
             case "insertMath":
                 this.insertMarkup("$", "$");
+                break;
+            case "insertCodeBlock":
+                this.insertCodeBlock();
                 break;
             case "insertHeading":
                 this.insertHeading();
@@ -224,21 +233,78 @@ export class TinymistEditorUI {
             case "toggleConsole":
                 this.toggleConsole(button as HTMLButtonElement);
                 break;
-            case "previewZoomIn":
-                window.$events.emit("tinymist-preview-zoom-in");
-                break;
-            case "previewZoomOut":
-                window.$events.emit("tinymist-preview-zoom-out");
-                break;
-            case "previewZoomReset":
-                window.$events.emit("tinymist-preview-zoom-reset");
-                break;
-            case "previewPanToggle":
-                this.togglePreviewPan(button as HTMLButtonElement);
-                break;
             default:
                 console.warn(`[Editor]Unknown button action: ${action}`);
         }
+    }
+
+    private getSelectionInfo(): { selectedText: string; from: number; to: number } {
+        if (this.editorView) {
+            const selection = this.editorView.state.selection.main;
+            return {
+                selectedText: this.editorView.state.doc.sliceString(selection.from, selection.to),
+                from: selection.from,
+                to: selection.to,
+            };
+        }
+
+        return {
+            selectedText: this.editor.value.substring(this.editor.selectionStart, this.editor.selectionEnd),
+            from: this.editor.selectionStart,
+            to: this.editor.selectionEnd,
+        };
+    }
+
+    private replaceSelection(replacement: string): void {
+        if (this.editorView) {
+            const selection = this.editorView.state.selection.main;
+            this.editorView.dispatch({
+                changes: {
+                    from: selection.from,
+                    to: selection.to,
+                    insert: replacement,
+                },
+                selection: {
+                    anchor: selection.from + replacement.length,
+                },
+            });
+            this.editorView.focus();
+            return;
+        }
+
+        this.editor.setRangeText(replacement, this.editor.selectionStart, this.editor.selectionEnd, "end");
+        this.editor.focus();
+        this.onInput();
+    }
+
+    private escapeTypstString(value: string): string {
+        return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+    }
+
+    private insertImage(): void {
+        const selection = this.getSelectionInfo();
+        const selectedSrc = selection.selectedText.trim();
+        const src = selectedSrc.length > 0 ? selectedSrc : "image.png";
+        const escapedSrc = this.escapeTypstString(src);
+        this.replaceSelection(`#image("${escapedSrc}", width: 100%, height: 100%, fit: "cover", scaling: "smooth", alt: "my image description")`);
+    }
+
+    private insertLink(): void {
+        const selection = this.getSelectionInfo();
+        const selectedUrl = selection.selectedText.trim();
+        const url = selectedUrl.length > 0 ? selectedUrl : "https://example.com";
+        const escapedUrl = this.escapeTypstString(url);
+        this.replaceSelection(`#link("${escapedUrl}")[\n  See example.com\n]`);
+    }
+
+    private insertCodeBlock(): void {
+        const selection = this.getSelectionInfo();
+        const selectedCode = selection.selectedText;
+        if (selectedCode.length > 0) {
+            this.replaceSelection(`\`\`\`python\n${selectedCode}\n\`\`\``);
+            return;
+        }
+        this.replaceSelection("```python\n\n```");
     }
 
     syncFullStateFromServer(payload: { content: string; docVersion: number; fileName: string }) {
@@ -505,15 +571,6 @@ export class TinymistEditorUI {
         }
     }
 
-    private togglePreviewPan(button?: HTMLButtonElement) {
-        this.previewPanEnabled = !this.previewPanEnabled;
-        if (button) {
-            button.setAttribute("aria-pressed", this.previewPanEnabled.toString());
-            button.setAttribute("title", this.previewPanEnabled ? "Disable Hand Tool" : "Enable Hand Tool");
-        }
-        window.$events.emit("tinymist-preview-pan-toggle", { enabled: this.previewPanEnabled });
-    }
-
     private insertFromEditorEvent(eventContent: { typst?: string; markdown?: string; html?: string }): void {
         const insertText = (eventContent?.typst || eventContent?.markdown || eventContent?.html || "").toString();
         if (!insertText) {
@@ -547,7 +604,7 @@ export class TinymistEditorUI {
         this.onInput();
     }
 
-        /**
+    /**
      * Insert markup around selected text or at cursor position.
      */
     insertMarkup(before: string, after: string) {

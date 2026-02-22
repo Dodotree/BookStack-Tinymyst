@@ -20,6 +20,7 @@ export class PreviewCursor {
     private cursorCircle: SVGCircleElement | null = null;
     private cursorParams: CursorParams = { textSelector: 'svg.typst-doc>g.typst-group', charIndex: 0 };
     private onViewportChange: () => void;
+    private spotlightEnabled = true;
 
 
     constructor(
@@ -33,6 +34,14 @@ export class PreviewCursor {
         window.$events.listen("tinymist-wasm-dispose", this.dispose);
         window.$events.listen("tinymist-data-cursor-paths", this.pathToSelector);
         window.$events.listen("tinymist-data-cursor-show", this.showCursor);
+        window.$events.listen("tinymist-cursor-spotlight-toggle", ({ enabled }: { enabled?: boolean }) => {
+            this.spotlightEnabled = Boolean(enabled);
+            if (!this.spotlightEnabled) {
+                this.hideCursor();
+            } else {
+                this.showCursor();
+            }
+        });
 
         this.onViewportChange = this.showCursor.bind(this);
         this.previewElement.addEventListener('scroll', this.onViewportChange, { passive: true });
@@ -132,6 +141,9 @@ export class PreviewCursor {
     */
 
     private pathToSelector(paths: any): void {
+        if (!this.spotlightEnabled) {
+            return;
+        }
         const kindMap: Record<number, string> = {
             0: '.typst-text',  // g
             1: '.typst-group', // g
@@ -199,6 +211,10 @@ export class PreviewCursor {
      * Show cursor circle at the specified glyph position
      */
     private showCursor(): void {
+        if (!this.spotlightEnabled) {
+            this.hideCursor();
+            return;
+        }
         // console.debug('[Preview WASM] showCursor with params:', this.cursorParams, this.overlaySvg, 'cursorCircle exists:', !!this.cursorCircle);
 
         const textNode = document.querySelector(this.cursorParams.textSelector);
@@ -242,9 +258,16 @@ export class PreviewCursor {
         this.cursorCircle.setAttribute('r', r.toFixed(2));
     }
 
-    dispose() {
-        this.cursorCircle?.remove();
+    private hideCursor(): void {
+        if (!this.cursorCircle) {
+            return;
+        }
+        this.cursorCircle.remove();
         this.cursorCircle = null;
+    }
+
+    dispose() {
+        this.hideCursor();
 
         this.overlayElement?.remove();
         this.overlayElement = null;
