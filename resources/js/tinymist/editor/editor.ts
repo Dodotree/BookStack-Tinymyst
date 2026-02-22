@@ -165,8 +165,11 @@ export class TinymistEditorUI {
         window.$events.listen("editor::insert", this.insertFromEditorEvent);
         window.$events.listen("tinymist-attachment-reset-file", this.resetAttachmentFileFromServer);
 
+        window.$events.listen('tinymist-console-toggle', (collapsed?: boolean) => {
+            this.elem.closest('.tinymist-editor-pane')?.classList.toggle('tinymist-console-collapsed', collapsed)
+        });
         // Button actions, it counts on event bubbling to the container
-        this.elem.addEventListener("click", this.buttonsListener);
+        this.elem.closest(".tinymist-editor-pane")?.addEventListener("click", this.buttonsListener);
 
         // Clean up connections on page navigation
         window.addEventListener("beforeunload", this.destroy);
@@ -184,7 +187,7 @@ export class TinymistEditorUI {
         window.$events.remove("editor::insert", this.insertFromEditorEvent);
         window.$events.remove("tinymist-attachment-reset-file", this.resetAttachmentFileFromServer);
         this.editor.removeEventListener("input", this.onInput);
-        this.elem.removeEventListener("click", this.buttonsListener);
+        this.elem.closest(".tinymist-editor-pane")?.removeEventListener("click", this.buttonsListener);
         window.removeEventListener("beforeunload", this.destroy);
         window.removeEventListener("pagehide", this.destroy);
         // Before form submit, sync CodeMirror content to textarea
@@ -202,7 +205,6 @@ export class TinymistEditorUI {
         if (!event.target) return;
         const button = (event.target as Element).closest("button[data-action]");
         if (button === null) return;
-        if (button.closest(".tinymist-preview-pane")) return;
 
         const action = button.getAttribute("data-action");
         switch (action) {
@@ -226,12 +228,6 @@ export class TinymistEditorUI {
                 break;
             case "insertHeading":
                 this.insertHeading();
-                break;
-            case "clearConsole":
-                window.$events.emit("tinymist-console-clear");
-                break;
-            case "toggleConsole":
-                this.toggleConsole(button as HTMLButtonElement);
                 break;
             default:
                 console.warn(`[Editor]Unknown button action: ${action}`);
@@ -556,19 +552,6 @@ export class TinymistEditorUI {
             line: line.number - 1, // 0-indexed
             character: pos - line.from,
         });
-    }
-
-    private toggleConsole(button?: HTMLButtonElement) {
-        const collapsed = this.elem.classList.toggle("tinymist-console-collapsed");
-        if (button) {
-            button.setAttribute("aria-expanded", (!collapsed).toString());
-            button.setAttribute("title", collapsed ? "Expand Console" : "Collapse Console");
-        }
-
-        const consoleContent = this.elem.querySelector(".tinymist-console-content") as HTMLElement | null;
-        if (consoleContent) {
-            consoleContent.setAttribute("aria-hidden", collapsed ? "true" : "false");
-        }
     }
 
     private insertFromEditorEvent(eventContent: { typst?: string; markdown?: string; html?: string }): void {

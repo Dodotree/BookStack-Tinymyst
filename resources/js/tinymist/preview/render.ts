@@ -45,14 +45,12 @@ export class PreviewRenderer {
     private panStartScrollTop = 0;
     private activeFileName = "entry.typ";
     private cursorSpotlightUserEnabled = true;
-    private previewPaneElement: HTMLElement | null = null;
 
 
     constructor(
         previewElement: HTMLElement,
     ) {
         this.previewElement = previewElement;
-        this.previewPaneElement = this.previewElement.closest(".tinymist-preview-pane") as HTMLElement | null;
 
         this.handleSyncInit = this.handleSyncInit.bind(this);
         this.dispose = this.dispose.bind(this);
@@ -66,7 +64,6 @@ export class PreviewRenderer {
         this.handleZoomIn = this.handleZoomIn.bind(this);
         this.handleZoomOut = this.handleZoomOut.bind(this);
         this.handleZoomReset = this.handleZoomReset.bind(this);
-        this.handlePanToggle = this.handlePanToggle.bind(this);
         this.handleActiveFileChange = this.handleActiveFileChange.bind(this);
         this.handlePreviewPaneClick = this.handlePreviewPaneClick.bind(this);
         this.handlePanMouseDown = this.handlePanMouseDown.bind(this);
@@ -74,13 +71,9 @@ export class PreviewRenderer {
         this.handlePanMouseUp = this.handlePanMouseUp.bind(this);
 
         window.$events.listen("tinymist-data-binary", this.handleSyncMessage);
-        window.$events.listen("tinymist-preview-zoom-in", this.handleZoomIn);
-        window.$events.listen("tinymist-preview-zoom-out", this.handleZoomOut);
-        window.$events.listen("tinymist-preview-zoom-reset", this.handleZoomReset);
-        window.$events.listen("tinymist-preview-pan-toggle", this.handlePanToggle);
         window.$events.listen("tinymist-active-file-change", this.handleActiveFileChange);
 
-        this.previewPaneElement?.addEventListener("click", this.handlePreviewPaneClick);
+        this.previewElement.closest(".tinymist-preview-pane")?.addEventListener("click", this.handlePreviewPaneClick);
 
         this.previewElement.addEventListener("mousedown", this.handlePanMouseDown);
         this.previewElement.addEventListener("mousemove", this.handlePanMouseMove);
@@ -289,7 +282,7 @@ export class PreviewRenderer {
         this.session = null;
         this.renderer = null;
 
-        this.previewPaneElement?.removeEventListener("click", this.handlePreviewPaneClick);
+        this.previewElement.closest(".tinymist-preview-pane")?.removeEventListener("click", this.handlePreviewPaneClick);
         window.$events.remove("tinymist-active-file-change", this.handleActiveFileChange);
 
         console.log("[Preview WASM] Renderer disposed");
@@ -307,7 +300,7 @@ export class PreviewRenderer {
         this.setZoom(1);
     }
 
-    private handlePanToggle({ enabled }: { enabled: boolean }): void {
+    private handlePanToggle(enabled: boolean): void {
         this.panEnabled = enabled;
         if (!enabled) {
             this.stopPanning();
@@ -339,7 +332,7 @@ export class PreviewRenderer {
                 this.handleZoomReset();
                 break;
             case "previewPanToggle":
-                window.$events.emit("tinymist-preview-pan-toggle", { enabled: !this.panEnabled });
+                this.handlePanToggle(!this.panEnabled);
                 break;
             case "previewCursorSpotlightToggle":
                 this.cursorSpotlightUserEnabled = !this.cursorSpotlightUserEnabled;
@@ -351,7 +344,7 @@ export class PreviewRenderer {
     }
 
     private applyPanButtonState(): void {
-        const button = this.previewPaneElement?.querySelector('button[data-action="previewPanToggle"]') as HTMLButtonElement | null;
+        const button = this.previewElement.closest(".tinymist-preview-pane")?.querySelector('button[data-action="previewPanToggle"]') as HTMLButtonElement | null;
         if (!button) {
             return;
         }
@@ -362,7 +355,7 @@ export class PreviewRenderer {
     private applyCursorSpotlightState(): void {
         const enabled = this.cursorSpotlightUserEnabled && this.activeFileName === "entry.typ";
 
-        const button = this.previewPaneElement?.querySelector('button[data-action="previewCursorSpotlightToggle"]') as HTMLButtonElement | null;
+        const button = this.previewElement.closest(".tinymist-preview-pane")?.querySelector('button[data-action="previewCursorSpotlightToggle"]') as HTMLButtonElement | null;
         if (button) {
             button.setAttribute("aria-pressed", enabled.toString());
             button.setAttribute("title", enabled ? "Disable Caret Spotlight" : "Enable Caret Spotlight");

@@ -1,6 +1,7 @@
 // Visible editor console for displaying compilation messages and diagnostics
 export class TinymistConsole {
     console: HTMLElement;
+    collapsed: boolean = false;
 
     constructor(console: HTMLElement) {
         this.console = console;
@@ -8,9 +9,41 @@ export class TinymistConsole {
         // Saving reference of the bound method to be able to remove listeners later if needed
         this.logMessage = this.logMessage.bind(this);
         this.clearConsole = this.clearConsole.bind(this);
+        this.handlePanelClick = this.handlePanelClick.bind(this);
+        this.toggleConsole = this.toggleConsole.bind(this);
 
-        window.$events.listen("tinymist-console-clear", this.clearConsole);
         window.$events.listen("tinymist-console-log", this.logMessage);
+        this.console.closest('#tinymist-console-panel')?.addEventListener('click', this.handlePanelClick);
+    }
+
+    handlePanelClick(event: Event): void {
+        const button = (event.target as Element | null)?.closest('button[data-action]') as HTMLButtonElement | null;
+        if (!button) {
+            return;
+        }
+
+        const action = button.getAttribute('data-action');
+        switch (action) {
+            case 'toggleConsole':
+                this.toggleConsole(button);
+                break;
+            case 'clearConsole':
+                this.clearConsole();
+                break;
+            default:
+                break;
+        }
+    }
+
+    toggleConsole(button?: HTMLButtonElement): void {
+        this.collapsed = !this.collapsed;
+        window.$events.emit('tinymist-console-toggle', this.collapsed);
+        if (button) {
+            button.setAttribute('aria-expanded', (!this.collapsed).toString());
+            button.setAttribute('title', this.collapsed ? 'Expand Console' : 'Collapse Console');
+        }
+
+        this.console.setAttribute('aria-hidden', this.collapsed ? 'true' : 'false');
     }
 
     logMessage({ type, message, details }: { type: "error" | "warning" | "info" | "success"; message: string; details?: any; }) {
@@ -49,5 +82,10 @@ export class TinymistConsole {
     clearConsole() {
         this.console.innerHTML =
             '<div class="text-muted p-m text-small">Console cleared.</div>';
+    }
+
+    destroy(): void {
+        window.$events.remove("tinymist-console-log", this.logMessage);
+        this.console.closest('#tinymist-console-panel')?.removeEventListener('click', this.handlePanelClick);
     }
 }

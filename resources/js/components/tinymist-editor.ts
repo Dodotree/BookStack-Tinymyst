@@ -12,7 +12,6 @@ export class TinymistEditor extends Component {
     elem!: HTMLElement;
     editor!: HTMLTextAreaElement;
     preview!: HTMLElement;
-    console!: HTMLElement;
     getText!: () => string;
     syncContentToTextarea!: () => string;
 
@@ -20,6 +19,7 @@ export class TinymistEditor extends Component {
     private attachmentRefreshHandler: ((data: { pageId?: number, html?: string }) => void) | null = null;
     private fileSyncStatusHandler: ((status: { what?: string; connected?: boolean }) => void) | null = null;
     private editorUI: TinymistEditorUI | null = null;
+    private consoleUI: TinymistConsole | null = null;
     private fileSelect: HTMLSelectElement | null = null;
     private fileSyncConnected = false;
 
@@ -27,6 +27,7 @@ export class TinymistEditor extends Component {
 
     async setupWasm() {
         try {
+            // The preview element is for content, not the whole pane
             const previewElement = this.$refs.preview as HTMLElement;
             if (!previewElement) {
                 console.warn("[Preview Data] Preview element not found, skipping preview setup");
@@ -76,7 +77,7 @@ export class TinymistEditor extends Component {
         this.getText = editorUI.getEntryText;
         this.syncContentToTextarea = editorUI.syncEntryContentToTextarea;
 
-        new TinymistConsole(this.$refs.console);
+        this.consoleUI = new TinymistConsole(this.$refs.console);
         // Even if the page was not saved yet, Bookstack still creates a page ID for draft pages
         const pageId = Number(this.$opts.pageId);
         new TinymistFallbackCompiler(pageId);
@@ -124,6 +125,11 @@ export class TinymistEditor extends Component {
 
     destroy() {
         this.connectionsManager?.destroy();
+        this.consoleUI?.destroy();
+        this.consoleUI = null;
+        this.editorUI?.destroy();
+        this.editorUI = null;
+
         if (this.fileSyncStatusHandler) {
             window.$events.remove('tinymist-status', this.fileSyncStatusHandler);
             this.fileSyncStatusHandler = null;
