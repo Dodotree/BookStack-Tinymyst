@@ -22,6 +22,7 @@ export class TinymistConnectionsManager {
 
     private bridgeConnected: boolean = false;
     private fileSyncConnected: boolean = false;
+    private fallbackMode: boolean = false;
     private restartAllowed: boolean = true;
 
     constructor(options: TinymistConnectionsManagerOptions) {
@@ -123,12 +124,17 @@ export class TinymistConnectionsManager {
 
     private checkConnectionHealth(): void {
         if (!this.bridgeConnected || !this.fileSyncConnected) {
+            if (this.fallbackMode) {
+                return;
+            }
+            this.fallbackMode = true;
             window.$events.emit('tinymist-console-log', {
                 type: 'warning',
                 message: this.restartAllowed ? '⚠ Entering fallback mode' : '⚠ Disconnected and restart disabled',
             });
             window.$events.emit('tinymist-fallback-enable', this.restartAllowed);
         } else {
+            this.fallbackMode = false;
             window.$events.emit('tinymist-fallback-enable', false);
             window.$events.emit('tinymist-console-log', {
                 type: 'success',

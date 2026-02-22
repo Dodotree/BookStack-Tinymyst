@@ -30,7 +30,10 @@
                             @if(!$attachment->external)
                                 @php($fileName = $attachment->getFileName())
                                 @if($fileName !== 'entry.typ')
-                                    <option value="{{ $fileName }}">{{ $fileName }}</option>
+                                    <option
+                                        value="{{ $fileName }}"
+                                        data-file-url="{{ $attachment->getUrl() }}"
+                                    >{{ $fileName }}</option>
                                 @endif
                             @endif
                         @endforeach
@@ -72,6 +75,10 @@
                           rows="20"
                           class="tinymist-source-editor"
                           placeholder="Enter Typst source code here...">@if(isset($model) || old('tinymist')){{ old('tinymist') ?? $model->markdown ?? '' }}@endif</textarea>
+                <div refs="tinymist-editor@image-preview" class="tinymist-editor-image-view flex flex-fill items-center justify-center" hidden>
+                    <div refs="tinymist-editor@image-preview-message" class="text-muted p-m text-small">Image preview unavailable.</div>
+                    <img refs="tinymist-editor@image-preview-image" class="tinymist-editor-image" alt="Attachment preview" hidden>
+                </div>
             </div>
         </div>
 
@@ -282,6 +289,18 @@
         border: none;
         resize: none;
         margin: 0;
+    }
+
+    .tinymist-editor-image-view {
+        min-height: 200px;
+        width: 100%;
+        overflow: auto;
+    }
+
+    .tinymist-editor-image {
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: contain;
     }
 
     .tinymist-source-editor:focus {

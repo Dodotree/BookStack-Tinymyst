@@ -60,6 +60,7 @@ export class Attachments extends Component {
             }
             this.attachmentSessionDirtyByName.set(normalizedName, Boolean(isDirty));
             this.applyDirtyStateForFile(normalizedName);
+            this.emitDirtyMapUpdated();
         });
 
         this.attachLinkButton.addEventListener('click', () => {
@@ -89,7 +90,6 @@ export class Attachments extends Component {
             window.$components.init(this.listPanel);
             this.applyAllDirtyStatesToList();
             window.$events.emit('attachments-page-updated', {
-                pageId: Number(this.pageId),
                 html: String(resp.data || ''),
             });
             void this.refreshDirtyMapFromServer();
@@ -165,6 +165,23 @@ export class Attachments extends Component {
             this.attachmentServerDirtyByName.set(normalizedName, Boolean(isDirty));
         }
         this.applyAllDirtyStatesToList();
+        this.emitDirtyMapUpdated();
+    }
+
+    emitDirtyMapUpdated() {
+        const effectiveMap = {};
+        const fileNames = new Set([
+            ...this.attachmentServerDirtyByName.keys(),
+            ...this.attachmentSessionDirtyByName.keys(),
+        ]);
+
+        fileNames.forEach(fileName => {
+            effectiveMap[fileName] = this.isAttachmentDirty(fileName);
+        });
+
+        window.$events.emit('tinymist-attachments-dirty-map-updated', {
+            dirtyMap: effectiveMap,
+        });
     }
 
     async refreshDirtyMapFromServer() {
@@ -197,6 +214,7 @@ export class Attachments extends Component {
         this.attachmentServerDirtyByName.set(normalizedName, false);
         this.attachmentSessionDirtyByName.set(normalizedName, false);
         this.applyDirtyStateForFile(normalizedName);
+        this.emitDirtyMapUpdated();
     }
 
     async saveAttachmentFromPreview(attachmentId) {

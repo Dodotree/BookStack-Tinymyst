@@ -64,15 +64,17 @@ export class PreviewRenderer {
         this.handleZoomIn = this.handleZoomIn.bind(this);
         this.handleZoomOut = this.handleZoomOut.bind(this);
         this.handleZoomReset = this.handleZoomReset.bind(this);
-        this.handleActiveFileChange = this.handleActiveFileChange.bind(this);
         this.handlePreviewPaneClick = this.handlePreviewPaneClick.bind(this);
         this.handlePanMouseDown = this.handlePanMouseDown.bind(this);
         this.handlePanMouseMove = this.handlePanMouseMove.bind(this);
         this.handlePanMouseUp = this.handlePanMouseUp.bind(this);
 
         window.$events.listen("tinymist-data-binary", this.handleSyncMessage);
-        window.$events.listen("tinymist-active-file-change", this.handleActiveFileChange);
 
+        window.$events.listen("tinymist-active-file-change", (payload: { fileName: string; url: string }) => {
+            this.activeFileName = payload.fileName;
+            this.applyCursorSpotlightState();
+        });
         this.previewElement.closest(".tinymist-preview-pane")?.addEventListener("click", this.handlePreviewPaneClick);
 
         this.previewElement.addEventListener("mousedown", this.handlePanMouseDown);
@@ -283,7 +285,6 @@ export class PreviewRenderer {
         this.renderer = null;
 
         this.previewElement.closest(".tinymist-preview-pane")?.removeEventListener("click", this.handlePreviewPaneClick);
-        window.$events.remove("tinymist-active-file-change", this.handleActiveFileChange);
 
         console.log("[Preview WASM] Renderer disposed");
     }
@@ -307,11 +308,6 @@ export class PreviewRenderer {
         }
         this.previewElement.classList.toggle("tinymist-preview-pan-enabled", enabled);
         this.applyPanButtonState();
-    }
-
-    private handleActiveFileChange(fileName: string): void {
-        this.activeFileName = String(fileName || "entry.typ").trim() || "entry.typ";
-        this.applyCursorSpotlightState();
     }
 
     private handlePreviewPaneClick(event: Event): void {

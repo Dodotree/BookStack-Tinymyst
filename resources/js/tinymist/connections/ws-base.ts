@@ -71,11 +71,15 @@ export abstract class TinymistWebSocketClient {
     public async connect(): Promise<void> {
         return new Promise((resolve, reject) => {
             if (!this.reconnectAllowed) {
-                reject(`[${this.config.name}] Connect: Reconnection not allowed`);
+                reject(new Error(`[${this.config.name}] Connect: Reconnection not allowed`));
+                return;
             }
             if (!this.token) {
-                reject(`[${this.config.name}] No token available`);
+                reject(new Error(`[${this.config.name}] No token available`));
+                return;
             }
+
+            let settled = false;
 
             try {
                 const wsUrl = this.buildUrl();
@@ -91,6 +95,7 @@ export abstract class TinymistWebSocketClient {
                 console.log(`[${this.config.name}] Socket created`, { wsUrl: wsUrl.replace(this.token, 'TOKEN_HIDDEN') });
 
                 this.socket.onopen = () => {
+                    settled = true;
                     this.reconnectAttempts = 0;
                     this.clearConnectionTimeout();
                     this.startHeartbeat();
@@ -111,7 +116,10 @@ export abstract class TinymistWebSocketClient {
                     console.error(`[${this.config.name}] WebSocket error:`, error);
                     window.$events.emit("tinymist-status", { what: this.config.statusKey, connected: false });
                     this.onError(error);
-                    reject(error);
+                    if (!settled) {
+                        settled = true;
+                        reject(new Error(`[${this.config.name}] WebSocket error before open`));
+                    }
                 };
 
                 this.socket.onclose = (event) => {
@@ -136,7 +144,10 @@ export abstract class TinymistWebSocketClient {
                     }
 
                     this.onClose(event);
-                    reject(new Error(`Connection closed: ${event.code} - ${event.reason || errCodes[event.code] || 'Unknown reason'}`));
+                    if (!settled) {
+                        settled = true;
+                        reject(new Error(`Connection closed: ${event.code} - ${event.reason || errCodes[event.code] || 'Unknown reason'}`));
+                    }
                 };
             } catch (error) {
                 window.$events.emit("tinymist-status", { what: this.config.statusKey, connected: false });
@@ -201,7 +212,9 @@ export abstract class TinymistWebSocketClient {
 
         this.reconnectTimeout = setTimeout(() => {
             this.reconnectTimeout = null;
-            this.connect();
+            void this.connect().catch((err) => {
+                console.warn(`[${this.config.name}] Reconnect attempt failed:`, err);
+            });
         }, delay);
     }
 

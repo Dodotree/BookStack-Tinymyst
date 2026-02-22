@@ -14,14 +14,11 @@ export class TinymistEditor extends Component {
     preview!: HTMLElement;
     getText!: () => string;
     syncContentToTextarea!: () => string;
+    pageId: number | undefined = undefined;
 
     private uniqueTabId: string = this.createUniqueTabId();
-    private attachmentRefreshHandler: ((data: { pageId?: number, html?: string }) => void) | null = null;
-    private fileSyncStatusHandler: ((status: { what?: string; connected?: boolean }) => void) | null = null;
     private editorUI: TinymistEditorUI | null = null;
     private consoleUI: TinymistConsole | null = null;
-    private fileSelect: HTMLSelectElement | null = null;
-    private fileSyncConnected = false;
 
     private connectionsManager: TinymistConnectionsManager | null = null;
 
@@ -78,33 +75,17 @@ export class TinymistEditor extends Component {
         this.syncContentToTextarea = editorUI.syncEntryContentToTextarea;
 
         this.consoleUI = new TinymistConsole(this.$refs.console);
-        // Even if the page was not saved yet, Bookstack still creates a page ID for draft pages
-        const pageId = Number(this.$opts.pageId);
-        new TinymistFallbackCompiler(pageId);
-        this.setupFileDropdown(pageId);
 
-        if (!pageId) {
-            window.$events.emit('tinymist-console-log', {
-                type: 'warning',
-                message: '⚠ Page ID not found, only fallback compilation will be available',
-            });
-            window.$events.emit('tinymist-fallback-enable', true);
-            return;
-        }
+        // Even if the page was not saved yet, Bookstack still creates a page ID for draft pages
+        this.pageId = Number(this.$opts.pageId);
+
+        new TinymistFallbackCompiler(this.pageId);
 
         this.connectionsManager = new TinymistConnectionsManager({
-            pageId,
+            pageId: this.pageId,
             wsToken: this.$opts.wsToken as string | undefined,
             uniqueTabId: this.uniqueTabId,
         });
-
-        this.fileSyncStatusHandler = (status: { what?: string; connected?: boolean }) => {
-            if (status?.what !== 'file-lsp-ws') {
-                return;
-            }
-            this.fileSyncConnected = Boolean(status.connected);
-        };
-        window.$events.listen('tinymist-status', this.fileSyncStatusHandler);
 
         this.connectionsManager.start();
 
@@ -129,56 +110,6 @@ export class TinymistEditor extends Component {
         this.consoleUI = null;
         this.editorUI?.destroy();
         this.editorUI = null;
-
-        if (this.fileSyncStatusHandler) {
-            window.$events.remove('tinymist-status', this.fileSyncStatusHandler);
-            this.fileSyncStatusHandler = null;
-        }
-        if (this.attachmentRefreshHandler) {
-            window.$events.remove('attachments-page-updated', this.attachmentRefreshHandler);
-            this.attachmentRefreshHandler = null;
-        }
-    }
-
-    private setupFileDropdown(pageId: number): void {
-        const fileSelect = this.$refs.fileList as HTMLSelectElement | undefined;
-        if (!fileSelect || !pageId) {
-            return;
-        }
-        this.fileSelect = fileSelect;
-
-        fileSelect.addEventListener('change', () => {
-            const selectedFile = this.fileSyncConnected ?
-                (fileSelect.value || 'entry.typ').trim() : 'entry.typ';
-            window.$events.emit("tinymist-active-file-change", selectedFile);
-        });
-
-        const refresh = (data: { pageId?: number, html?: string }) => {
-            if (!data || Number(data.pageId) !== pageId) {
-                return;
-            }
-            this.refreshFileDropdown(fileSelect, data.html || '');
-        };
-        this.attachmentRefreshHandler = refresh;
-        window.$events.listen('attachments-page-updated', refresh);
-    }
-
-    private refreshFileDropdown(fileSelect: HTMLSelectElement, attachmentsHtml: string): void {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(attachmentsHtml, 'text/html');
-        const attachmentNames = Array.from(doc.querySelectorAll('a'))
-            .map(link => (link.textContent || '').trim())
-            .filter(name => name.length > 0 && name !== 'entry.typ');
-
-        const uniqueAttachmentNames = [...new Set(attachmentNames)];
-        const selectedValue = fileSelect.value || 'entry.typ';
-
-        fileSelect.innerHTML = '';
-        fileSelect.add(new Option('entry.typ', 'entry.typ'));
-        uniqueAttachmentNames.forEach(name => fileSelect.add(new Option(name, name)));
-
-        const hasPrevious = Array.from(fileSelect.options).some(option => option.value === selectedValue);
-        fileSelect.value = hasPrevious ? selectedValue : 'entry.typ';
     }
 
 }

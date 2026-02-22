@@ -184,8 +184,8 @@ export class SemanticTokenProcessor {
         this.processSemanticTokensDelta = this.processSemanticTokensDelta.bind(this);
         window.$events.listen("tinymist-lsp-semantic-tokens", this.processSemanticTokens);
         window.$events.listen("tinymist-lsp-semantic-tokens-delta", this.processSemanticTokensDelta);
-        window.$events.listen("tinymist-active-file-change", (fileName: string) => {
-            this.activeFileName = fileName;
+        window.$events.listen("tinymist-active-file-change", (payload: { fileName: string; url: string }) => {
+            this.activeFileName = payload.fileName;
         });
     }
 

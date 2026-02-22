@@ -10,7 +10,7 @@ import {
     highlightActiveLine,
 } from "@codemirror/view";
 
-import { defaultKeymap } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { ChangeSet, EditorState, Transaction } from "@codemirror/state";
 import { LanguageDescription, defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { markdown } from "@codemirror/lang-markdown";
@@ -20,6 +20,7 @@ import { php } from "@codemirror/lang-php";
 
 import { SemanticTokenProcessor, highlightField } from "./semantic-tokens";
 import { DiagnosticsProcessor } from "./diagnostics";
+import { TinymistFileDropdown } from "./file-dropdown";
 
 type FileSnapshot = {
     docVersion: number;
@@ -44,12 +45,17 @@ export class TinymistEditorUI {
     elem: HTMLElement;
     editor: HTMLTextAreaElement;
     editorView: EditorView | null = null;
+    private imageViewContainer: HTMLDivElement | null = null;
+    private imageViewElement: HTMLImageElement | null = null;
+    private imageViewMessage: HTMLDivElement | null = null;
+
     private diagnosticsProcessor = new DiagnosticsProcessor();
     private semanticTokens = new SemanticTokenProcessor();
     private fallbackEnabled = false;
 
     private readonly entryFileName = "entry.typ";
     private activeFileName = this.entryFileName;
+
     private readonly fileStates: Map<string, FileSyncState> = new Map();
     private readonly maxSnapshots = 3;
     private readonly changeDebounceMs = 150;
@@ -78,6 +84,9 @@ export class TinymistEditorUI {
 
         this.setupCodeMirror();
         this.setupListeners();
+
+        new TinymistFileDropdown(this.elem.querySelector(".tinymist-file-select") as HTMLSelectElement);
+        this.setupAttachmentImageView();
 
         this.diagnosticsProcessor.attachEditorView(
             this.editorView!,
@@ -120,7 +129,8 @@ export class TinymistEditorUI {
                     }),
                     syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
                     highlightField, // Add custom highlighting support
-                    keymap.of(defaultKeymap),
+                    history(),
+                    keymap.of([...historyKeymap, ...defaultKeymap]),
                     EditorView.editable.of(true), // Make editor editable
                     EditorView.updateListener.of(this.updateListenerForCodeMirror),
                 ],
@@ -144,6 +154,55 @@ export class TinymistEditorUI {
             window.$events.emit("tinymist-console-log",
                 { type: "error", message: "[Editor] Failed to initialize CodeMirror editor", details: error });
         }
+    }
+
+    private setupAttachmentImageView(): void {
+        this.imageViewContainer = this.elem.querySelector('[refs="tinymist-editor@image-preview"]') as HTMLDivElement | null;
+        this.imageViewMessage = this.elem.querySelector('[refs="tinymist-editor@image-preview-message"]') as HTMLDivElement | null;
+        this.imageViewElement = this.elem.querySelector('[refs="tinymist-editor@image-preview-image"]') as HTMLImageElement | null;
+    }
+
+    private isImageFile(fileName: string): boolean {
+        return /\.(png|jpe?g|gif|webp|bmp|svg|ico|avif)$/i.test(fileName);
+    }
+
+    private showImagePreview(fileName: string, url: string): void {
+        if (!this.imageViewContainer || !this.imageViewElement || !this.imageViewMessage) {
+            return;
+        }
+
+        this.imageViewContainer.hidden = false;
+        if (this.editorView) {
+            this.editorView.dom.style.setProperty('display', 'none', 'important');
+        }
+        this.editor.style.display = 'none';
+
+        if (!url) {
+            this.imageViewElement.hidden = true;
+            this.imageViewElement.removeAttribute('src');
+            this.imageViewMessage.hidden = false;
+            this.imageViewMessage.textContent = `Image preview unavailable for ${fileName}.`;
+            return;
+        }
+
+        this.imageViewElement.src = url;
+        this.imageViewElement.hidden = false;
+        this.imageViewMessage.hidden = true;
+    }
+
+    private showTextEditor(): void {
+        if (this.imageViewContainer) {
+            this.imageViewContainer.hidden = true;
+        }
+        if (this.imageViewElement) {
+            this.imageViewElement.hidden = true;
+            this.imageViewElement.removeAttribute('src');
+        }
+        if (this.editorView) {
+            this.editorView.dom.style.display = '';
+            return;
+        }
+        this.editor.style.display = 'block';
     }
 
     updateListenerForCodeMirror(update: any) {
@@ -315,7 +374,7 @@ export class TinymistEditorUI {
                 this.setText(payload.content, true);
             }
             window.$events.emit("tinymist-console-log",
-                { type: "info", message: "[Editor] Document synchronized from server" });
+                { type: "info", message: `[Editor] Document ${payload.fileName} synchronized from server` });
         }
     }
 
@@ -332,7 +391,8 @@ export class TinymistEditorUI {
         return this.getOrCreateFileState(this.entryFileName).currentContent;
     }
 
-    public setActiveFile(fileName: string): void {
+    public setActiveFile(payload: { fileName: string; url: string }): void {
+        const { fileName, url } = payload;
         if (fileName === this.activeFileName) {
             return;
         }
@@ -340,6 +400,16 @@ export class TinymistEditorUI {
         this.flushPendingChanges(this.activeFileName);
 
         this.activeFileName = fileName;
+
+        if (this.isImageFile(fileName)) {
+            this.semanticTokens.clearHighlights();
+            this.diagnosticsProcessor.triggerLinting([]);
+            this.showImagePreview(fileName, url);
+            return;
+        }
+
+        this.showTextEditor();
+
         const state = this.getOrCreateFileState(fileName);
         this.semanticTokens.clearHighlights();
         this.diagnosticsProcessor.triggerLinting([]);
@@ -389,9 +459,17 @@ export class TinymistEditorUI {
 
     private flushPendingChanges(fileName: string): void {
         const state = this.getOrCreateFileState(fileName);
+
         if (state.pendingSendTimer) {
             clearTimeout(state.pendingSendTimer);
             state.pendingSendTimer = null;
+        }
+
+        const pendingChanges = state.snapshots.at(-1)?.afterTransactions;
+        if (!pendingChanges || pendingChanges.empty) {
+            // Happens only on early flash when files are switched
+            // Nothing gives you nothing, no need to advance docVersion or send empty changes to the server
+            return;
         }
 
         state.docVersion += 1;
@@ -405,7 +483,7 @@ export class TinymistEditorUI {
         } else if (!this.fallbackEnabled) {
             window.$events.emit("tinymist-text-diff", {
                 fileName,
-                changes: state.snapshots.at(-1)?.afterTransactions,
+                changes: pendingChanges,
                 docVersion: state.docVersion,
             });
         }
@@ -441,7 +519,6 @@ export class TinymistEditorUI {
             state.pendingDirtyTimer = null;
         }
         state.lastEmittedDirty = false;
-        this.emitDirtyState(payload.fileName, false);
     }
 
     private queueDirtyStateEmit(fileName: string): void {
@@ -667,7 +744,12 @@ export class TinymistEditorUI {
                     to: this.editorView.state.doc.length,
                     insert: content,
                 },
-                annotations: fromSync ? Transaction.userEvent.of("tinymist-sync") : undefined,
+                annotations: fromSync
+                    ? [
+                        Transaction.userEvent.of("tinymist-sync"),
+                        Transaction.addToHistory.of(false),
+                    ]
+                    : undefined,
             });
         } else {
             this.editor.value = content;

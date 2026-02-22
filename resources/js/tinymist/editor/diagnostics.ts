@@ -23,8 +23,8 @@ export class DiagnosticsProcessor {
         this.mapDiagnosticsToCurrent = this.mapDiagnosticsToCurrent.bind(this);
         window.$events.listen("tinymist-diagnostics", this.mapDiagnosticsToCurrent);
         window.$events.listen("tinymist-lsp-diagnostics", this.mapDiagnosticsToCurrent);
-        window.$events.listen("tinymist-active-file-change", (fileName: string) => {
-            this.activeFileName = fileName;
+        window.$events.listen("tinymist-active-file-change", (payload: { fileName: string; url: string }) => {
+            this.activeFileName = payload.fileName;
         });
     }
 

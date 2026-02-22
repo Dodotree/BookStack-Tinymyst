@@ -9,7 +9,7 @@
  * Handles compilation via AJAX endpoint and diagnostic processing
  */
 export class TinymistFallbackCompiler {
-    private enabled: boolean = true;
+    private enabled: boolean = false;
     private pageId: number = 0;
 
     constructor(pageId: number) {
