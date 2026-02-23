@@ -57,14 +57,6 @@ export class FileManager {
     const currentContent = this.loadDocument(pageId, fileName);
     const text = Text.of(currentContent.split("\n"));
 
-    console.log("[WS IN changes]", {
-        changesType: typeof changeSetJson,
-        isArray: Array.isArray(changeSetJson),
-        tag: Object.prototype.toString.call(changeSetJson),
-        value: changeSetJson,
-        text,
-    });
-
     let changeSet: ChangeSet;
     try {
       changeSet = ChangeSet.fromJSON(changeSetJson as any);
