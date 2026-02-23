@@ -32,7 +32,7 @@ const tokenModifiers = [
     "strong", "emph", "math", "readonly", "static", "defaultLibrary"
 ];
 
-// Styling is provided via CSS classes (tinymist-highlight-* and tinymist-mod-*)
+// Styling is provided via CSS classes (tm-hlt-* and tm-mod-*)
 // Keep token keys to validate CSS coverage.
 const highlightColors = [
     "math",
@@ -98,9 +98,9 @@ function buildDecorationEntries(
 
             if (from < to && from >= 0 && to <= doc.length) {
                 const classNames = [
-                    "tinymist-highlight",
-                    `tinymist-highlight-${region.type}`,
-                    ...(region.modifiers ?? []).map((modifier) => `tinymist-mod-${modifier}`),
+                    "tm-hlt",
+                    `tm-hlt-${region.type}`,
+                    ...(region.modifiers ?? []).map((modifier) => `tm-mod-${modifier}`),
                 ].join(" ");
                 const mark = Decoration.mark({
                     class: classNames,

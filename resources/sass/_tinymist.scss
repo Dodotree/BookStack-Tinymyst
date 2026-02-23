@@ -1,0 +1,424 @@
+@use "mixins";
+@use "vars";
+
+/* Match markdown editor structure */
+.title-input.page-title input[type="text"] {
+  max-width: 100%;
+}
+
+#tinymist-editor {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 100%;
+
+  &.tinymist-console-collapsed {
+    .tinymist-console-panel {
+      flex: 0 0 auto;
+      min-height: 0;
+
+      button[data-action="toggleConsole"] svg {
+        transform: rotate(180deg);
+      }
+    }
+
+    .tinymist-console-content,
+    .tinymist-panel-divider-horizontal {
+      display: none;
+    }
+  }
+
+  .tinymist-left-column {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .tinymist-panel-divider-vertical {
+    width: 2px;
+    cursor: col-resize;
+    flex-shrink: 0;
+    @include mixins.lightDark(background-color, #ddd, #000);
+  }
+
+  .tinymist-panel-divider-horizontal {
+    height: 2px;
+    cursor: row-resize;
+    flex-shrink: 0;
+    @include mixins.lightDark(background-color, #ddd, #000);
+  }
+
+  .tinymist-editor-pane {
+    border-top: 1px solid;
+    border-bottom: 1px solid;
+    position: relative;
+    flex: 2;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    @include mixins.lightDark(border-color, #ddd, #000);
+
+    > .flex.flex-fill {
+      display: flex;
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+    }
+
+    .cm-editor {
+      flex: 1;
+      font-size: 14px;
+      border: none;
+      @include mixins.lightDark(background-color, #fff, #1e1e1e);
+      @include mixins.lightDark(color, #24292f, #d4d4d4);
+    }
+
+    .cm-scroller {
+      overflow: auto;
+    }
+
+    .cm-content {
+      @include mixins.lightDark(caret-color, #111, #fff);
+    }
+
+    .cm-gutters {
+      @include mixins.lightDark(background-color, #f6f8fa, #252526);
+      @include mixins.lightDark(color, #6e7781, #858585);
+      @include mixins.lightDark(border-right, 1px solid #d0d7de, 1px solid #3e3e42);
+    }
+
+    .cm-activeLineGutter {
+      @include mixins.lightDark(background-color, #eef2f6, #2a2a2a);
+      @include mixins.lightDark(color, #24292f, #c6c6c6);
+    }
+
+    .cm-activeLine {
+      @include mixins.lightDark(background-color, #f5f7fa, #2a2d2e);
+    }
+
+    .cm-selectionBackground,
+    .cm-focused .cm-selectionBackground {
+      @include mixins.lightDark(background-color, #cce5ff, #264f78, true);
+    }
+  }
+
+  .tinymist-console-panel {
+    border-top: 1px solid;
+    border-bottom: 1px solid;
+    flex: 1;
+    min-height: 150px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+    @include mixins.lightDark(border-color, #ddd, #000);
+
+    button[data-action="toggleConsole"] svg {
+      transition: transform 0.15s ease-in-out;
+    }
+  }
+
+  .tinymist-preview-pane {
+    border-top: 1px solid;
+    border-bottom: 1px solid;
+    flex-basis: 50%;
+    flex-shrink: 0;
+    flex-grow: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+    @include mixins.lightDark(border-color, #ddd, #000);
+
+    button[data-action="previewPanToggle"][aria-pressed="true"],
+    button[data-action="previewCursorSpotlightToggle"][aria-pressed="true"] {
+      @include mixins.lightDark(color, #2d6f96, #7ec5f0);
+    }
+  }
+
+  .tinymist-file-select {
+    min-width: 150px;
+    max-width: 320px;
+    height: 28px;
+    margin-right: 8px;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  .tinymist-source-editor {
+    flex: 1;
+    width: 100%;
+    min-height: 200px;
+    font-family: "Monaco", "Menlo", "Ubuntu Mono", "Consolas", monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    padding: 12px;
+    border: none;
+    resize: none;
+    margin: 0;
+
+    &:focus {
+      outline: 2px solid #0288d1;
+      outline-offset: -2px;
+    }
+  }
+
+  .tinymist-editor-image-view {
+    min-height: 200px;
+    width: 100%;
+    overflow: auto;
+  }
+
+  .tinymist-editor-image {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
+
+  .tinymist-preview-content {
+    flex: 1;
+    padding: 20px;
+    overflow: auto;
+    @include mixins.lightDark(background-color, #fff, #222);
+
+    &.loading {
+      opacity: 0.6;
+      pointer-events: none;
+    }
+
+    &.tinymist-preview-pan-enabled {
+      cursor: grab;
+    }
+
+    &.tinymist-preview-panning {
+      cursor: grabbing;
+    }
+
+    svg {
+      width: 100%;
+      max-width: none;
+      display: block;
+      margin: 0;
+
+      @include mixins.whenDark {
+        filter: invert(1) hue-rotate(180deg);
+      }
+
+      image {
+        @include mixins.whenDark {
+          filter: invert(1) hue-rotate(180deg);
+        }
+      }
+    }
+  }
+
+  .tinymist-console-content {
+    flex: 1;
+    padding: 8px 12px;
+    overflow: auto;
+    font-family: "Monaco", "Menlo", "Ubuntu Mono", "Consolas", monospace;
+    font-size: 12px;
+    line-height: 1.5;
+    display: block;
+    @include mixins.lightDark(background-color, #fff, #1a1a1a);
+    @include mixins.lightDark(color, inherit, #ddd);
+  }
+}
+
+.console-message {
+  display: block;
+  padding: 6px 8px;
+  margin: 4px 0;
+  border-left: 3px solid transparent;
+
+  pre {
+    display: inline;
+    margin: 0;
+    font-family: inherit;
+    font-size: inherit;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+
+  &.error {
+    @include mixins.lightDark(color, #d32f2f, #ff6b6b);
+    @include mixins.lightDark(border-left-color, #d32f2f, #ff6b6b);
+  }
+
+  &.warning {
+    @include mixins.lightDark(color, #f57c00, #ffa726);
+    @include mixins.lightDark(border-left-color, #f57c00, #ffa726);
+  }
+
+  &.info {
+    @include mixins.lightDark(color, #0288d1, #4fc3f7);
+    @include mixins.lightDark(border-left-color, #0288d1, #4fc3f7);
+  }
+
+  &.success {
+    @include mixins.lightDark(color, #388e3c, #66bb6a);
+    @include mixins.lightDark(border-left-color, #388e3c, #66bb6a);
+  }
+}
+
+/* Semantic token highlighting (Tinymist) */
+.tm-hlt {
+  color: inherit;
+
+  &-comment {
+    @include mixins.lightDark(color, #57606a, #808080);
+  }
+
+  &-string {
+    @include mixins.lightDark(color, #0a7f3f, #52be80);
+  }
+
+  &-keyword {
+    @include mixins.lightDark(color, #8250df, #bb8fce);
+  }
+
+  &-operator {
+    @include mixins.lightDark(color, #d1242f, #e06c75);
+  }
+
+  &-number {
+    @include mixins.lightDark(color, #9a6700, #d6863e);
+  }
+
+  &-function,
+  &-method,
+  &-macro,
+  &-decorator {
+    @include mixins.lightDark(color, #0969da, #5dade2);
+  }
+
+  &-type,
+  &-class,
+  &-enum,
+  &-interface,
+  &-struct,
+  &-typeParameter,
+  &-namespace {
+    @include mixins.lightDark(color, #0550ae, #56b6c2);
+  }
+
+  &-variable,
+  &-property,
+  &-enumMember,
+  &-parameter,
+  &-label,
+  &-term {
+    @include mixins.lightDark(color, #7a4e00, #e5c07b);
+  }
+
+  &-punct,
+  &-delim {
+    @include mixins.lightDark(color, #9a6700, #d19a66);
+  }
+
+  &-bool,
+  &-pol {
+    @include mixins.lightDark(color, #a40e26, #c678dd);
+  }
+
+  &-escape,
+  &-raw,
+  &-marker {
+    @include mixins.lightDark(color, #cf222e, #e06c75);
+  }
+
+  &-link,
+  &-ref,
+  &-heading {
+    @include mixins.lightDark(color, #0969da, #61afef);
+  }
+
+  &-error {
+    @include mixins.lightDark(color, #cf222e, #e74c3c);
+  }
+
+  &-text {
+    color: inherit;
+  }
+}
+
+.tm-mod {
+  &-strong {
+    font-weight: bold;
+  }
+
+  &-emph {
+    font-style: italic;
+  }
+
+  &-math {
+    @include mixins.lightDark(background-color, #e8f0ff, #0b3049);
+  }
+
+  &-readonly {
+    pointer-events: none;
+    opacity: 0.6;
+  }
+
+  &-static {
+    @include mixins.lightDark(background-color, #edf1ff, #333355);
+  }
+
+  &-defaultLibrary {
+    @include mixins.lightDark(background-color, #ececec, #333333);
+  }
+}
+
+/* Legacy error container (kept for compatibility) */
+.tinymist-error-container {
+  background: #fee;
+  border-bottom: 1px solid;
+  @include mixins.lightDark(border-bottom-color, #f88, #811);
+  @include mixins.lightDark(color, inherit, #fcc);
+  @include mixins.whenDark {
+    background: #422;
+  }
+}
+
+/* Mobile/Portrait mode - stack all three panels vertically */
+@include mixins.smaller-than(vars.$bp-l) {
+  #tinymist-editor {
+    flex-direction: column;
+
+    .tinymist-left-column {
+      width: 100%;
+      flex: 6;
+    }
+
+    .tinymist-editor-pane {
+      min-height: 250px;
+      flex: 1;
+    }
+
+    .tinymist-console-panel {
+      flex: 1;
+      min-height: 200px;
+    }
+
+    .tinymist-preview-pane {
+      width: 100%;
+      flex-basis: auto !important;
+      min-height: 250px;
+      flex: 4;
+    }
+
+    .tinymist-panel-divider-vertical {
+      display: none;
+    }
+
+    .tinymist-panel-divider-horizontal {
+      height: 2px;
+    }
+  }
+}
