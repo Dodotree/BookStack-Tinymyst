@@ -18,10 +18,10 @@
     "ts:lint": "tsc --noEmit",
     "test": "jest",
     "postinstall": "node tinymist-devops/download-typst.js && node tinymist-devops/download-tinymist.js",
-    "ws:dev": "ts-node-dev --respawn --transpile-only --project tsconfig.server.json tinymist-devops/node/file-sync/server.ts",
+    "ws:dev": "ts-node-dev --respawn --transpile-only --prefer-ts-exts --project tsconfig.server.json tinymist-devops/node/file-sync/server.ts",
     "ws:build": "tsc --project tsconfig.server.json",
     "ws:start": "node dev/build/file-sync/server.js",
-    "preview:dev": "ts-node-dev --respawn --transpile-only --project tsconfig.server.json tinymist-devops/node/preview/preview-server.ts",
+    "preview:dev": "ts-node-dev --respawn --transpile-only --prefer-ts-exts --project tsconfig.server.json tinymist-devops/node/preview/preview-server.ts",
     "preview:build": "tsc --project tsconfig.server.json",
     "preview:start": "node dev/build/preview/preview-server.js"
   },
