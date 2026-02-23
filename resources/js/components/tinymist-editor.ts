@@ -4,13 +4,12 @@ import { Component } from "./component";
 import { TinymistConnectionsManager } from "../tinymist/connections/connections-manager";
 import { TinymistFallbackCompiler } from "../tinymist/connections/fallback";
 import { TinymistEditorUI } from "../tinymist/editor/editor";
+import { TinymistFileDropdown } from "../tinymist/editor/file-dropdown";
 import { TinymistConsole } from "../tinymist/console";
 import { PreviewRenderer } from "../tinymist/preview/render";
 
-
 export class TinymistEditor extends Component {
     elem!: HTMLElement;
-    editor!: HTMLTextAreaElement;
     preview!: HTMLElement;
     getText!: () => string;
     syncContentToTextarea!: () => string;
@@ -18,7 +17,6 @@ export class TinymistEditor extends Component {
 
     private uniqueTabId: string = this.createUniqueTabId();
     private editorUI: TinymistEditorUI | null = null;
-    private consoleUI: TinymistConsole | null = null;
 
     private connectionsManager: TinymistConnectionsManager | null = null;
 
@@ -56,25 +54,21 @@ export class TinymistEditor extends Component {
         console.log("[Tinymist Editor] setup() called");
 
         this.elem = this.$el;
-        this.editor = this.$refs.editor as HTMLTextAreaElement;
 
-        console.log("[Tinymist Editor] Elements found:", {
-            elem: !!this.elem,
-            editor: !!this.editor,
-            console: !!this.$refs.console,
-        });
-        console.log(
-            "[Tinymist Editor] Initial content length:",
-            this.editor.value.length
+        const editorUI = new TinymistEditorUI(
+            this.$refs.editor as HTMLTextAreaElement,
+            this.$refs.imagePreview as HTMLDivElement,
+            this.$refs.imagePreviewImage as HTMLImageElement,
+            this.$refs.imagePreviewMessage as HTMLDivElement
         );
-
-        const editorUI = new TinymistEditorUI(this.elem, this.editor);
         this.editorUI = editorUI;
         // Since all Bookstack editors require getText()
         this.getText = editorUI.getEntryText;
         this.syncContentToTextarea = editorUI.syncEntryContentToTextarea;
+        new TinymistFileDropdown(this.$refs.fileList as HTMLSelectElement);
 
-        this.consoleUI = new TinymistConsole(this.$refs.console);
+
+        new TinymistConsole(this.$refs.console);
 
         // Even if the page was not saved yet, Bookstack still creates a page ID for draft pages
         this.pageId = Number(this.$opts.pageId);
@@ -92,6 +86,14 @@ export class TinymistEditor extends Component {
         // WASM can be useless if the preview bridge fails to initialize
         // but we set it up early so it will be ready once the bridge is connected
         void this.setupWasm();
+
+        // Before form submit, sync CodeMirror content to textarea
+        this.elem.closest("form")?.addEventListener("submit", this.syncContentToTextarea);
+
+        window.$events.listen('tinymist-console-toggle', (collapsed?: boolean) => {
+            // On parent element for all panes
+            this.elem.classList.toggle('tinymist-console-collapsed', collapsed)
+        });
     }
 
     /**
@@ -106,10 +108,10 @@ export class TinymistEditor extends Component {
 
     destroy() {
         this.connectionsManager?.destroy();
-        this.consoleUI?.destroy();
-        this.consoleUI = null;
         this.editorUI?.destroy();
         this.editorUI = null;
+
+        this.elem.closest("form")?.removeEventListener("submit", this.syncContentToTextarea);
     }
 
 }

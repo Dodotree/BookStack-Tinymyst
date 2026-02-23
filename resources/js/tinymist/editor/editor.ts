@@ -20,7 +20,6 @@ import { php } from "@codemirror/lang-php";
 
 import { SemanticTokenProcessor, highlightField } from "./semantic-tokens";
 import { DiagnosticsProcessor } from "./diagnostics";
-import { TinymistFileDropdown } from "./file-dropdown";
 
 type FileSnapshot = {
     docVersion: number;
@@ -42,12 +41,11 @@ type FileSyncState = {
 
 
 export class TinymistEditorUI {
-    elem: HTMLElement;
     editor: HTMLTextAreaElement;
     editorView: EditorView | null = null;
-    private imageViewContainer: HTMLDivElement | null = null;
-    private imageViewElement: HTMLImageElement | null = null;
-    private imageViewMessage: HTMLDivElement | null = null;
+    private imageViewContainer: HTMLDivElement;
+    private imageViewElement: HTMLImageElement;
+    private imageViewMessage: HTMLDivElement;
 
     private diagnosticsProcessor = new DiagnosticsProcessor();
     private semanticTokens = new SemanticTokenProcessor();
@@ -62,9 +60,16 @@ export class TinymistEditorUI {
     private readonly dirtyStateDebounceMs = 300;
     private readonly fallbackDebounceMs = 800;
 
-    constructor(elem: HTMLElement, editor: HTMLTextAreaElement) {
-        this.elem = elem;
+    constructor(
+        editor: HTMLTextAreaElement,
+        imageViewContainer: HTMLDivElement,
+        imageViewElement: HTMLImageElement,
+        imageViewMessage: HTMLDivElement
+    ) {
         this.editor = editor;
+        this.imageViewContainer = imageViewContainer;
+        this.imageViewElement = imageViewElement;
+        this.imageViewMessage = imageViewMessage;
 
         // Hook for diagnostics and semantic tokens to get editor state context for mapping
         this.getSnapshotContext = this.getSnapshotContext.bind(this);
@@ -85,8 +90,6 @@ export class TinymistEditorUI {
         this.setupCodeMirror();
         this.setupListeners();
 
-        new TinymistFileDropdown(this.elem.querySelector(".tinymist-file-select") as HTMLSelectElement);
-        this.setupAttachmentImageView();
 
         this.diagnosticsProcessor.attachEditorView(
             this.editorView!,
@@ -156,17 +159,12 @@ export class TinymistEditorUI {
         }
     }
 
-    private setupAttachmentImageView(): void {
-        this.imageViewContainer = this.elem.querySelector('[refs="tinymist-editor@image-preview"]') as HTMLDivElement | null;
-        this.imageViewMessage = this.elem.querySelector('[refs="tinymist-editor@image-preview-message"]') as HTMLDivElement | null;
-        this.imageViewElement = this.elem.querySelector('[refs="tinymist-editor@image-preview-image"]') as HTMLImageElement | null;
-    }
-
     private isImageFile(fileName: string): boolean {
         return /\.(png|jpe?g|gif|webp|bmp|svg|ico|avif)$/i.test(fileName);
     }
 
     private showImagePreview(fileName: string, url: string): void {
+
         if (!this.imageViewContainer || !this.imageViewElement || !this.imageViewMessage) {
             return;
         }
@@ -224,19 +222,13 @@ export class TinymistEditorUI {
         window.$events.listen("editor::insert", this.insertFromEditorEvent);
         window.$events.listen("tinymist-attachment-reset-file", this.resetAttachmentFileFromServer);
 
-        window.$events.listen('tinymist-console-toggle', (collapsed?: boolean) => {
-            this.elem.closest('.tinymist-editor-pane')?.classList.toggle('tinymist-console-collapsed', collapsed)
-        });
         // Button actions, it counts on event bubbling to the container
-        this.elem.closest(".tinymist-editor-pane")?.addEventListener("click", this.buttonsListener);
+        this.editor.closest(".tinymist-editor-pane")?.addEventListener("click", this.buttonsListener);
 
         // Clean up connections on page navigation
         window.addEventListener("beforeunload", this.destroy);
         // Also listen to pagehide for better mobile support
         window.addEventListener("pagehide", this.destroy);
-
-        // Before form submit, sync CodeMirror content to textarea
-        this.elem.closest("form")?.addEventListener("submit", this.syncEntryContentToTextarea);
     }
 
     removeListeners() {
@@ -246,11 +238,9 @@ export class TinymistEditorUI {
         window.$events.remove("editor::insert", this.insertFromEditorEvent);
         window.$events.remove("tinymist-attachment-reset-file", this.resetAttachmentFileFromServer);
         this.editor.removeEventListener("input", this.onInput);
-        this.elem.closest(".tinymist-editor-pane")?.removeEventListener("click", this.buttonsListener);
+        this.editor.closest(".tinymist-editor-pane")?.removeEventListener("click", this.buttonsListener);
         window.removeEventListener("beforeunload", this.destroy);
         window.removeEventListener("pagehide", this.destroy);
-        // Before form submit, sync CodeMirror content to textarea
-        this.elem.closest("form")?.removeEventListener("submit", this.syncEntryContentToTextarea);
     }
 
     onInput() {
