@@ -263,7 +263,61 @@ sudo certbot certificates
 
 #### Typst and Tinymist package system uploads
 
-Every time there is and #import @namespace statement it will upload packages from Typst Universe. To prevent that
+Every time there is a `#import "@namespace/..."` statement, Typst may fetch packages from Typst Universe.
+
+If you run Tinymist via PM2, the reliable way to block this is: run PM2 apps as a dedicated user, then block outbound traffic for that user (while still allowing localhost).
+
+##### PM2 hardening (copy-paste)
+
+```bash
+# 1) Create dedicated system user
+sudo adduser --system --group --home /var/lib/tinymist tinymist
+
+# 2) Start only Tinymist PM2 apps as that user
+cd /var/www/bookstack
+sudo -u tinymist -H pm2 start npm --name tinymist-ws -- run ws:start
+sudo -u tinymist -H pm2 start npm --name tinymist-preview -- run preview:start
+sudo -u tinymist -H pm2 save
+sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u tinymist --hp /var/lib/tinymist
+
+# 3) Allow localhost only for that user
+sudo iptables -I OUTPUT -m owner --uid-owner tinymist -d 127.0.0.0/8 -j ACCEPT
+sudo iptables -I OUTPUT -m owner --uid-owner tinymist -d ::1/128 -j ACCEPT
+sudo iptables -A OUTPUT -m owner --uid-owner tinymist -j REJECT
+
+# 4) Persist firewall rules
+sudo apt-get install -y iptables-persistent
+sudo netfilter-persistent save
+```
+
+##### Rollback (copy-paste)
+
+```bash
+# Stop PM2 apps for tinymist user
+sudo -u tinymist -H pm2 delete tinymist-ws tinymist-preview || true
+sudo -u tinymist -H pm2 save
+
+# Remove user-based OUTPUT rules (repeat until no matches)
+while sudo iptables -C OUTPUT -m owner --uid-owner tinymist -d 127.0.0.0/8 -j ACCEPT 2>/dev/null; do
+  sudo iptables -D OUTPUT -m owner --uid-owner tinymist -d 127.0.0.0/8 -j ACCEPT
+done
+while sudo iptables -C OUTPUT -m owner --uid-owner tinymist -d ::1/128 -j ACCEPT 2>/dev/null; do
+  sudo iptables -D OUTPUT -m owner --uid-owner tinymist -d ::1/128 -j ACCEPT
+done
+while sudo iptables -C OUTPUT -m owner --uid-owner tinymist -j REJECT 2>/dev/null; do
+  sudo iptables -D OUTPUT -m owner --uid-owner tinymist -j REJECT
+done
+
+# Persist updated rules
+sudo netfilter-persistent save
+
+# Optional: remove dedicated user
+sudo deluser --remove-home tinymist || true
+```
+
+Alternative approaches are `firejail` or nftables/cgroup policies, but the user-owner iptables rules above are the simplest for PM2 deployments.
+
+##### Same problem but not with pm2. If using systemd:
 
 ```bash
 sudo systemctl edit tinymist-preview.service
