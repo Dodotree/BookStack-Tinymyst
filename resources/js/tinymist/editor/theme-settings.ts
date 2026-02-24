@@ -19,8 +19,9 @@ const DEFAULT_THEME_SETTINGS: ThemeSettingValues = {
 
 export class TinymistThemeSettings {
     private static readonly FONT_TOKENS = new Set(["tm-font-mono", "tm-font-ui"]);
-    private static readonly BASELINE_FONT_ONE = "Times New Roman";
-    private static readonly BASELINE_FONT_TWO = "Courier New";
+    // Baseline fonts should be commonly available, but measurably distinct, we need a pair to compare against to detect fallbacks
+    private static readonly FONT_ONE_VARIANTS = ["Arial","Verdana", "Times New Roman", "Palatino", "Helvetica"];
+    private static readonly FONT_TWO_VARIANTS = ["Courier New", "Courier","Lucida Console", "Lucida Sans Typewriter"];
     private static readonly METRIC_SAMPLE = {
         xHeight: "xxxxxxxxxxxx",
         capHeight: "XXXXXXXXXXXX",
@@ -42,124 +43,150 @@ export class TinymistThemeSettings {
         "ui-monospace",
         "ui-rounded",
     ]);
+    private font1: { name: string; xHeight: number; capHeight: number; emWidth: number; normalWidth: number } | null = null;
+    private font2: { name: string; xHeight: number; capHeight: number; emWidth: number; normalWidth: number } | null = null;
 
     private root: HTMLElement;
     private overlay: HTMLElement | null;
-    private openButton: HTMLButtonElement | null;
     private currentSettings: ThemeSettingValues = { ...DEFAULT_THEME_SETTINGS };
     private measureCanvas: HTMLCanvasElement | null = null;
 
     constructor(root: HTMLElement) {
         this.root = root;
-        this.overlay = this.root.querySelector(".tinymist-theme-settings-overlay");
-        this.openButton = this.root.querySelector('button[data-action="changeCodeMirrorSettings"]');
 
-        if (!this.overlay || !this.openButton) {
-            return;
-        }
-
-        this.loadAndApplyInitialSettings();
-        this.setupFontInputHelpers();
-        this.syncActiveColorThemeMarker();
-        this.bindOpenClose();
-        this.bindInputs();
-        this.bindReset();
-        this.bindGlobalEvents();
-    }
-
-    destroy(): void {
-        window.removeEventListener("keyup", this.onKeyUp);
-    }
-
-    private loadAndApplyInitialSettings(): void {
+        // Ensure stored settings are loaded
         const stored = this.readStoredSettings();
         this.currentSettings = {
             ...DEFAULT_THEME_SETTINGS,
             ...stored,
         };
+        this.applyStateToEditor(this.currentSettings);
 
-        this.applySettings(this.currentSettings);
-        this.syncInputsFromCurrentState();
-    }
+        this.overlay = this.root.querySelector(".tinymist-theme-settings-overlay");
+        if (!this.overlay) {
+            return;
+        }
 
-    private bindOpenClose(): void {
-        this.openButton?.addEventListener("click", () => this.open());
+        // One way to open
+        window.$events.listen("tinymist-theme-settings-open", () => {
+            if (!this.overlay) return;
+            this.overlay.hidden = false;
+            this.overlay.classList.add("is-visible");
+            this.ensureSettingsLoaded();
+        });
 
+        // Many ways to close
+        const close = () => {
+            if (!this.overlay) return;
+            this.overlay.classList.remove("is-visible");
+            this.overlay.hidden = true;
+        };
         const closeButtons = this.overlay?.querySelectorAll('button[data-action="closeThemeSettings"]') ?? [];
         closeButtons.forEach((button) => {
-            button.addEventListener("click", () => this.close());
+            button.addEventListener("click", () => close());
         });
-
         this.overlay?.addEventListener("click", (event) => {
             if (event.target === this.overlay) {
-                this.close();
+                close();
             }
         });
-    }
-
-    private bindInputs(): void {
-        const inputs = this.overlay?.querySelectorAll<HTMLInputElement>("[data-tm-token]") ?? [];
-        inputs.forEach((input) => {
-            const token = input.dataset.tmToken;
-            if (!token) return;
-
-            const eventName = input.type === "color" || TinymistThemeSettings.FONT_TOKENS.has(token) ? "input" : "change";
-            input.addEventListener(eventName, () => {
-                this.currentSettings[token] = input.value.trim();
-                this.root.style.setProperty(`--${token}`, this.currentSettings[token]);
-                if (TinymistThemeSettings.FONT_TOKENS.has(token)) {
-                    this.updateFontInputFeedback(input);
-                }
-                this.persistSettings();
-            });
+        window.addEventListener("keyup", (event) => {
+            if (event.key === "Escape" && !!this.overlay && !this.overlay.hidden) {
+                close();
+            }
         });
 
-        const colorInputs = this.overlay?.querySelectorAll<HTMLInputElement>(".tinymist-theme-color-half") ?? [];
-        colorInputs.forEach((input) => {
-            input.addEventListener("click", () => {
-                this.syncActiveColorThemeMarker(input.dataset.themeVariant === "dark" ? "dark" : "light");
-            });
+        this.updateInput = this.updateInput.bind(this);
+        this.reset = this.reset.bind(this);
+    }
+
+    private applyStateToEditor(settings: ThemeSettingValues): void {
+        Object.entries(settings).forEach(([token, value]) => {
+            this.root.style.setProperty(`--${token}`, value);
         });
     }
 
-    private bindReset(): void {
-        const resetButton = this.overlay?.querySelector<HTMLButtonElement>('button[data-action="resetThemeSettings"]');
-        if (!resetButton) return;
-
-        resetButton.addEventListener("click", () => {
-            this.currentSettings = { ...DEFAULT_THEME_SETTINGS };
-            this.applySettings(this.currentSettings);
-            this.syncInputsFromCurrentState();
-            this.refreshAllFontFeedback();
-            this.persistSettings();
-        });
+    private reset(): void {
+        this.currentSettings = { ...DEFAULT_THEME_SETTINGS };
+        this.applyStateToEditor(this.currentSettings);
+        this.syncStateToInputs();
+        this.refreshAllFontFeedback();
+        this.persistSettings();
     }
 
-    private bindGlobalEvents(): void {
-        window.addEventListener("keyup", this.onKeyUp);
+    private updateInput(event: Event): void {
+        const input = event.target as HTMLInputElement;
+        const token = input.dataset.tmToken;
+        if (!token) return;
+
+        this.currentSettings[token] = input.value.trim();
+        this.root.style.setProperty(`--${token}`, this.currentSettings[token]);
+        if (TinymistThemeSettings.FONT_TOKENS.has(token)) {
+            this.updateFontInputFeedback(input);
+        }
+        this.persistSettings();
     }
 
-    private syncActiveColorThemeMarker(theme?: "light" | "dark"): void {
+    // fires only once if the user decides to use settings, so we can delay setup until then
+    ensureSettingsLoaded(): void {
+        if (this.font1 && this.font2) {
+            return;
+        }
+        this.defineCheckerFonts();
+        this.setupFontInputHelpers();
+        this.syncStateToInputs();
+
         const isDarkMode = document.documentElement.classList.contains("dark-mode");
-        const activeTheme = theme ?? (isDarkMode ? "dark" : "light");
         const splitControls = this.overlay?.querySelectorAll<HTMLElement>(".tinymist-theme-color-split") ?? [];
         splitControls.forEach((control) => {
-            control.dataset.activeTheme = activeTheme;
+            control.dataset.activeTheme = isDarkMode ? "dark" : "light";
         });
-    }
 
-    private onKeyUp = (event: KeyboardEvent): void => {
-        if (event.key === "Escape" && this.isOpen()) {
-            this.close();
-        }
-    };
-
-    private syncInputsFromCurrentState(): void {
+        // add listeners to inputs
         const inputs = this.overlay?.querySelectorAll<HTMLInputElement>("[data-tm-token]") ?? [];
         inputs.forEach((input) => {
             const token = input.dataset.tmToken;
             if (!token) return;
+            const eventName = input.type === "color" || TinymistThemeSettings.FONT_TOKENS.has(token) ? "input" : "change";
+            input.addEventListener(eventName, this.updateInput);
+        });
 
+        const resetButton = this.overlay?.querySelector<HTMLButtonElement>('button[data-action="resetThemeSettings"]');
+        resetButton?.addEventListener("click", this.reset);
+    }
+
+    /** Finding 2 distinct fonts that are not fallbacks and override each other if the order is swapped */
+    private defineCheckerFonts(): void {
+        const fonts_one  = TinymistThemeSettings.FONT_ONE_VARIANTS;
+        const fonts_two  = TinymistThemeSettings.FONT_TWO_VARIANTS;
+        const context = this.getMeasureContext();
+        if (!context) {
+            return;
+        }
+
+        for (let i = 0; i < fonts_one.length; i++) {
+            const fontName1 = this.cleanFontCandidate(fonts_one[i]);
+            for (let j = 0; j < fonts_two.length; j++) {
+                const fontName2 = this.cleanFontCandidate(fonts_two[j]);
+                const signature1 = this.measureTypographySignature(context, `"${fontName1}", "${fontName2}"`);
+                const signature2 = this.measureTypographySignature(context, `"${fontName2}", "${fontName1}"`);
+                if (signature1 && signature2 && !this.areSignaturesClose(signature1, signature2)) {
+                    this.font1 = {name: fontName1, ...signature1};
+                    this.font2 = {name: fontName2, ...signature2};
+                    break;
+                }
+            }
+            if (this.font1 && this.font2) {
+                break;
+            }
+        }
+    }
+
+    private syncStateToInputs(): void {
+        const inputs = this.overlay?.querySelectorAll<HTMLInputElement>("[data-tm-token]") ?? [];
+        inputs.forEach((input) => {
+            const token = input.dataset.tmToken;
+            if (!token) return;
             const value = this.currentSettings[token] ?? "";
             input.value = value;
         });
@@ -285,11 +312,11 @@ export class TinymistThemeSettings {
             if (!cleanName) {
                 return;
             }
-            const signal = this.getFontDistinctSignal(cleanName, fallbackFamily);
+            const signal = this.getFontDistinctSignal(cleanName);
             if (signal.hideDemo) {
                 return;
             }
-            if (signal.label === "exists" && !firstExistingFontName) {
+            if (signal.label === "available" && !firstExistingFontName) {
                 firstExistingFontName = cleanName;
             }
 
@@ -343,7 +370,6 @@ export class TinymistThemeSettings {
 
     private getFontDistinctSignal(
         fontName: string,
-        fallbackFamily: string,
     ): { label: string; className: string; hideDemo: boolean } {
         if (TinymistThemeSettings.GENERIC_FONT_FAMILIES.has(fontName.toLowerCase())) {
             return { label: "generic", className: "is-generic", hideDemo: false };
@@ -354,68 +380,29 @@ export class TinymistThemeSettings {
             return { label: "not found", className: "is-missing", hideDemo: false };
         }
 
-        const result = this.runDualBaselineFontTest(fontName, fallbackFamily);
-        if (!result) {
-            return { label: "unknown", className: "is-unknown", hideDemo: false };
+        if (this.runDualBaselineFontTest(fontName)) {
+            return { label: "available", className: "is-distinct", hideDemo: false };
         }
 
-        if (result.matchesFallbackPattern) {
-            return { label: "fallback", className: "is-missing", hideDemo: true };
-        }
-
-        if (result.sameAcrossTests && result.differentFromAtLeastOneBaseline) {
-            return { label: "exists", className: "is-distinct", hideDemo: false };
-        }
-
-        if (result.sameAcrossTests) {
-            return { label: "same in both tests", className: "is-similar", hideDemo: false };
-        }
-
-        return { label: "mixed signal", className: "is-unknown", hideDemo: false };
+        return { label: "not rendering", className: "is-unknown", hideDemo: true };
     }
 
-    private runDualBaselineFontTest(
-        fontName: string,
-        fallbackFamily: string,
-    ): {
-        sameAcrossTests: boolean;
-        differentFromAtLeastOneBaseline: boolean;
-        matchesFallbackPattern: boolean;
-    } | null {
+    private runDualBaselineFontTest(fontName: string): boolean {
         const context = this.getMeasureContext();
-        if (!context) {
-            return null;
+        if (!context || !this.font1 || !this.font2) {
+            return false;
         }
 
-        const baselineOne = this.measureTypographySignature(context, TinymistThemeSettings.BASELINE_FONT_ONE);
-        const baselineTwo = this.measureTypographySignature(context, TinymistThemeSettings.BASELINE_FONT_TWO);
         const testOne = this.measureTypographySignature(
             context,
-            `"${fontName}", ${TinymistThemeSettings.BASELINE_FONT_ONE}, ${fallbackFamily}`,
+            `"${fontName}", ${this.font1.name}`,
         );
         const testTwo = this.measureTypographySignature(
             context,
-            `"${fontName}", ${TinymistThemeSettings.BASELINE_FONT_TWO}, ${fallbackFamily}`,
+            `"${fontName}", ${this.font2.name}`,
         );
 
-        if (!baselineOne || !baselineTwo || !testOne || !testTwo) {
-            return null;
-        }
-
-        const sameAcrossTests = this.areSignaturesClose(testOne, testTwo);
-        const matchesFallbackPattern =
-            this.areSignaturesClose(testOne, baselineOne)
-            && this.areSignaturesClose(testTwo, baselineTwo);
-
-        const differentFromAtLeastOneBaseline =
-            !this.areSignaturesClose(testOne, baselineOne)
-            || !this.areSignaturesClose(testTwo, baselineTwo);
-
-        return {
-            sameAcrossTests,
-            differentFromAtLeastOneBaseline,
-            matchesFallbackPattern,
-        };
+        return this.areSignaturesClose(testOne, testTwo);
     }
 
     private measureTypographySignature(
@@ -450,9 +437,12 @@ export class TinymistThemeSettings {
     }
 
     private areSignaturesClose(
-        first: { xHeight: number; capHeight: number; emWidth: number; normalWidth: number },
-        second: { xHeight: number; capHeight: number; emWidth: number; normalWidth: number },
+        first: { xHeight: number; capHeight: number; emWidth: number; normalWidth: number } | null,
+        second: { xHeight: number; capHeight: number; emWidth: number; normalWidth: number } | null,
     ): boolean {
+        if (!first || !second) {
+            return false;
+        }
         const maxHeightBase = Math.max(1, second.capHeight);
         const maxWidthBase = Math.max(1, second.emWidth);
 
@@ -570,13 +560,6 @@ export class TinymistThemeSettings {
         return "";
     }
 
-
-    private applySettings(settings: ThemeSettingValues): void {
-        Object.entries(settings).forEach(([token, value]) => {
-            this.root.style.setProperty(`--${token}`, value);
-        });
-    }
-
     private persistSettings(): void {
         try {
             localStorage.setItem(STORAGE_KEY, JSON.stringify(this.currentSettings));
@@ -601,21 +584,5 @@ export class TinymistThemeSettings {
         }
 
         return {};
-    }
-
-    private open(): void {
-        if (!this.overlay) return;
-        this.overlay.hidden = false;
-        this.overlay.classList.add("is-visible");
-    }
-
-    private close(): void {
-        if (!this.overlay) return;
-        this.overlay.classList.remove("is-visible");
-        this.overlay.hidden = true;
-    }
-
-    private isOpen(): boolean {
-        return !!this.overlay && !this.overlay.hidden;
     }
 }

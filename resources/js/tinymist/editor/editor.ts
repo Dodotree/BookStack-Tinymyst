@@ -279,6 +279,7 @@ export class TinymistEditorUI {
                 this.insertHeading();
                 break;
             case "changeCodeMirrorSettings":
+                window.$events.emit("tinymist-theme-settings-open");
                 break;
             default:
                 console.warn(`[Editor]Unknown button action: ${action}`);
