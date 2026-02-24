@@ -5,6 +5,7 @@ import { TinymistConnectionsManager } from "../tinymist/connections/connections-
 import { TinymistFallbackCompiler } from "../tinymist/connections/fallback";
 import { TinymistEditorUI } from "../tinymist/editor/editor";
 import { TinymistFileDropdown } from "../tinymist/editor/file-dropdown";
+import { TinymistThemeSettings } from "../tinymist/editor/theme-settings";
 import { TinymistConsole } from "../tinymist/console";
 import { PreviewRenderer } from "../tinymist/preview/render";
 
@@ -62,6 +63,7 @@ export class TinymistEditor extends Component {
             this.$refs.imagePreviewMessage as HTMLDivElement
         );
         this.editorUI = editorUI;
+        new TinymistThemeSettings(this.elem);
         // Since all Bookstack editors require getText()
         this.getText = editorUI.getEntryText;
         this.syncContentToTextarea = editorUI.syncEntryContentToTextarea;

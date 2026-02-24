@@ -278,6 +278,8 @@ export class TinymistEditorUI {
             case "insertHeading":
                 this.insertHeading();
                 break;
+            case "changeCodeMirrorSettings":
+                break;
             default:
                 console.warn(`[Editor]Unknown button action: ${action}`);
         }

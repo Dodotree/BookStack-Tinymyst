@@ -7,6 +7,19 @@
 }
 
 #tinymist-editor {
+  --tm-font-ui: #{vars.$font-body};
+  --tm-font-mono: #{vars.$font-mono};
+  --tm-hlt-keyword: #8250df;
+  --tm-hlt-keyword-dark: #bb8fce;
+  --tm-hlt-string: #0a7f3f;
+  --tm-hlt-string-dark: #52be80;
+  --tm-hlt-comment: #57606a;
+  --tm-hlt-comment-dark: #808080;
+  --tm-hlt-number: #9a6700;
+  --tm-hlt-number-dark: #d6863e;
+  --tm-hlt-error: #cf222e;
+  --tm-hlt-error-dark: #e74c3c;
+
   display: flex;
   flex-direction: row;
   width: 100%;
@@ -74,6 +87,7 @@
       flex: 1;
       font-size: 14px;
       border: none;
+      font-family: var(--tm-font-mono);
       @include mixins.lightDark(background-color, #fff, #1e1e1e);
       @include mixins.lightDark(color, #24292f, #d4d4d4);
     }
@@ -134,11 +148,262 @@
     flex-direction: column;
     position: relative;
     overflow: hidden;
+    font-family: var(--tm-font-ui);
     @include mixins.lightDark(border-color, #ddd, #000);
 
     button[data-action="previewPanToggle"][aria-pressed="true"],
     button[data-action="previewCursorSpotlightToggle"][aria-pressed="true"] {
       @include mixins.lightDark(color, #2d6f96, #7ec5f0);
+    }
+
+    .tinymist-theme-settings-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 5;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: vars.$m;
+      background-color: rgba(0, 0, 0, 0.25);
+
+      &.is-visible {
+        display: flex;
+      }
+
+      .tinymist-theme-settings-panel {
+        width: min(680px, 100%);
+        max-height: 100%;
+        overflow: auto;
+        border-radius: 6px;
+        border: 1px solid;
+        @include mixins.lightDark(border-color, #d0d7de, #3e3e42);
+        @include mixins.lightDark(background-color, #fff, #1f1f1f);
+        @include mixins.lightDark(color, #24292f, #d4d4d4);
+        box-shadow: vars.$bs-large;
+      }
+
+      .tinymist-theme-settings-header,
+      .tinymist-theme-settings-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: vars.$s;
+        padding: vars.$s vars.$m;
+        border-bottom: 1px solid;
+        @include mixins.lightDark(border-color, #eaeef2, #2a2a2a);
+      }
+
+      .tinymist-theme-settings-footer {
+        border-top: 1px solid;
+        border-bottom: none;
+      }
+
+      .tinymist-theme-settings-body {
+        padding: vars.$m;
+        display: grid;
+        gap: vars.$m;
+      }
+
+      .tinymist-theme-settings-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: vars.$s;
+
+        @include mixins.smaller-than(vars.$bp-s) {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      .tinymist-theme-setting-row {
+        display: grid;
+        gap: vars.$xs;
+
+        .tinymist-theme-font-status {
+          line-height: 1.4;
+        }
+
+        .tinymist-theme-font-preview {
+          border: 1px solid;
+          border-radius: 4px;
+          padding: vars.$xs vars.$s;
+          font-size: vars.$fs-s;
+          @include mixins.lightDark(border-color, #d0d7de, #3e3e42);
+          @include mixins.lightDark(background-color, #f6f8fa, #232323);
+        }
+
+        .tinymist-theme-font-probes {
+          display: grid;
+          gap: vars.$xs;
+        }
+
+        .tinymist-theme-font-probe-group {
+          border: 1px solid;
+          border-radius: 4px;
+          padding: vars.$xs;
+          @include mixins.lightDark(border-color, #d0d7de, #3e3e42);
+          @include mixins.lightDark(background-color, #f6f8fa, #232323);
+        }
+
+        .tinymist-theme-font-probe-group-title {
+          font-weight: 600;
+          margin-bottom: vars.$xs;
+          text-transform: capitalize;
+        }
+
+        .tinymist-theme-font-probe-list {
+          display: grid;
+          gap: 2px;
+        }
+
+        .tinymist-theme-font-probe-row {
+          border-radius: 3px;
+          padding: 2px 6px;
+          font-size: vars.$fs-s;
+          @include mixins.lightDark(background-color, #ffffff, #1c1c1c);
+
+          &.is-distinct {
+            @include mixins.lightDark(border-left, 2px solid #0f7d15, 2px solid #66bb6a);
+          }
+
+          &.is-generic {
+            @include mixins.lightDark(border-left, 2px solid #8c959f, 2px solid #626d78);
+          }
+        }
+
+        .tinymist-theme-font-probe-name {
+          font-weight: 600;
+        }
+
+        .tinymist-theme-font-probe {
+          border: 1px solid;
+          border-radius: 4px;
+          padding: vars.$xs;
+          @include mixins.lightDark(border-color, #d0d7de, #3e3e42);
+          @include mixins.lightDark(background-color, #f6f8fa, #232323);
+        }
+
+        .tinymist-theme-font-probe-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: vars.$xs;
+          margin-bottom: vars.$xs;
+        }
+
+        .tinymist-theme-font-probe-title {
+          font-size: vars.$fs-s;
+          font-weight: 600;
+          overflow-wrap: anywhere;
+        }
+
+        .tinymist-theme-font-probe-signal {
+          font-size: 10px;
+          border-radius: 99px;
+          padding: 1px 6px;
+          border: 1px solid transparent;
+
+          &.is-distinct {
+            @include mixins.lightDark(color, #0f7d15, #66bb6a);
+            @include mixins.lightDark(border-color, #0f7d15, #66bb6a);
+          }
+
+          &.is-similar,
+          &.is-close,
+          &.is-generic,
+          &.is-unknown {
+            @include mixins.lightDark(color, #6e7781, #9aa4af);
+            @include mixins.lightDark(border-color, #8c959f, #626d78);
+          }
+
+          &.is-missing {
+            @include mixins.lightDark(color, #ab0f0e, #ff6b6b);
+            @include mixins.lightDark(border-color, #ab0f0e, #ff6b6b);
+          }
+        }
+
+        .tinymist-theme-font-probe-samples {
+          display: grid;
+          gap: 2px;
+        }
+
+        .tinymist-theme-font-probe-sample {
+          border-radius: 3px;
+          padding: 2px 6px;
+          font-size: vars.$fs-s;
+          @include mixins.lightDark(background-color, #ffffff, #1c1c1c);
+        }
+      }
+
+      input[type="text"],
+      input[type="color"] {
+        width: 100%;
+      }
+
+      .tinymist-theme-color-split {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        align-items: center;
+        gap: 2px;
+        min-height: 36px;
+        padding: 2px;
+        border: 1px solid;
+        border-radius: 5px;
+        @include mixins.lightDark(border-color, #d0d7de, #3e3e42);
+        @include mixins.lightDark(background-color, #eaeef2, #2a2a2a);
+
+        .tinymist-theme-color-half-wrap {
+          position: relative;
+          display: flex;
+          align-items: center;
+          padding-bottom: 0;
+          margin-bottom: 0;
+
+          .tinymist-theme-color-badge {
+            position: absolute;
+            top: 4px;
+            left: 6px;
+            z-index: 1;
+            min-width: 14px;
+            height: 14px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 9px;
+            font-weight: bold;
+            pointer-events: none;
+            @include mixins.lightDark(color, #1f2328, #f0f3f6);
+            @include mixins.lightDark(background-color, rgba(255, 255, 255, 0.65), rgba(0, 0, 0, 0.45));
+          }
+
+          .tinymist-theme-color-half {
+            min-height: 30px;
+            height: 30px;
+            border-radius: 0 !important;
+            border: none;
+            cursor: pointer;
+            padding: 0;
+            box-shadow: none;
+
+            &::-webkit-color-swatch-wrapper {
+              padding: 0;
+            }
+
+            &::-webkit-color-swatch {
+              border: 0;
+            }
+
+            &::-moz-color-swatch {
+              border: 0;
+            }
+          }
+        }
+
+        &[data-active-theme="light"] .tinymist-theme-color-half-wrap[data-theme-variant="light"] .tinymist-theme-color-half,
+        &[data-active-theme="dark"] .tinymist-theme-color-half-wrap[data-theme-variant="dark"] .tinymist-theme-color-half {
+          outline: 2px solid var(--color-primary);
+          outline-offset: -2px;
+        }
+      }
     }
   }
 
@@ -155,7 +420,7 @@
     flex: 1;
     width: 100%;
     min-height: 200px;
-    font-family: "Monaco", "Menlo", "Ubuntu Mono", "Consolas", monospace;
+    font-family: var(--tm-font-mono);
     font-size: 14px;
     line-height: 1.6;
     padding: 12px;
@@ -222,7 +487,7 @@
     flex: 1;
     padding: 8px 12px;
     overflow: auto;
-    font-family: "Monaco", "Menlo", "Ubuntu Mono", "Consolas", monospace;
+    font-family: var(--tm-font-mono);
     font-size: 12px;
     line-height: 1.5;
     display: block;
@@ -272,15 +537,15 @@
   color: inherit;
 
   &-comment {
-    @include mixins.lightDark(color, #57606a, #808080);
+    @include mixins.lightDark(color, var(--tm-hlt-comment), var(--tm-hlt-comment-dark));
   }
 
   &-string {
-    @include mixins.lightDark(color, #0a7f3f, #52be80);
+    @include mixins.lightDark(color, var(--tm-hlt-string), var(--tm-hlt-string-dark));
   }
 
   &-keyword {
-    @include mixins.lightDark(color, #8250df, #bb8fce);
+    @include mixins.lightDark(color, var(--tm-hlt-keyword), var(--tm-hlt-keyword-dark));
   }
 
   &-operator {
@@ -288,7 +553,7 @@
   }
 
   &-number {
-    @include mixins.lightDark(color, #9a6700, #d6863e);
+    @include mixins.lightDark(color, var(--tm-hlt-number), var(--tm-hlt-number-dark));
   }
 
   &-function,
@@ -340,7 +605,7 @@
   }
 
   &-error {
-    @include mixins.lightDark(color, #cf222e, #e74c3c);
+    @include mixins.lightDark(color, var(--tm-hlt-error), var(--tm-hlt-error-dark));
   }
 
   &-text {
