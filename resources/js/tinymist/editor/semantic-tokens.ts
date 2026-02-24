@@ -34,7 +34,7 @@ const tokenModifiers = [
 
 // Styling is provided via CSS classes (tm-hlt-* and tm-mod-*)
 // Keep token keys to validate CSS coverage.
-const highlightColors = [
+export const highlightColors = [
     "math",
     "string",
     "comment",

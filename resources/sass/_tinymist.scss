@@ -170,7 +170,12 @@
         display: flex;
       }
 
-      .tinymist-theme-settings-panel {
+      input[type="text"],
+      input[type="color"] {
+        width: 100%;
+      }
+
+      .settings-panel {
         width: min(680px, 100%);
         max-height: 100%;
         overflow: auto;
@@ -182,8 +187,8 @@
         box-shadow: vars.$bs-large;
       }
 
-      .tinymist-theme-settings-header,
-      .tinymist-theme-settings-footer {
+      .settings-header,
+      .settings-footer {
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -193,18 +198,18 @@
         @include mixins.lightDark(border-color, #eaeef2, #2a2a2a);
       }
 
-      .tinymist-theme-settings-footer {
+      .settings-footer {
         border-top: 1px solid;
         border-bottom: none;
       }
 
-      .tinymist-theme-settings-body {
+      .settings-body {
         padding: vars.$m;
         display: grid;
         gap: vars.$m;
       }
 
-      .tinymist-theme-settings-grid {
+      .settings-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: vars.$s;
@@ -214,15 +219,15 @@
         }
       }
 
-      .tinymist-theme-setting-row {
+      .setting-row {
         display: grid;
         gap: vars.$xs;
 
-        .tinymist-theme-font-status {
+        .font-status {
           line-height: 1.4;
         }
 
-        .tinymist-theme-font-preview {
+        .font-preview {
           border: 1px solid;
           border-radius: 4px;
           padding: vars.$xs vars.$s;
@@ -231,12 +236,12 @@
           @include mixins.lightDark(background-color, #f6f8fa, #232323);
         }
 
-        .tinymist-theme-font-probes {
+        .font-probes {
           display: grid;
           gap: vars.$xs;
         }
 
-        .tinymist-theme-font-probe-group {
+        .probe-group {
           border: 1px solid;
           border-radius: 4px;
           padding: vars.$xs;
@@ -244,18 +249,18 @@
           @include mixins.lightDark(background-color, #f6f8fa, #232323);
         }
 
-        .tinymist-theme-font-probe-group-title {
+        .probe-title {
           font-weight: 600;
           margin-bottom: vars.$xs;
           text-transform: capitalize;
         }
 
-        .tinymist-theme-font-probe-list {
+        .probe-list {
           display: grid;
           gap: 2px;
         }
 
-        .tinymist-theme-font-probe-row {
+        .probe-row {
           border-radius: 3px;
           padding: 2px 6px;
           font-size: vars.$fs-s;
@@ -270,11 +275,11 @@
           }
         }
 
-        .tinymist-theme-font-probe-name {
+        .probe-name {
           font-weight: 600;
         }
 
-        .tinymist-theme-font-probe {
+        .probe {
           border: 1px solid;
           border-radius: 4px;
           padding: vars.$xs;
@@ -282,7 +287,7 @@
           @include mixins.lightDark(background-color, #f6f8fa, #232323);
         }
 
-        .tinymist-theme-font-probe-head {
+        .probe-head {
           display: flex;
           align-items: center;
           justify-content: space-between;
@@ -290,13 +295,13 @@
           margin-bottom: vars.$xs;
         }
 
-        .tinymist-theme-font-probe-title {
+        .probe-title {
           font-size: vars.$fs-s;
           font-weight: 600;
           overflow-wrap: anywhere;
         }
 
-        .tinymist-theme-font-probe-signal {
+        .probe-signal {
           font-size: 10px;
           border-radius: 99px;
           padding: 1px 6px;
@@ -321,12 +326,7 @@
           }
         }
 
-        .tinymist-theme-font-probe-samples {
-          display: grid;
-          gap: 2px;
-        }
-
-        .tinymist-theme-font-probe-sample {
+        .probe-sample {
           border-radius: 3px;
           padding: 2px 6px;
           font-size: vars.$fs-s;
@@ -334,12 +334,7 @@
         }
       }
 
-      input[type="text"],
-      input[type="color"] {
-        width: 100%;
-      }
-
-      .tinymist-theme-color-split {
+      .color-split {
         display: grid;
         grid-template-columns: 1fr 1fr;
         align-items: center;
@@ -351,14 +346,14 @@
         @include mixins.lightDark(border-color, #d0d7de, #3e3e42);
         @include mixins.lightDark(background-color, #eaeef2, #2a2a2a);
 
-        .tinymist-theme-color-half-wrap {
+        .color-half-wrap {
           position: relative;
           display: flex;
           align-items: center;
           padding-bottom: 0;
           margin-bottom: 0;
 
-          .tinymist-theme-color-badge {
+          .color-badge {
             position: absolute;
             top: 4px;
             left: 6px;
@@ -375,7 +370,7 @@
             @include mixins.lightDark(background-color, rgba(255, 255, 255, 0.65), rgba(0, 0, 0, 0.45));
           }
 
-          .tinymist-theme-color-half {
+          .color-half {
             min-height: 30px;
             height: 30px;
             border-radius: 0 !important;
@@ -398,8 +393,8 @@
           }
         }
 
-        &[data-active-theme="light"] .tinymist-theme-color-half-wrap[data-theme-variant="light"] .tinymist-theme-color-half,
-        &[data-active-theme="dark"] .tinymist-theme-color-half-wrap[data-theme-variant="dark"] .tinymist-theme-color-half {
+        &[data-active-theme="light"] .color-half-wrap[data-theme-variant="light"] .color-half,
+        &[data-active-theme="dark"] .color-half-wrap[data-theme-variant="dark"] .color-half {
           outline: 2px solid var(--color-primary);
           outline-offset: -2px;
         }
@@ -534,33 +529,40 @@
 
 /* Semantic token highlighting (Tinymist) */
 .tm-hlt {
-  color: inherit;
+  --tm-hlt-current: inherit;
+  color: var(--tm-hlt-current) !important;
+
+  /* Hacky way to enforce typst highlight over autogenerated codemirror ͼ classes */
+  /* Without direct parent typst highlight code mirror markup should work */
+  :not(.tm-hlt):not([class*="tm-hlt-"]) {
+    color: inherit !important;
+  }
 
   &-comment {
-    @include mixins.lightDark(color, var(--tm-hlt-comment), var(--tm-hlt-comment-dark));
+    @include mixins.lightDark(--tm-hlt-current, var(--tm-hlt-comment), var(--tm-hlt-comment-dark), true);
   }
 
   &-string {
-    @include mixins.lightDark(color, var(--tm-hlt-string), var(--tm-hlt-string-dark));
+    @include mixins.lightDark(--tm-hlt-current, var(--tm-hlt-string), var(--tm-hlt-string-dark), true);
   }
 
   &-keyword {
-    @include mixins.lightDark(color, var(--tm-hlt-keyword), var(--tm-hlt-keyword-dark));
+    @include mixins.lightDark(--tm-hlt-current, var(--tm-hlt-keyword), var(--tm-hlt-keyword-dark), true);
   }
 
   &-operator {
-    @include mixins.lightDark(color, #d1242f, #e06c75);
+    @include mixins.lightDark(--tm-hlt-current, #d1242f, #e06c75, true);
   }
 
   &-number {
-    @include mixins.lightDark(color, var(--tm-hlt-number), var(--tm-hlt-number-dark));
+    @include mixins.lightDark(--tm-hlt-current, var(--tm-hlt-number), var(--tm-hlt-number-dark), true);
   }
 
   &-function,
   &-method,
   &-macro,
   &-decorator {
-    @include mixins.lightDark(color, #0969da, #5dade2);
+    @include mixins.lightDark(--tm-hlt-current, #0969da, #5dade2, true);
   }
 
   &-type,
@@ -570,7 +572,7 @@
   &-struct,
   &-typeParameter,
   &-namespace {
-    @include mixins.lightDark(color, #0550ae, #56b6c2);
+    @include mixins.lightDark(--tm-hlt-current, #0550ae, #56b6c2, true);
   }
 
   &-variable,
@@ -579,37 +581,37 @@
   &-parameter,
   &-label,
   &-term {
-    @include mixins.lightDark(color, #7a4e00, #e5c07b);
+    @include mixins.lightDark(--tm-hlt-current, #7a4e00, #e5c07b, true);
   }
 
   &-punct,
   &-delim {
-    @include mixins.lightDark(color, #9a6700, #d19a66);
+    @include mixins.lightDark(--tm-hlt-current, #9a6700, #d19a66, true);
   }
 
   &-bool,
   &-pol {
-    @include mixins.lightDark(color, #a40e26, #c678dd);
+    @include mixins.lightDark(--tm-hlt-current, #a40e26, #c678dd, true);
   }
 
   &-escape,
   &-raw,
   &-marker {
-    @include mixins.lightDark(color, #cf222e, #e06c75);
+    @include mixins.lightDark(--tm-hlt-current, #cf222e, #e06c75, true);
   }
 
   &-link,
   &-ref,
   &-heading {
-    @include mixins.lightDark(color, #0969da, #61afef);
+    @include mixins.lightDark(--tm-hlt-current, #0969da, #61afef, true);
   }
 
   &-error {
-    @include mixins.lightDark(color, var(--tm-hlt-error), var(--tm-hlt-error-dark));
+    @include mixins.lightDark(--tm-hlt-current, var(--tm-hlt-error), var(--tm-hlt-error-dark), true);
   }
 
   &-text {
-    color: inherit;
+    --tm-hlt-current: inherit;
   }
 }
 

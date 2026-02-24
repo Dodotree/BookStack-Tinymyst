@@ -151,99 +151,36 @@
         </div>
 
         <div class="tinymist-theme-settings-overlay" hidden>
-            <div class="tinymist-theme-settings-panel" role="dialog" aria-modal="true" aria-label="Editor theme settings">
-                <div class="tinymist-theme-settings-header">
+            <div class="settings-panel" role="dialog" aria-modal="true" aria-label="Editor theme settings">
+                <div class="settings-header">
                     <div class="text-mono bold">Editor Theme Settings</div>
                     <button class="text-button" type="button" data-action="closeThemeSettings" title="Close settings">
                         @icon('close')
                     </button>
                 </div>
 
-                <div class="tinymist-theme-settings-body">
-                    <label class="tinymist-theme-setting-row">
+                <div class="settings-body">
+                    <label class="setting-row">
                         <span class="text-muted text-small">Code Font</span>
                         <input type="text" data-tm-token="tm-font-mono" placeholder="Consolas, monospace">
+                        <div class="font-status text-small text-pos"></div>
+                        <div class="font-preview"></div>
+                        <div class="font-probes"></div>
                     </label>
 
-                    <label class="tinymist-theme-setting-row">
+                    <label class="setting-row">
                         <span class="text-muted text-small">UI Font</span>
                         <input type="text" data-tm-token="tm-font-ui" placeholder="Segoe UI, sans-serif">
+                        <div class="font-status text-small text-pos"></div>
+                        <div class="font-preview"></div>
+                        <div class="font-probes"></div>
                     </label>
 
-                    <div class="tinymist-theme-settings-grid">
-                        <label class="tinymist-theme-setting-row">
-                            <span class="text-muted text-small">Keyword</span>
-                            <div class="tinymist-theme-color-split" title="Left = Light, Right = Dark">
-                                <label class="tinymist-theme-color-half-wrap" data-theme-variant="light">
-                                    <span class="tinymist-theme-color-badge">L</span>
-                                    <input class="tinymist-theme-color-half" data-theme-variant="light" type="color" data-tm-token="tm-hlt-keyword" value="#8250df" aria-label="Keyword light color">
-                                </label>
-                                <label class="tinymist-theme-color-half-wrap" data-theme-variant="dark">
-                                    <span class="tinymist-theme-color-badge">D</span>
-                                    <input class="tinymist-theme-color-half" data-theme-variant="dark" type="color" data-tm-token="tm-hlt-keyword-dark" value="#bb8fce" aria-label="Keyword dark color">
-                                </label>
-                            </div>
-                        </label>
-
-                        <label class="tinymist-theme-setting-row">
-                            <span class="text-muted text-small">String</span>
-                            <div class="tinymist-theme-color-split" title="Left = Light, Right = Dark">
-                                <label class="tinymist-theme-color-half-wrap" data-theme-variant="light">
-                                    <span class="tinymist-theme-color-badge">L</span>
-                                    <input class="tinymist-theme-color-half" data-theme-variant="light" type="color" data-tm-token="tm-hlt-string" value="#0a7f3f" aria-label="String light color">
-                                </label>
-                                <label class="tinymist-theme-color-half-wrap" data-theme-variant="dark">
-                                    <span class="tinymist-theme-color-badge">D</span>
-                                    <input class="tinymist-theme-color-half" data-theme-variant="dark" type="color" data-tm-token="tm-hlt-string-dark" value="#52be80" aria-label="String dark color">
-                                </label>
-                            </div>
-                        </label>
-
-                        <label class="tinymist-theme-setting-row">
-                            <span class="text-muted text-small">Comment</span>
-                            <div class="tinymist-theme-color-split" title="Left = Light, Right = Dark">
-                                <label class="tinymist-theme-color-half-wrap" data-theme-variant="light">
-                                    <span class="tinymist-theme-color-badge">L</span>
-                                    <input class="tinymist-theme-color-half" data-theme-variant="light" type="color" data-tm-token="tm-hlt-comment" value="#57606a" aria-label="Comment light color">
-                                </label>
-                                <label class="tinymist-theme-color-half-wrap" data-theme-variant="dark">
-                                    <span class="tinymist-theme-color-badge">D</span>
-                                    <input class="tinymist-theme-color-half" data-theme-variant="dark" type="color" data-tm-token="tm-hlt-comment-dark" value="#808080" aria-label="Comment dark color">
-                                </label>
-                            </div>
-                        </label>
-
-                        <label class="tinymist-theme-setting-row">
-                            <span class="text-muted text-small">Number</span>
-                            <div class="tinymist-theme-color-split" title="Left = Light, Right = Dark">
-                                <label class="tinymist-theme-color-half-wrap" data-theme-variant="light">
-                                    <span class="tinymist-theme-color-badge">L</span>
-                                    <input class="tinymist-theme-color-half" data-theme-variant="light" type="color" data-tm-token="tm-hlt-number" value="#9a6700" aria-label="Number light color">
-                                </label>
-                                <label class="tinymist-theme-color-half-wrap" data-theme-variant="dark">
-                                    <span class="tinymist-theme-color-badge">D</span>
-                                    <input class="tinymist-theme-color-half" data-theme-variant="dark" type="color" data-tm-token="tm-hlt-number-dark" value="#d6863e" aria-label="Number dark color">
-                                </label>
-                            </div>
-                        </label>
-
-                        <label class="tinymist-theme-setting-row">
-                            <span class="text-muted text-small">Error</span>
-                            <div class="tinymist-theme-color-split" title="Left = Light, Right = Dark">
-                                <label class="tinymist-theme-color-half-wrap" data-theme-variant="light">
-                                    <span class="tinymist-theme-color-badge">L</span>
-                                    <input class="tinymist-theme-color-half" data-theme-variant="light" type="color" data-tm-token="tm-hlt-error" value="#cf222e" aria-label="Error light color">
-                                </label>
-                                <label class="tinymist-theme-color-half-wrap" data-theme-variant="dark">
-                                    <span class="tinymist-theme-color-badge">D</span>
-                                    <input class="tinymist-theme-color-half" data-theme-variant="dark" type="color" data-tm-token="tm-hlt-error-dark" value="#e74c3c" aria-label="Error dark color">
-                                </label>
-                            </div>
-                        </label>
+                    <div class="settings-grid">
                     </div>
                 </div>
 
-                <div class="tinymist-theme-settings-footer">
+                <div class="settings-footer">
                     <button class="text-button" type="button" data-action="resetThemeSettings">Reset</button>
                     <button class="button outline" type="button" data-action="closeThemeSettings">Done</button>
                 </div>

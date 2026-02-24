@@ -1,8 +1,18 @@
+import { highlightColors } from "./semantic-tokens";
+
 type ThemeSettingValues = Record<string, string>;
 
 const STORAGE_KEY = "tinymist-theme-settings-v1";
 
-const DEFAULT_THEME_SETTINGS: ThemeSettingValues = {
+const FONT_TOKENS = ["tm-font-mono", "tm-font-ui"] as const;
+const HIGHLIGHT_COLOR_TYPES = highlightColors.filter((type) => type !== "text");
+const toThemeToken = (type: string, isDark = false): string => `tm-hlt-${type}${isDark ? "-dark" : ""}`;
+const toReadableLabel = (value: string): string => value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+
+const FALLBACK_THEME_SETTINGS: ThemeSettingValues = {
     "tm-font-mono": '"Monaco", "Menlo", "Ubuntu Mono", "Consolas", monospace',
     "tm-font-ui": '"-apple-system", BlinkMacSystemFont, "Segoe UI", "Oxygen", "Ubuntu", "Roboto", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif',
     "tm-hlt-keyword": "#8250df",
@@ -16,6 +26,19 @@ const DEFAULT_THEME_SETTINGS: ThemeSettingValues = {
     "tm-hlt-error": "#cf222e",
     "tm-hlt-error-dark": "#e74c3c",
 };
+
+const SEMANTIC_HIGHLIGHT_TYPES = new Set<string>(highlightColors);
+const HIGHLIGHT_COLOR_TOKENS = HIGHLIGHT_COLOR_TYPES.flatMap((type) => [toThemeToken(type, false), toThemeToken(type, true)]);
+const THEME_TOKENS = [...FONT_TOKENS, ...HIGHLIGHT_COLOR_TOKENS];
+const COLOR_TOKENS = new Set(
+    THEME_TOKENS.filter((token) => {
+        if (!token.startsWith("tm-hlt-")) {
+            return false;
+        }
+        const semanticType = token.replace(/^tm-hlt-/, "").replace(/-dark$/, "");
+        return SEMANTIC_HIGHLIGHT_TYPES.has(semanticType);
+    })
+);
 
 export class TinymistThemeSettings {
     private static readonly FONT_TOKENS = new Set(["tm-font-mono", "tm-font-ui"]);
@@ -48,16 +71,18 @@ export class TinymistThemeSettings {
 
     private root: HTMLElement;
     private overlay: HTMLElement | null;
-    private currentSettings: ThemeSettingValues = { ...DEFAULT_THEME_SETTINGS };
+    private currentSettings: ThemeSettingValues = {};
+    private stylesheetDefaults: ThemeSettingValues = { ...FALLBACK_THEME_SETTINGS };
     private measureCanvas: HTMLCanvasElement | null = null;
 
     constructor(root: HTMLElement) {
         this.root = root;
 
         // Ensure stored settings are loaded
+        this.stylesheetDefaults = this.readDefaultsFromStylesheet();
         const stored = this.readStoredSettings();
         this.currentSettings = {
-            ...DEFAULT_THEME_SETTINGS,
+            ...this.stylesheetDefaults,
             ...stored,
         };
         this.applyStateToEditor(this.currentSettings);
@@ -102,12 +127,19 @@ export class TinymistThemeSettings {
 
     private applyStateToEditor(settings: ThemeSettingValues): void {
         Object.entries(settings).forEach(([token, value]) => {
-            this.root.style.setProperty(`--${token}`, value);
+            this.applyTokenToEditor(token, value);
         });
     }
 
+    private applyTokenToEditor(token: string, value: string): void {
+        this.root.style.setProperty(`--${token}`, value);
+        if (token === "tm-font-mono") {
+            this.root.style.setProperty("--font-code", value);
+        }
+    }
+
     private reset(): void {
-        this.currentSettings = { ...DEFAULT_THEME_SETTINGS };
+        this.currentSettings = { ...this.stylesheetDefaults };
         this.applyStateToEditor(this.currentSettings);
         this.syncStateToInputs();
         this.refreshAllFontFeedback();
@@ -119,8 +151,13 @@ export class TinymistThemeSettings {
         const token = input.dataset.tmToken;
         if (!token) return;
 
-        this.currentSettings[token] = input.value.trim();
-        this.root.style.setProperty(`--${token}`, this.currentSettings[token]);
+        const rawValue = input.value.trim();
+        const nextValue = COLOR_TOKENS.has(token)
+            ? (this.normalizeColorValue(rawValue) ?? this.currentSettings[token] ?? this.stylesheetDefaults[token] ?? "")
+            : rawValue;
+
+        this.currentSettings[token] = nextValue;
+        this.applyTokenToEditor(token, this.currentSettings[token]);
         if (TinymistThemeSettings.FONT_TOKENS.has(token)) {
             this.updateFontInputFeedback(input);
         }
@@ -133,11 +170,11 @@ export class TinymistThemeSettings {
             return;
         }
         this.defineCheckerFonts();
-        this.setupFontInputHelpers();
+        this.renderHighlightColorNodes();
         this.syncStateToInputs();
 
         const isDarkMode = document.documentElement.classList.contains("dark-mode");
-        const splitControls = this.overlay?.querySelectorAll<HTMLElement>(".tinymist-theme-color-split") ?? [];
+        const splitControls = this.overlay?.querySelectorAll<HTMLElement>(".color-split") ?? [];
         splitControls.forEach((control) => {
             control.dataset.activeTheme = isDarkMode ? "dark" : "light";
         });
@@ -153,6 +190,57 @@ export class TinymistThemeSettings {
 
         const resetButton = this.overlay?.querySelector<HTMLButtonElement>('button[data-action="resetThemeSettings"]');
         resetButton?.addEventListener("click", this.reset);
+    }
+
+    private renderHighlightColorNodes(): void {
+        const grid = this.overlay?.querySelector<HTMLElement>(".settings-grid");
+        if (!grid) {
+            return;
+        }
+
+        grid.replaceChildren();
+
+        HIGHLIGHT_COLOR_TYPES.forEach((type) => {
+            const row = document.createElement("label");
+            row.className = "setting-row";
+
+            const title = document.createElement("span");
+            title.className = "text-muted text-small";
+            title.textContent = toReadableLabel(type);
+            row.appendChild(title);
+
+            const split = document.createElement("div");
+            split.className = "color-split";
+            split.title = "Left = Light, Right = Dark";
+            split.appendChild(this.createColorHalfWrap(type, false));
+            split.appendChild(this.createColorHalfWrap(type, true));
+            row.appendChild(split);
+
+            grid.appendChild(row);
+        });
+    }
+
+    private createColorHalfWrap(type: string, isDark: boolean): HTMLElement {
+        const variant = isDark ? "dark" : "light";
+
+        const wrap = document.createElement("label");
+        wrap.className = "color-half-wrap";
+        wrap.dataset.themeVariant = variant;
+
+        const badge = document.createElement("span");
+        badge.className = "color-badge";
+        badge.textContent = isDark ? "D" : "L";
+        wrap.appendChild(badge);
+
+        const input = document.createElement("input");
+        input.className = "color-half";
+        input.type = "color";
+        input.dataset.themeVariant = variant;
+        input.dataset.tmToken = toThemeToken(type, isDark);
+        input.setAttribute("aria-label", `${toReadableLabel(type)} ${variant} color`);
+        wrap.appendChild(input);
+
+        return wrap;
     }
 
     /** Finding 2 distinct fonts that are not fallbacks and override each other if the order is swapped */
@@ -188,45 +276,14 @@ export class TinymistThemeSettings {
             const token = input.dataset.tmToken;
             if (!token) return;
             const value = this.currentSettings[token] ?? "";
+            if (input.type === "color") {
+                input.value = this.normalizeColorValue(value) ?? this.normalizeColorValue(this.stylesheetDefaults[token]) ?? "#000000";
+                return;
+            }
             input.value = value;
         });
 
         this.refreshAllFontFeedback();
-    }
-
-    private setupFontInputHelpers(): void {
-        const inputs = this.overlay?.querySelectorAll<HTMLInputElement>('input[type="text"][data-tm-token]') ?? [];
-        inputs.forEach((input) => {
-            const token = input.dataset.tmToken ?? "";
-            if (!TinymistThemeSettings.FONT_TOKENS.has(token)) {
-                return;
-            }
-
-            const wrapper = input.closest(".tinymist-theme-setting-row");
-            if (!wrapper) {
-                return;
-            }
-
-            if (!wrapper.querySelector(".tinymist-theme-font-status")) {
-                const statusElement = document.createElement("div");
-                statusElement.className = "tinymist-theme-font-status text-small text-muted";
-                wrapper.appendChild(statusElement);
-            }
-
-            if (!wrapper.querySelector(".tinymist-theme-font-preview")) {
-                const previewElement = document.createElement("div");
-                previewElement.className = "tinymist-theme-font-preview";
-                wrapper.appendChild(previewElement);
-            }
-
-            if (!wrapper.querySelector(".tinymist-theme-font-probes")) {
-                const probesElement = document.createElement("div");
-                probesElement.className = "tinymist-theme-font-probes";
-                wrapper.appendChild(probesElement);
-            }
-
-            this.updateFontInputFeedback(input);
-        });
     }
 
     private refreshAllFontFeedback(): void {
@@ -240,22 +297,21 @@ export class TinymistThemeSettings {
             return;
         }
 
-        const wrapper = input.closest(".tinymist-theme-setting-row");
+        const wrapper = input.closest(".setting-row");
         if (!wrapper) {
             return;
         }
 
-        const statusElement = wrapper.querySelector<HTMLElement>(".tinymist-theme-font-status");
-        const previewElement = wrapper.querySelector<HTMLElement>(".tinymist-theme-font-preview");
-        const probesElement = wrapper.querySelector<HTMLElement>(".tinymist-theme-font-probes");
+        const statusElement = wrapper.querySelector<HTMLElement>(".font-status");
+        const previewElement = wrapper.querySelector<HTMLElement>(".font-preview");
+        const probesElement = wrapper.querySelector<HTMLElement>(".font-probes");
 
         const rawFontStack = input.value.trim();
         const candidates = this.splitFontFamilyList(rawFontStack);
         const firstRequested = candidates[0] ?? "";
-        const checkResult = this.checkFontAvailability(firstRequested);
 
         if (previewElement) {
-            previewElement.style.fontFamily = rawFontStack || DEFAULT_THEME_SETTINGS[token];
+            previewElement.style.fontFamily = rawFontStack || this.currentSettings[token] || this.stylesheetDefaults[token] || FALLBACK_THEME_SETTINGS[token] || "";
             previewElement.textContent = token === "tm-font-mono"
                 ? "Monospace preview: AaBb 0O1l {}[] () => +-*/ #_"
                 : "UI preview: The quick brown fox jumps over 1234567890.";
@@ -273,17 +329,14 @@ export class TinymistThemeSettings {
         );
 
         if (statusElement) {
-            if (checkResult === null) {
-                statusElement.className = "tinymist-theme-font-status text-small text-muted";
-                statusElement.textContent = "Font check unavailable in this browser. Open DevTools → Rendered Fonts for exact face.";
-            } else if (!firstRequested) {
-                statusElement.className = "tinymist-theme-font-status text-small text-muted";
+            if (!firstRequested) {
+                statusElement.className = "font-status text-small text-muted";
                 statusElement.textContent = "Type a font name or stack (for example: Inter, Segoe UI, sans-serif).";
             } else {
-                statusElement.className = checkResult
-                    ? "tinymist-theme-font-status text-small text-pos"
-                    : "tinymist-theme-font-status text-small text-warn";
-                statusElement.textContent = `First existing font from stack: ${firstExistingFontName || "(none detected)"}.`;
+                statusElement.className = firstExistingFontName !== ""
+                    ? "font-status text-small text-pos"
+                    : "font-status text-small text-warn";
+                statusElement.textContent = `First available font from stack: ${firstExistingFontName || "generic (available not detected)"}.`;
             }
         }
     }
@@ -298,13 +351,11 @@ export class TinymistThemeSettings {
         if (!probesElement) {
             return firstExistingFontName;
         }
-
-        probesElement.innerHTML = "";
-
         if (!fontCandidates.length) {
             return firstExistingFontName;
         }
 
+        probesElement.innerHTML = "";
         const grouped = new Map<string, Array<{ fontName: string; className: string; sampleFamily: string }>>();
 
         fontCandidates.forEach((fontName) => {
@@ -313,80 +364,100 @@ export class TinymistThemeSettings {
                 return;
             }
             const signal = this.getFontDistinctSignal(cleanName);
-            if (signal.hideDemo) {
+            if (signal.label !== "available") {
                 return;
             }
-            if (signal.label === "available" && !firstExistingFontName) {
+            if (!firstExistingFontName) {
                 firstExistingFontName = cleanName;
             }
 
-            const existing = grouped.get(signal.label) ?? [];
-            existing.push({
+            const available = grouped.get(signal.label) ?? [];
+            available.push({
                 fontName: cleanName,
                 className: signal.className,
-                sampleFamily: `"${cleanName}", ${fallbackFamily}`,
+                sampleFamily: `"${cleanName}"`,
             });
-            grouped.set(signal.label, existing);
+            grouped.set(signal.label, available);
         });
 
+        const sampleText = fallbackFamily === "monospace"
+            ? "AaBb 0O1l {}[] () => +-*/ #_"
+            : "The quick brown fox jumps over the lazy dog 1234567890.";
         grouped.forEach((items, groupLabel) => {
-            const group = document.createElement("div");
-            group.className = "tinymist-theme-font-probe-group";
-
-            const title = document.createElement("div");
-            title.className = "tinymist-theme-font-probe-group-title text-small";
-            title.textContent = groupLabel;
-            group.appendChild(title);
-
-            const list = document.createElement("div");
-            list.className = "tinymist-theme-font-probe-list";
-
-            items.forEach((item) => {
-                const row = document.createElement("div");
-                row.className = `tinymist-theme-font-probe-row ${item.className}`;
-
-                const name = document.createElement("span");
-                name.className = "tinymist-theme-font-probe-name";
-                name.textContent = `${item.fontName}: `;
-                row.appendChild(name);
-
-                const sample = document.createElement("span");
-                sample.className = "tinymist-theme-font-probe-sample";
-                sample.style.fontFamily = item.sampleFamily;
-                sample.textContent = fallbackFamily === "monospace"
-                    ? "AaBb 0O1l {}[] () => +-*/ #_"
-                    : "The quick brown fox jumps over the lazy dog 1234567890.";
-                row.appendChild(sample);
-
-                list.appendChild(row);
-            });
-
-            group.appendChild(list);
+            const group = this.generateProbeGroup(groupLabel, sampleText, items);
             probesElement.appendChild(group);
         });
 
         return firstExistingFontName;
     }
 
+    private generateProbeGroup(
+        label: string,
+        sampleText: string,
+        items: { fontName: string; className: string; sampleFamily: string }[]
+    ): HTMLElement {
+        const group = document.createElement("div");
+        group.className = "probe-group";
+
+        const title = document.createElement("div");
+        title.className = "probe-title text-small";
+        title.textContent = label;
+        group.appendChild(title);
+
+        const list = document.createElement("div");
+        list.className = "probe-list";
+
+        items.forEach((item) => {
+            const row = this.generateProbeRow(item, sampleText);
+            list.appendChild(row);
+        });
+        group.appendChild(list);
+        return group;
+    }
+
+    private generateProbeRow(
+        item: { fontName: string; className: string; sampleFamily: string },
+        text: string
+    ): HTMLElement {
+        const row = document.createElement("div");
+        row.className = `probe-row ${item.className}`;
+
+        const name = document.createElement("span");
+        name.className = "probe-name";
+        name.textContent = `${item.fontName}: `;
+        row.appendChild(name);
+
+        const sample = document.createElement("span");
+        sample.className = "probe-sample";
+        sample.style.fontFamily = item.sampleFamily;
+        sample.textContent = text;
+        row.appendChild(sample);
+        return row;
+    }
+
     private getFontDistinctSignal(
         fontName: string,
-    ): { label: string; className: string; hideDemo: boolean } {
+    ): { label: string; className: string; } {
+        // Generic is not the name of the font
         if (TinymistThemeSettings.GENERIC_FONT_FAMILIES.has(fontName.toLowerCase())) {
-            return { label: "generic", className: "is-generic", hideDemo: false };
+            return { label: "generic", className: "is-generic" };
         }
-
+        // In case it works in some environments or will work in the future
         const available = this.checkFontAvailability(fontName);
         if (available === false) {
-            return { label: "not found", className: "is-missing", hideDemo: false };
+            return { label: "not found", className: "is-missing" };
         }
 
         if (this.runDualBaselineFontTest(fontName)) {
-            return { label: "available", className: "is-distinct", hideDemo: false };
+            return { label: "available", className: "is-distinct" };
         }
 
-        return { label: "not rendering", className: "is-unknown", hideDemo: true };
+        return { label: "not rendering", className: "is-unknown" };
     }
 
+    /** If in both cases returned signature is the same, and we know that checker fonts are different
+     * then we know that the engine didn't fall back to the checker fonts and fontName is rendering.
+    */
     private runDualBaselineFontTest(fontName: string): boolean {
         const context = this.getMeasureContext();
         if (!context || !this.font1 || !this.font2) {
@@ -532,32 +603,18 @@ export class TinymistThemeSettings {
     }
 
     private checkFontAvailability(fontCandidate: string): boolean | null {
+        if (!document.fonts?.check) {
+            return null;
+        }
         const normalized = this.cleanFontCandidate(fontCandidate);
         if (!normalized) {
             return false;
         }
-
         if (TinymistThemeSettings.GENERIC_FONT_FAMILIES.has(normalized.toLowerCase())) {
             return true;
         }
-
-        if (!document.fonts?.check) {
-            return null;
-        }
-
         const escaped = normalized.replace(/"/g, '\\"');
         return document.fonts.check(`16px "${escaped}"`);
-    }
-
-    private findFirstAvailableFontCandidate(candidates: string[]): string {
-        for (const candidate of candidates) {
-            const available = this.checkFontAvailability(candidate);
-            if (available) {
-                return this.cleanFontCandidate(candidate);
-            }
-        }
-
-        return "";
     }
 
     private persistSettings(): void {
@@ -584,5 +641,105 @@ export class TinymistThemeSettings {
         }
 
         return {};
+    }
+
+    private readDefaultsFromStylesheet(): ThemeSettingValues {
+        const computedRootStyle = getComputedStyle(this.root);
+        const defaults: ThemeSettingValues = {};
+
+        THEME_TOKENS.forEach((token) => {
+            let value = computedRootStyle.getPropertyValue(`--${token}`).trim();
+
+            if (!value && token === "tm-font-mono") {
+                const computedCodeFont = this.readComputedCodeFont();
+                if (computedCodeFont) {
+                    value = computedCodeFont;
+                }
+            }
+
+            if (!value && token === "tm-font-ui") {
+                const computedUiFont = this.readComputedUiFont();
+                if (computedUiFont) {
+                    value = computedUiFont;
+                }
+            }
+
+            if (COLOR_TOKENS.has(token)) {
+                value = this.normalizeColorValue(value)
+                    ?? this.readComputedHighlightColor(token)
+                    ?? FALLBACK_THEME_SETTINGS[token]
+                    ?? "";
+            }
+
+            defaults[token] = value || FALLBACK_THEME_SETTINGS[token] || "";
+        });
+
+        return defaults;
+    }
+
+    private readComputedHighlightColor(token: string): string | null {
+        const type = token.replace(/^tm-hlt-/, "").replace(/-dark$/, "");
+        const probe = document.createElement("span");
+        probe.className = `tm-hlt tm-hlt-${type}`;
+        probe.textContent = "x";
+        probe.style.position = "absolute";
+        probe.style.visibility = "hidden";
+        probe.style.pointerEvents = "none";
+        probe.style.inset = "0";
+        this.root.appendChild(probe);
+
+        const color = getComputedStyle(probe).color;
+        probe.remove();
+        return this.normalizeColorValue(color);
+    }
+
+    private readComputedCodeFont(): string {
+        const editorLine = this.root.querySelector<HTMLElement>(".cm-editor .cm-line, .cm-editor .cm-gutter");
+        if (editorLine) {
+            return getComputedStyle(editorLine).fontFamily.trim();
+        }
+
+        return getComputedStyle(this.root).getPropertyValue("--font-code").trim();
+    }
+
+    private readComputedUiFont(): string {
+        const previewPane = this.root.querySelector<HTMLElement>(".tinymist-preview-pane");
+        if (!previewPane) {
+            return "";
+        }
+
+        return getComputedStyle(previewPane).fontFamily.trim();
+    }
+
+    private normalizeColorValue(value: string): string | null {
+        const trimmed = value.trim();
+        if (!trimmed) {
+            return null;
+        }
+
+        const hex = trimmed.match(/^#([\da-f]{3}|[\da-f]{6}|[\da-f]{8})$/i);
+        if (hex) {
+            const normalized = hex[1].toLowerCase();
+            if (normalized.length === 3) {
+                return `#${normalized.split("").map((char) => `${char}${char}`).join("")}`;
+            }
+            if (normalized.length === 8) {
+                return `#${normalized.slice(0, 6)}`;
+            }
+            return `#${normalized}`;
+        }
+
+        const rgb = trimmed.match(/^rgba?\(([^)]+)\)$/i);
+        if (!rgb) {
+            return null;
+        }
+
+        const channels = rgb[1].split(",").slice(0, 3).map((part) => Number.parseFloat(part.trim()));
+        if (channels.length !== 3 || channels.some((value) => Number.isNaN(value))) {
+            return null;
+        }
+
+        const [red, green, blue] = channels.map((channel) => Math.max(0, Math.min(255, Math.round(channel))));
+        return `#${[red, green, blue].map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
     }
 }
