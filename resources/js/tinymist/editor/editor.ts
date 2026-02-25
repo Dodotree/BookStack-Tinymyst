@@ -11,12 +11,19 @@ import {
 } from "@codemirror/view";
 
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { ChangeSet, EditorState, Transaction } from "@codemirror/state";
-import { LanguageDescription, defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { ChangeSet, Compartment, EditorState, Extension, Transaction } from "@codemirror/state";
+import { LanguageDescription, LanguageSupport, StreamLanguage, defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { markdown } from "@codemirror/lang-markdown";
+import { css } from "@codemirror/lang-css";
+import { html } from "@codemirror/lang-html";
 import { javascript } from "@codemirror/lang-javascript";
+import { json } from "@codemirror/lang-json";
 import { python } from "@codemirror/lang-python";
 import { php } from "@codemirror/lang-php";
+import { oneDarkHighlightStyle } from "@codemirror/theme-one-dark";
+import { shell } from "@codemirror/legacy-modes/mode/shell";
+import { stex } from "@codemirror/legacy-modes/mode/stex";
+import { toml } from "@codemirror/legacy-modes/mode/toml";
 
 import { SemanticTokenProcessor, highlightField } from "./semantic-tokens";
 import { DiagnosticsProcessor } from "./diagnostics";
@@ -50,6 +57,9 @@ export class TinymistEditorUI {
     private diagnosticsProcessor = new DiagnosticsProcessor();
     private semanticTokens = new SemanticTokenProcessor();
     private fallbackEnabled = false;
+    private readonly languageCompartment = new Compartment();
+    private readonly highlightCompartment = new Compartment();
+    private readonly isDarkMode = document.documentElement.classList.contains("dark-mode");
 
     private readonly entryFileName = "entry.typ";
     private activeFileName = this.entryFileName;
@@ -112,25 +122,8 @@ export class TinymistEditorUI {
                     lineNumbers(), // Enable line numbers
                     highlightActiveLineGutter(), // Highlight current line number in gutter
                     highlightActiveLine(), // Highlight current line
-                    markdown({
-                        codeLanguages: [
-                            LanguageDescription.of({
-                                name: "javascript",
-                                alias: ["js", "jsx", "ts", "tsx"],
-                                load: async () => javascript(),
-                            }),
-                            LanguageDescription.of({
-                                name: "python",
-                                alias: ["py"],
-                                load: async () => python(),
-                            }),
-                            LanguageDescription.of({
-                                name: "php",
-                                load: async () => php(),
-                            }),
-                        ],
-                    }),
-                    syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
+                    this.languageCompartment.of(this.getLanguageExtensionForFile(this.activeFileName)),
+                    this.highlightCompartment.of(this.getHighlightExtension()),
                     highlightField, // Add custom highlighting support
                     history(),
                     keymap.of([...historyKeymap, ...defaultKeymap]),
@@ -157,6 +150,93 @@ export class TinymistEditorUI {
             window.$events.emit("tinymist-console-log",
                 { type: "error", message: "[Editor] Failed to initialize CodeMirror editor", details: error });
         }
+    }
+
+    private getHighlightExtension(): Extension {
+        return syntaxHighlighting(this.isDarkMode ? oneDarkHighlightStyle : defaultHighlightStyle, { fallback: true });
+    }
+
+    private getMarkdownLanguageExtension(): Extension {
+        return markdown({
+            codeLanguages: [
+                LanguageDescription.of({
+                    name: "javascript",
+                    alias: ["js", "jsx", "ts", "tsx"],
+                    load: async () => javascript(),
+                }),
+                LanguageDescription.of({
+                    name: "python",
+                    alias: ["py"],
+                    load: async () => python(),
+                }),
+                LanguageDescription.of({
+                    name: "php",
+                    load: async () => php(),
+                }),
+                LanguageDescription.of({
+                    name: "shell",
+                    alias: ["sh", "bash", "zsh", "shell"],
+                    load: async () => new LanguageSupport(StreamLanguage.define(shell)),
+                }),
+            ],
+        });
+    }
+
+    private getLanguageExtensionForFile(fileName: string): Extension {
+        const ext = this.getFileExtension(fileName);
+
+        switch (ext) {
+            case "md":
+                return this.getMarkdownLanguageExtension();
+            case "toml":
+                return StreamLanguage.define(toml);
+            case "bib":
+                return StreamLanguage.define(stex);
+            case "sh":
+            case "bash":
+                return StreamLanguage.define(shell);
+            case "html":
+                return html();
+            case "css":
+                return css();
+            case "json":
+                return json();
+            case "ts":
+                return javascript({ typescript: true });
+            case "js":
+                return javascript();
+            case "php":
+                return php();
+            case "py":
+                return python();
+            case "txt":
+                return [];
+            default:
+                return this.getMarkdownLanguageExtension();
+        }
+    }
+
+    private getFileExtension(fileName: string): string {
+        const baseName = fileName.split(/[\\/]/).pop() ?? fileName;
+        const dotIndex = baseName.lastIndexOf(".");
+        if (dotIndex <= 0 || dotIndex >= baseName.length - 1) {
+            return "";
+        }
+
+        return baseName.slice(dotIndex + 1).toLowerCase();
+    }
+
+    private reconfigureEditorForFile(fileName: string): void {
+        if (!this.editorView) {
+            return;
+        }
+
+        this.editorView.dispatch({
+            effects: [
+                this.languageCompartment.reconfigure(this.getLanguageExtensionForFile(fileName)),
+                this.highlightCompartment.reconfigure(this.getHighlightExtension()),
+            ],
+        });
     }
 
     private isImageFile(fileName: string): boolean {
@@ -402,6 +482,7 @@ export class TinymistEditorUI {
         }
 
         this.showTextEditor();
+        this.reconfigureEditorForFile(fileName);
 
         const state = this.getOrCreateFileState(fileName);
         this.semanticTokens.clearHighlights();
