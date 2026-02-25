@@ -152,6 +152,7 @@
     @include mixins.lightDark(border-color, #ddd, #000);
 
     button[data-action="previewPanToggle"][aria-pressed="true"],
+    button[data-action="previewScrollIntoViewToggle"][aria-pressed="true"],
     button[data-action="previewCursorSpotlightToggle"][aria-pressed="true"] {
       @include mixins.lightDark(color, #2d6f96, #7ec5f0);
     }

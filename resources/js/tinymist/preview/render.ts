@@ -45,6 +45,7 @@ export class PreviewRenderer {
     private panStartScrollTop = 0;
     private activeFileName = "entry.typ";
     private cursorSpotlightUserEnabled = true;
+    private scrollIntoViewUserEnabled = true;
 
 
     constructor(
@@ -68,12 +69,15 @@ export class PreviewRenderer {
         this.handlePanMouseDown = this.handlePanMouseDown.bind(this);
         this.handlePanMouseMove = this.handlePanMouseMove.bind(this);
         this.handlePanMouseUp = this.handlePanMouseUp.bind(this);
+        this.handleCursorPosition = this.handleCursorPosition.bind(this);
 
         window.$events.listen("tinymist-data-binary", this.handleSyncMessage);
+        window.$events.listen("tinymist-preview-cursor-position", this.handleCursorPosition);
 
         window.$events.listen("tinymist-active-file-change", (payload: { fileName: string; url: string }) => {
             this.activeFileName = payload.fileName;
             this.applyCursorSpotlightState();
+            this.applyScrollIntoViewState();
         });
         this.previewElement.closest(".tinymist-preview-pane")?.addEventListener("click", this.handlePreviewPaneClick);
 
@@ -83,6 +87,7 @@ export class PreviewRenderer {
         this.previewElement.addEventListener("mouseleave", this.handlePanMouseUp);
 
         this.applyCursorSpotlightState();
+        this.applyScrollIntoViewState();
         this.applyPanButtonState();
     }
 
@@ -285,6 +290,7 @@ export class PreviewRenderer {
         this.renderer = null;
 
         this.previewElement.closest(".tinymist-preview-pane")?.removeEventListener("click", this.handlePreviewPaneClick);
+        window.$events.remove("tinymist-preview-cursor-position", this.handleCursorPosition);
 
         console.log("[Preview WASM] Renderer disposed");
     }
@@ -330,6 +336,10 @@ export class PreviewRenderer {
             case "previewPanToggle":
                 this.handlePanToggle(!this.panEnabled);
                 break;
+            case "previewScrollIntoViewToggle":
+                this.scrollIntoViewUserEnabled = !this.scrollIntoViewUserEnabled;
+                this.applyScrollIntoViewState();
+                break;
             case "previewCursorSpotlightToggle":
                 this.cursorSpotlightUserEnabled = !this.cursorSpotlightUserEnabled;
                 this.applyCursorSpotlightState();
@@ -361,6 +371,88 @@ export class PreviewRenderer {
             enabled,
             activeFile: this.activeFileName,
             userEnabled: this.cursorSpotlightUserEnabled,
+        });
+    }
+
+    private applyScrollIntoViewState(): void {
+        const enabled = this.scrollIntoViewUserEnabled && this.activeFileName === "entry.typ";
+
+        const button = this.previewElement.closest(".tinymist-preview-pane")?.querySelector('button[data-action="previewScrollIntoViewToggle"]') as HTMLButtonElement | null;
+        if (button) {
+            button.setAttribute("aria-pressed", enabled.toString());
+            button.setAttribute("title", enabled ? "Disable Scroll Into View" : "Enable Scroll Into View");
+        }
+
+        window.$events.emit("tinymist-cursor-scroll-into-view-toggle", {
+            enabled,
+            activeFile: this.activeFileName,
+            userEnabled: this.scrollIntoViewUserEnabled,
+        });
+    }
+
+    private handleCursorPosition(payload: { contentX?: number; contentY?: number; width?: number; height?: number }): void {
+        const enabled = this.scrollIntoViewUserEnabled && this.activeFileName === "entry.typ";
+        if (!enabled) {
+            return;
+        }
+
+        const contentX = Number(payload?.contentX);
+        const contentY = Number(payload?.contentY);
+        const width = Math.max(1, Number(payload?.width ?? 1));
+        const height = Math.max(1, Number(payload?.height ?? 1));
+        if (!Number.isFinite(contentX) || !Number.isFinite(contentY)) {
+            return;
+        }
+
+        this.scrollPreviewToClosestVisibleArea(contentX, contentY, width, height);
+    }
+
+    private scrollPreviewToClosestVisibleArea(contentX: number, contentY: number, width: number, height: number): void {
+        const viewportWidth = this.previewElement.clientWidth;
+        const viewportHeight = this.previewElement.clientHeight;
+        if (viewportWidth <= 0 || viewportHeight <= 0) {
+            return;
+        }
+
+        const marginX = Math.max(24, Math.min(120, viewportWidth * 0.1));
+        const marginY = Math.max(24, Math.min(120, viewportHeight * 0.1));
+
+        const minVisibleX = this.previewElement.scrollLeft + marginX;
+        const maxVisibleX = this.previewElement.scrollLeft + viewportWidth - marginX;
+        const minVisibleY = this.previewElement.scrollTop + marginY;
+        const maxVisibleY = this.previewElement.scrollTop + viewportHeight - marginY;
+
+        const cursorLeft = contentX - width / 2;
+        const cursorRight = contentX + width / 2;
+        const cursorTop = contentY - height / 2;
+        const cursorBottom = contentY + height / 2;
+
+        let nextScrollLeft = this.previewElement.scrollLeft;
+        let nextScrollTop = this.previewElement.scrollTop;
+
+        if (cursorLeft < minVisibleX) {
+            nextScrollLeft = cursorLeft - marginX;
+        } else if (cursorRight > maxVisibleX) {
+            nextScrollLeft = cursorRight - viewportWidth + marginX;
+        }
+
+        if (cursorTop < minVisibleY) {
+            nextScrollTop = cursorTop - marginY;
+        } else if (cursorBottom > maxVisibleY) {
+            nextScrollTop = cursorBottom - viewportHeight + marginY;
+        }
+
+        nextScrollLeft = Math.max(0, nextScrollLeft);
+        nextScrollTop = Math.max(0, nextScrollTop);
+
+        if (Math.abs(nextScrollLeft - this.previewElement.scrollLeft) < 1 && Math.abs(nextScrollTop - this.previewElement.scrollTop) < 1) {
+            return;
+        }
+
+        this.previewElement.scrollTo({
+            left: nextScrollLeft,
+            top: nextScrollTop,
+            behavior: "smooth",
         });
     }
 

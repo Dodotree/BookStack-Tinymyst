@@ -246,6 +246,7 @@ export class PreviewCursor {
 
         const glyphRect = glyphNode.getBoundingClientRect();
         const overlayRect = this.overlaySvg.getBoundingClientRect();
+        const previewRect = this.previewElement.getBoundingClientRect();
 
         const cx = glyphRect.left - overlayRect.left + glyphRect.width / 2;
         const cy = glyphRect.top - overlayRect.top + glyphRect.height / 2;
@@ -256,6 +257,15 @@ export class PreviewCursor {
         this.cursorCircle.setAttribute('cx', cx.toFixed(2));
         this.cursorCircle.setAttribute('cy', cy.toFixed(2));
         this.cursorCircle.setAttribute('r', r.toFixed(2));
+
+        const contentX = glyphRect.left - previewRect.left + this.previewElement.scrollLeft + glyphRect.width / 2;
+        const contentY = glyphRect.top - previewRect.top + this.previewElement.scrollTop + glyphRect.height / 2;
+        window.$events.emit("tinymist-preview-cursor-position", {
+            contentX,
+            contentY,
+            width: glyphRect.width,
+            height: glyphRect.height,
+        });
     }
 
     private hideCursor(): void {

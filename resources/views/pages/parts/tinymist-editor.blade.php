@@ -132,6 +132,9 @@
                 <button class="text-button" type="button" data-action="previewZoomReset" title="Reset Zoom">
                     @icon('zoom-1')
                 </button>
+                <button class="text-button" type="button" data-action="previewScrollIntoViewToggle" title="Disable Scroll Into View" aria-pressed="true">
+                    @icon('editor/auto-scroll')
+                </button>
                 <button class="text-button" type="button" data-action="previewPanToggle" title="Enable Hand Tool" aria-pressed="false">
                     @icon('hand')
                 </button>
