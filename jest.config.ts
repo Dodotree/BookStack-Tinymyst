@@ -5,7 +5,19 @@
 
 import type {Config} from 'jest';
 import {pathsToModuleNameMapper} from "ts-jest";
-import { compilerOptions }  from './tsconfig.json';
+// import { compilerOptions }  from './tsconfig.json'; // with { type: 'json' };
+
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const configDir = dirname(fileURLToPath(import.meta.url));
+const tsConfig = JSON.parse(readFileSync(resolve(configDir, "tsconfig.json"), "utf8")) as {
+  compilerOptions?: {
+    paths?: Record<string, string[]>;
+  };
+};
+const compilerPaths = tsConfig.compilerOptions?.paths ?? {};
 
 const config: Config = {
   // All imported modules in your tests should be mocked automatically
@@ -98,7 +110,8 @@ const config: Config = {
   // A map from regular expressions to module names or to arrays of module names that allow to stub out resources with a single module
   moduleNameMapper: {
     'lexical/shared/invariant': 'resources/js/wysiwyg/lexical/core/shared/__mocks__/invariant',
-    ...pathsToModuleNameMapper(compilerOptions.paths),
+    //...pathsToModuleNameMapper(compilerOptions.paths),
+    ...pathsToModuleNameMapper(compilerPaths),
   },
 
   // An array of regexp pattern strings, matched against all module paths before considered 'visible' to the module loader
