@@ -24,9 +24,10 @@ const { execSync } = require('child_process');
 const os = require('os');
 
 // Configuration
-const TINYMIST_VERSION = '0.14.10'; //'0.14.0' '0.13.28'; // Latest stable release
-const GITHUB_REPO = 'Dodotree/tinymist';
-const VENDOR_BIN_DIR = path.join(__dirname, '..', '..', 'vendor', 'bin');
+const TINYMIST_VERSION = '0.14.10';
+const TINYMIST_RELEASE_REPO = process.env.TINYMIST_RELEASE_REPO || 'Dodotree/tinymist';
+const TINYMIST_RELEASE_TAG = process.env.TINYMIST_RELEASE_TAG || '0.14.10';
+const VENDOR_BIN_DIR = path.join(__dirname, '..', 'vendor', 'bin');
 
 /**
  * Detect platform and architecture
@@ -38,9 +39,18 @@ function detectPlatform() {
     console.log(`\n📦 Tinymist Installation Script`);
     console.log(`Platform: ${platform}-${arch}`);
     console.log(`Version: ${TINYMIST_VERSION}`);
+    console.log(`Release: ${TINYMIST_RELEASE_REPO}@${TINYMIST_RELEASE_TAG}`);
 
     let packageName;
     let extractionMethod;
+
+    // Patched fork ships direct binary assets per platform.
+    if (TINYMIST_RELEASE_REPO === 'Dodotree/tinymist') {
+        packageName = platform === 'win32' ? 'tinymist.exe' : 'tinymist';
+        extractionMethod = 'binary';
+        console.log(`Package: ${packageName}\n`);
+        return { packageName, extractionMethod, platform };
+    }
 
     if (platform === 'win32') {
         if (arch === 'x64') {
@@ -257,15 +267,22 @@ async function installTinymist() {
             }
         }
 
-        // Download URL
-        const downloadUrl = `https://github.com/${GITHUB_REPO}/releases/download/v${TINYMIST_VERSION}/${packageName}`;
+        const downloadUrl = `https://github.com/${TINYMIST_RELEASE_REPO}/releases/download/${TINYMIST_RELEASE_TAG}/${packageName}`;
         const archivePath = path.join(VENDOR_BIN_DIR, packageName);
 
         // Download
         await downloadFile(downloadUrl, archivePath);
 
-        // Extract
-        const installedBinary = extractArchive(archivePath, extractionMethod, platform);
+        // Extract or install direct binary
+        let installedBinary;
+        if (extractionMethod === 'binary') {
+            installedBinary = archivePath;
+            if (platform !== 'win32') {
+                fs.chmodSync(installedBinary, 0o755);
+            }
+        } else {
+            installedBinary = extractArchive(archivePath, extractionMethod, platform);
+        }
 
         // Verify
         verifyInstallation(installedBinary);
@@ -277,10 +294,12 @@ async function installTinymist() {
         console.error(`\n❌ Installation failed:`);
         console.error(error.message);
         console.error(`\nPlease install Tinymist manually:`);
-        console.error(`1. Download from: https://github.com/${GITHUB_REPO}/releases/tag/v${TINYMIST_VERSION}`);
+        console.error(`1. Download from: https://github.com/${TINYMIST_RELEASE_REPO}/releases/tag/${TINYMIST_RELEASE_TAG}`);
         console.error(`2. Extract the binary to: ${VENDOR_BIN_DIR}`);
         console.error(`3. Ensure it's executable\n`);
-        process.exit(1);
+
+        console.warn('⚠️  Continuing without Tinymist binary (non-fatal for install/test workflows).\n');
+        process.exit(0);
     }
 }
 
