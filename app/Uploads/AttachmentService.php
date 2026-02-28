@@ -164,6 +164,7 @@ class AttachmentService
         }
 
         foreach ($page->attachments as $attachment) {
+            /** @var Attachment $attachment */
             if ($attachment->external) {
                 continue;
             }

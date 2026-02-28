@@ -12,7 +12,7 @@ class TinymistPreviewManager
     public function generateTinymistWsToken(Page $page): ?array
     {
         $userId = auth()->id();
-        $secret = config('tinymist.ws_token_secret', env('TINYMIST_WS_SECRET'));
+        $secret = config('tinymist.ws_token_secret');
         $ttl = (int) config('tinymist.ws_token_ttl', 900);
         $issuedAt = time();
 
