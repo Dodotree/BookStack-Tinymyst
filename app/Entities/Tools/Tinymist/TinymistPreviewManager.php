@@ -9,7 +9,7 @@ use BookStack\Uploads\FileStorage;
 
 class TinymistPreviewManager
 {
-    function generateTinymistWsToken(Page $page): ?array
+    public function generateTinymistWsToken(Page $page): ?array
     {
         $userId = auth()->id();
         $secret = config('tinymist.ws_token_secret', env('TINYMIST_WS_SECRET'));
@@ -197,5 +197,4 @@ class TinymistPreviewManager
 
         @copy($sourcePath, $destPath);
     }
-
 }

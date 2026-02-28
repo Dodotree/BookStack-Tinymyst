@@ -139,7 +139,6 @@ export class TinymistThemeSettings {
 
     // fires only once if the user decides to use settings, so we can delay setup until then
     ensureSettingsLoaded(): void {
-        new FontProbe();
         this.renderHighlightColorNodes();
         this.syncStateToInputs();
 
@@ -302,23 +301,19 @@ export class TinymistThemeSettings {
         const grouped = new Map<string, Array<{ fontName: string; className: string; sampleFamily: string }>>();
 
         fontCandidates.forEach((fontName) => {
-            const cleanName = FontProbe.cleanFontCandidate(fontName);
-            if (!cleanName) {
-                return;
-            }
-            const signal = FontProbe.getFontDistinctSignal(cleanName);
+            const signal = FontProbe.getFontDistinctSignal(fontName);
             if (signal.label !== "available") {
                 return;
             }
             if (!firstExistingFontName) {
-                firstExistingFontName = cleanName;
+                firstExistingFontName = fontName;
             }
 
             const available = grouped.get(signal.label) ?? [];
             available.push({
-                fontName: cleanName,
+                fontName: fontName,
                 className: signal.className,
-                sampleFamily: `"${cleanName}"`,
+                sampleFamily: `"${fontName}"`,
             });
             grouped.set(signal.label, available);
         });

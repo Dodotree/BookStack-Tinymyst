@@ -530,7 +530,7 @@ const diffResult = this.renderSession.manipulateData({
 // Returns: { operations: DOMOperation[] } // No such thing, at least in js
 ```
 
-### Linters approves of this
+### Linter approves of this
 
 `session.renderSvg` takes a `RenderSvgOptions` object (or the wider `RenderOptions<RenderSvgOptions>` union, though you normally just pass the base object when you already have a session).
 `window?`: Rect – clip the output to a rectangular window. Rect is `{ lo: { x, y }, hi: { x, y } }` in Typst document units (pt). Use it to render just a slice of the page stack.

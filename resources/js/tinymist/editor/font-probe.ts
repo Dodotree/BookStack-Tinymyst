@@ -1,7 +1,29 @@
 export class FontProbe {
+    public static readonly availableFontMetrics = new Map<
+        string,
+        {
+            xHeight: number;
+            capHeight: number;
+            emWidth: number;
+            normalWidth: number;
+        }
+    >();
+
     // Baseline fonts should be commonly available, but measurably distinct, we need a pair to compare against to detect fallbacks
-    private static readonly FONT_ONE_VARIANTS = ["Arial","Verdana", "Times New Roman", "Palatino", "Helvetica"];
-    private static readonly FONT_TWO_VARIANTS = ["Courier New", "Courier","Lucida Console", "Lucida Sans Typewriter"];
+    private static readonly FONT_ONE_VARIANTS = [
+        "Arial",
+        "Verdana",
+        "Times New Roman",
+        "Palatino",
+        "Helvetica",
+    ];
+    private static readonly FONT_TWO_VARIANTS = [
+        "Courier New",
+        "Courier",
+        "Lucida Console",
+        "Lucida Sans Typewriter",
+    ];
+    // If the task is to detect if the single character gets swapped to a fallback, change to that character
     private static readonly METRIC_SAMPLE = {
         xHeight: "xxxxxxxxxxxx",
         capHeight: "XXXXXXXXXXXX",
@@ -24,59 +46,67 @@ export class FontProbe {
         "ui-rounded",
     ]);
 
-    public static measureCanvas: HTMLCanvasElement | null = null;
-    public static font1: { name: string; xHeight: number; capHeight: number; emWidth: number; normalWidth: number } | null = null;
-    public static font2: { name: string; xHeight: number; capHeight: number; emWidth: number; normalWidth: number } | null = null;
-
-    constructor() {
-        this.defineCheckerFonts();
-    }
-
-    public static getMeasureContext(): CanvasRenderingContext2D | null {
-        if (!FontProbe.measureCanvas) {
-            FontProbe.measureCanvas = document.createElement("canvas");
-        }
-        return FontProbe.measureCanvas.getContext("2d");
-    }
+    public static checkerFonts: [string, string] | null = null;
 
     /** Finding 2 distinct fonts that are not fallbacks and override each other if the order is swapped */
-    private defineCheckerFonts(): void {
-        const fonts_one  = FontProbe.FONT_ONE_VARIANTS;
-        const fonts_two  = FontProbe.FONT_TWO_VARIANTS;
-        const context = FontProbe.getMeasureContext();
-        if (!context) {
+    public static defineCheckerFonts(): void {
+        if (FontProbe.checkerFonts) {
             return;
         }
+        const fontsOne = FontProbe.FONT_ONE_VARIANTS;
+        const fontsTwo = FontProbe.FONT_TWO_VARIANTS;
 
-        for (let i = 0; i < fonts_one.length; i++) {
-            const fontName1 = FontProbe.cleanFontCandidate(fonts_one[i]);
-            for (let j = 0; j < fonts_two.length; j++) {
-                const fontName2 = FontProbe.cleanFontCandidate(fonts_two[j]);
-                const signature1 = FontProbe.measureTypographySignature(context, `"${fontName1}", "${fontName2}"`);
-                const signature2 = FontProbe.measureTypographySignature(context, `"${fontName2}", "${fontName1}"`);
-                if (signature1 && signature2 && !FontProbe.areSignaturesClose(signature1, signature2)) {
-                    FontProbe.font1 = {name: fontName1, ...signature1};
-                    FontProbe.font2 = {name: fontName2, ...signature2};
+        for (let i = 0; i < fontsOne.length; i++) {
+            const fontName1 = fontsOne[i];
+            for (let j = 0; j < fontsTwo.length; j++) {
+                const fontName2 = fontsTwo[j];
+                const signature1 = FontProbe.measureTypographySignature(
+                    `"${fontName1}", "${fontName2}"`,
+                );
+                const signature2 = FontProbe.measureTypographySignature(
+                    `"${fontName2}", "${fontName1}"`,
+                );
+                if (
+                    signature1 &&
+                    signature2 &&
+                    !FontProbe.areSignaturesClose(signature1, signature2)
+                ) {
+                    FontProbe.checkerFonts = [fontName1, fontName2];
                     break;
                 }
             }
-            if (FontProbe.font1 && FontProbe.font2) {
+            if (FontProbe.checkerFonts) {
                 break;
             }
         }
     }
 
-    public static getFontDistinctSignal(
-        fontName: string,
-    ): { label: string; className: string; } {
+    // fontName should be from already cleaned candidate list
+    public static getFontDistinctSignal(fontName: string): {
+        label: string;
+        className: string;
+    } {
+        if (!fontName) {
+            return { label: "not found", className: "is-missing" };
+        }
+
+        if (FontProbe.availableFontMetrics.has(fontName)) {
+            return { label: "available", className: "is-distinct" };
+        }
         // Generic is not the name of the font
         if (FontProbe.GENERIC_FONT_FAMILIES.has(fontName.toLowerCase())) {
             return { label: "generic", className: "is-generic" };
         }
-        // In case it works in some environments or will work in the future
-        const available = FontProbe.checkFontAvailability(fontName);
-        if (available === false) {
-            return { label: "not found", className: "is-missing" };
+
+        // document.fonts?.check in case it works in some environments or will work in the future
+        // Note, the other option FontFaceSet: check()
+        // MDN: "is not designed to verify whether a specific font style can be rendered or if a particular font is fully loaded"
+        // And Window.queryLocalFonts() is only for Chrome and Edge, and requires permission
+        // It's more of a formality, never saw it return false on my devices
+        if (document.fonts?.check) {
+            if(!document.fonts.check(`16px "${fontName}"`)) {
+                return { label: "not found", className: "is-missing" };
+            }
         }
 
         if (FontProbe.runDualBaselineFontTest(fontName)) {
@@ -88,27 +118,27 @@ export class FontProbe {
 
     /** If in both cases returned signature is the same, and we know that checker fonts are different
      * then we know that the engine didn't fall back to the checker fonts and fontName is rendering.
-    */
+     */
     public static runDualBaselineFontTest(fontName: string): boolean {
-        const context = FontProbe.getMeasureContext();
-        if (!context || !this.font1 || !this.font2) {
-            return false;
+
+        if (!this.checkerFonts) {
+            FontProbe.defineCheckerFonts();
+            if (!this.checkerFonts) {
+                return false;
+            }
         }
 
-        const testOne = FontProbe.measureTypographySignature(
-            context,
-            `"${fontName}", ${this.font1.name}`,
-        );
-        const testTwo = FontProbe.measureTypographySignature(
-            context,
-            `"${fontName}", ${this.font2.name}`,
-        );
-
-        return FontProbe.areSignaturesClose(testOne, testTwo);
+        const [fontOne, fontTwo] = this.checkerFonts;
+        const testOne = FontProbe.measureTypographySignature(`"${fontName}", "${fontOne}"`);
+        const testTwo = FontProbe.measureTypographySignature(`"${fontName}", "${fontTwo}"`);
+        if (FontProbe.areSignaturesClose(testOne, testTwo)) {
+            FontProbe.availableFontMetrics.set(fontName, testOne!);
+            return true;
+        }
+        return false;
     }
 
     public static measureTypographySignature(
-        context: CanvasRenderingContext2D,
         fontFamily: string,
     ): {
         xHeight: number;
@@ -116,127 +146,96 @@ export class FontProbe {
         emWidth: number;
         normalWidth: number;
     } | null {
-        const xMetrics = this.measureTextMetrics(context, fontFamily, FontProbe.METRIC_SAMPLE.xHeight);
-        const capMetrics = this.measureTextMetrics(context, fontFamily, FontProbe.METRIC_SAMPLE.capHeight);
-        const emMetrics = this.measureTextMetrics(context, fontFamily, FontProbe.METRIC_SAMPLE.emWidth);
-        const normalMetrics = this.measureTextMetrics(context, fontFamily, FontProbe.METRIC_SAMPLE.normalWidth);
-
-        if (!xMetrics || !capMetrics || !emMetrics || !normalMetrics) {
+        const measureCanvas = document.createElement("canvas");
+        const context = measureCanvas.getContext("2d");
+        if (!context) {
             return null;
         }
+        context.font = `32px ${fontFamily}`;
 
-        const xCount = FontProbe.METRIC_SAMPLE.xHeight.length;
-        const capCount = FontProbe.METRIC_SAMPLE.capHeight.length;
+        let metrics = context.measureText(FontProbe.METRIC_SAMPLE.xHeight);
+        const xWidth = metrics.width;
+        const xHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
+
+        metrics = context.measureText(FontProbe.METRIC_SAMPLE.capHeight);
+        const capWidth = metrics.width;
+        const capHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
+
+        // Canvas also provides emHeight (height of the type block) if needed
+
         const emCount = FontProbe.METRIC_SAMPLE.emWidth.length;
         const normalCount = FontProbe.METRIC_SAMPLE.normalWidth.length;
 
+        metrics = context.measureText(FontProbe.METRIC_SAMPLE.emWidth);
+        const emWidth = metrics.width / Math.max(1, emCount);
+
+        metrics = context.measureText(FontProbe.METRIC_SAMPLE.normalWidth);
+        const normalWidth = metrics.width / Math.max(1, normalCount);
+
+        if (!xWidth || !capWidth || !emWidth || !normalWidth) {
+            return null;
+        }
+
         return {
-            xHeight: xMetrics.height,
-            capHeight: capMetrics.height,
-            emWidth: emMetrics.width / emCount,
-            normalWidth: normalMetrics.width / normalCount,
+            xHeight,
+            capHeight,
+            emWidth,
+            normalWidth,
         };
     }
 
     private static areSignaturesClose(
-        first: { xHeight: number; capHeight: number; emWidth: number; normalWidth: number } | null,
-        second: { xHeight: number; capHeight: number; emWidth: number; normalWidth: number } | null,
+        first: {
+            xHeight: number;
+            capHeight: number;
+            emWidth: number;
+            normalWidth: number;
+        } | null,
+        second: {
+            xHeight: number;
+            capHeight: number;
+            emWidth: number;
+            normalWidth: number;
+        } | null,
     ): boolean {
         if (!first || !second) {
             return false;
         }
-        const maxHeightBase = Math.max(1, second.capHeight);
-        const maxWidthBase = Math.max(1, second.emWidth);
+        const maxHeight = Math.max(1, Math.max(first.capHeight, second.capHeight));
+        const maxWidth = Math.max(1, Math.max(first.emWidth, second.emWidth));
 
-        const xHeightDelta = Math.abs(first.xHeight - second.xHeight) / maxHeightBase;
-        const capHeightDelta = Math.abs(first.capHeight - second.capHeight) / maxHeightBase;
-        const emWidthDelta = Math.abs(first.emWidth - second.emWidth) / maxWidthBase;
-        const normalWidthDelta = Math.abs(first.normalWidth - second.normalWidth) / maxWidthBase;
+        const xHeightDelta =
+            Math.abs(first.xHeight - second.xHeight) / maxHeight;
+        const capHeightDelta =
+            Math.abs(first.capHeight - second.capHeight) / maxHeight;
+        const emWidthDelta =
+            Math.abs(first.emWidth - second.emWidth) / maxWidth;
+        const normalWidthDelta =
+            Math.abs(first.normalWidth - second.normalWidth) / maxWidth;
 
-        const aggregateDelta = (xHeightDelta + capHeightDelta + emWidthDelta + normalWidthDelta) / 4;
+        const aggregateDelta =
+            (xHeightDelta + capHeightDelta + emWidthDelta + normalWidthDelta) / 4;
         return aggregateDelta <= 0.02;
-    }
-
-    public static measureTextMetrics(
-        context: CanvasRenderingContext2D,
-        fontFamily: string,
-        sample: string,
-    ): { width: number; height: number } | null {
-        context.font = `32px ${fontFamily}`;
-        const metrics = context.measureText(sample);
-
-        const ascent = Number.isFinite(metrics.actualBoundingBoxAscent)
-            ? metrics.actualBoundingBoxAscent
-            : 0;
-        const descent = Number.isFinite(metrics.actualBoundingBoxDescent)
-            ? metrics.actualBoundingBoxDescent
-            : 0;
-        const height = Math.max(1, ascent + descent);
-
-        if (!Number.isFinite(metrics.width) || metrics.width <= 0) {
-            return null;
-        }
-
-        return {
-            width: metrics.width,
-            height,
-        };
     }
 
     public static splitFontFamilyList(fontStack: string): string[] {
         if (!fontStack.trim()) {
             return [];
         }
+        return fontStack.replace(/['"]/g, "").replace(/\s+/g, " ")
+            .split(",")
+            .map((candidate) => candidate.trim())
+            .filter((candidate) => candidate);
+    }
 
-        const parts: string[] = [];
-        let current = "";
-        let quote: string | null = null;
-
-        for (let index = 0; index < fontStack.length; index++) {
-            const character = fontStack[index];
-
-            if ((character === '"' || character === "'") && (!quote || quote === character)) {
-                quote = quote ? null : character;
-                current += character;
-                continue;
-            }
-
-            if (character === "," && !quote) {
-                const cleaned = this.cleanFontCandidate(current);
-                if (cleaned) {
-                    parts.push(cleaned);
+    public static candidatesToCss(candidates: string[]): string {
+        return candidates
+            .map((name) => {
+                if (FontProbe.GENERIC_FONT_FAMILIES.has(name.toLowerCase())) {
+                    return name.toLowerCase();
                 }
-                current = "";
-                continue;
-            }
-
-            current += character;
-        }
-
-        const cleaned = this.cleanFontCandidate(current);
-        if (cleaned) {
-            parts.push(cleaned);
-        }
-
-        return parts;
-    }
-
-    public static cleanFontCandidate(candidate: string): string {
-        return candidate.trim().replace(/^['"]|['"]$/g, "").trim();
-    }
-
-    public static checkFontAvailability(fontCandidate: string): boolean | null {
-        if (!document.fonts?.check) {
-            return null;
-        }
-        const normalized = FontProbe.cleanFontCandidate(fontCandidate);
-        if (!normalized) {
-            return false;
-        }
-        if (FontProbe.GENERIC_FONT_FAMILIES.has(normalized.toLowerCase())) {
-            return true;
-        }
-        const escaped = normalized.replace(/"/g, '\\"');
-        return document.fonts.check(`16px "${escaped}"`);
+                return `"${name}"`;
+            })
+            .join(", ");
     }
 }
