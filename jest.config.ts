@@ -8,11 +8,9 @@ import {pathsToModuleNameMapper} from "ts-jest";
 // import { compilerOptions }  from './tsconfig.json'; // with { type: 'json' };
 
 import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { resolve } from "node:path";
 
-const configDir = dirname(fileURLToPath(import.meta.url));
-const tsConfig = JSON.parse(readFileSync(resolve(configDir, "tsconfig.json"), "utf8")) as {
+const tsConfig = JSON.parse(readFileSync(resolve(process.cwd(), "tsconfig.json"), "utf8")) as {
   compilerOptions?: {
     paths?: Record<string, string[]>;
   };
