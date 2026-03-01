@@ -135,7 +135,7 @@ Blob(1140 bytes)
 ### Message Types
 
 | Type | Size | Description | When |
-|------|------|-------------|------|
+| ------ | ------ | ------------- | ------ |
 | `partial-rendering,true` | 4 bytes | Configuration confirmation | On connect |
 | `diff-v1,<binary>` | 1-3 KB | **Incremental diff** | After file change |
 | `new,<binary>` | 10-15 KB | **Full document** | Initial render or manual request |
@@ -337,9 +337,9 @@ Each command type has a dedicated handler:
 *************************************************
 **Back end tinymist version**
 **should be compatible with front end version**
-Tinymist tags/releases carry the Typst version in their release notes; visit https://github.com/Myriad-Dreamin/tinymist/releases and match the “Typst v0.xx” line (for example v0.13.x releases ship Typst 0.13.x).
+Tinymist tags/releases carry the Typst version in their release notes; visit <https://github.com/Myriad-Dreamin/tinymist/releases> and match the “Typst v0.xx” line (for example v0.13.x releases ship Typst 0.13.x).
 When the versions match, the reflexo crate revisions match too; confirm via the Cargo.lock in both projects or the crates/reflexo-* commit mentioned in their changelog entries.
-For day-to-day updates, the tinymist docs in TINYMIST_ARCHITECTURE.md and the Typst.ts “cookery” docs (https://myriad-dreamin.github.io/typst.ts) both note the compatible release pairs whenever they switch Typst versions.
+For day-to-day updates, the tinymist docs in TINYMIST_ARCHITECTURE.md and the Typst.ts “cookery” docs (<https://myriad-dreamin.github.io/typst.ts>) both note the compatible release pairs whenever they switch Typst versions.
 
 @myriaddreamin/typst.ts and @myriaddreamin/typst-ts-renderer
 0.6.x release that matches tinymist 0.13.x.
@@ -535,9 +535,9 @@ const diffResult = this.renderSession.manipulateData({
 `session.renderSvg` takes a `RenderSvgOptions` object (or the wider `RenderOptions<RenderSvgOptions>` union, though you normally just pass the base object when you already have a session).
 `window?`: Rect – clip the output to a rectangular window. Rect is `{ lo: { x, y }, hi: { x, y } }` in Typst document units (pt). Use it to render just a slice of the page stack.
 `data_selection?`: `{ body: boolean; defs: boolean; css: boolean; js: boolean }` – toggle which parts of the SVG payload you want back. All flags default to true:
-    -  `body`: the <svg> body with page content.
-    -  `defs`: gradients, glyph outlines, etc. inside <defs>.
-    -  `css`: the injected <style> block, needed to hide debug elements, or include it on your page already
+    -  `body`: the `<svg>` body with page content.
+    -  `defs`: gradients, glyph outlines, etc. inside `<defs>`.
+    -  `css`: the injected `<style>` block, needed to hide debug elements, or include it on your page already
     -  `js`: the inline helper script (the big Typst selection/highlight script).
 
 **Note, If you pass** `renderSvg({})` you get the full document with js, css etc (all flags true, full bounds),

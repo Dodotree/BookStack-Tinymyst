@@ -52,6 +52,10 @@ export class PreviewRenderer {
         previewElement: HTMLElement,
     ) {
         this.previewElement = previewElement;
+        if (!previewElement) {
+            console.warn("[Preview Data] Preview element not found, skipping preview setup");
+            return;
+        }
 
         this.handleSyncInit = this.handleSyncInit.bind(this);
         this.dispose = this.dispose.bind(this);

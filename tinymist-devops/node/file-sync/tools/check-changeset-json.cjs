@@ -1,8 +1,9 @@
 #!/usr/bin/env node
+/* global require, process, __filename */
 /* eslint-disable no-console */
 
 const path = require("path");
-const { ChangeSet, Text } = require("@codemirror/state");
+const {ChangeSet, Text} = require("@codemirror/state");
 
 function getCodeMirrorStateVersion() {
     try {
@@ -59,14 +60,14 @@ function testRawString(raw) {
 
     const trimmed = raw.trim();
     if (/^-?\d+(\s*,\s*-?\d+)+$/.test(trimmed)) {
-        const split = trimmed.split(",").map((part) => Number(part.trim()));
+        const split = trimmed.split(",").map(part => Number(part.trim()));
         tryFromJSON("C) fromJSON(raw split to number[])", split);
     }
 }
 
 function buildCanonicalExample() {
     const base = Text.of(["Hello world"]);
-    const changes = [{ from: 6, to: 11, insert: "Linux" }];
+    const changes = [{from: 6, to: 11, insert: "Linux"}];
     const changeSet = ChangeSet.of(changes, base.length);
     return {
         text: base.toString(),

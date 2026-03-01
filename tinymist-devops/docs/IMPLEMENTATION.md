@@ -88,13 +88,13 @@ Platform support: Windows (x64/ARM64), Linux (x64/ARM64), macOS (x64/ARM64)
      - `pages.markdown` = Typst source
      - `pages.html` = SVG output (wrapped in `<div class="tinymist-document">`)
      - `pages.text` = Plain text for search
-     - `pages.editor` = `'tinymist'` bypass the formatHtml(), the formatHtml() method was processing the SVG through PHP's DOMDocument HTML parser, which was stripping out the SVG <defs> section and the xlink:href attributes because the HTML5 parser doesn't properly handle SVG namespaces.
+     - `pages.editor` = `'tinymist'` bypass the formatHtml(), the formatHtml() method was processing the SVG through PHP's DOMDocument HTML parser, which was stripping out the SVG `<defs>` section and the xlink:href attributes because the HTML5 parser doesn't properly handle SVG namespaces.
 
 ### Viewing Flow
 
 1. User views page
 2. `pages.html` contains SVG
-3. Browser renders SVG directly, Bypassed render() method for Tinymist pages to preserve SVG namespaces (since render() method was re-processing the HTML through HtmlDocument which uses DOMDocument->loadHTML(), and that was stripping the SVG namespaces (xlink:href and the <defs> section).)
+3. Browser renders SVG directly, Bypassed render() method for Tinymist pages to preserve SVG namespaces (since render() method was re-processing the HTML through HtmlDocument which uses DOMDocument->loadHTML(), and that was stripping the SVG namespaces (xlink:href and the `<defs>` section).)
 4. No frontend compilation needed
 
 ---
@@ -198,13 +198,6 @@ $command = sprintf(
 - Direct double-quote wrapping with escape handling works correctly on Windows
 - `base_path()` ensures absolute path is always used
 
-
-5. **✅ Testing**
-   - Write unit tests
-   - Manual testing with various documents
-   - Performance testing with large documents
-
-
 ### Potential Optimizations
 
 1. **Caching**: Cache compiled SVG with content hash
@@ -216,7 +209,7 @@ $command = sprintf(
 ## ✅ Implementation Status
 
 | Component | Status | Files |
-|-----------|--------|-------|
+| --------- | ------ | ------- |
 | **Installation Scripts** | ✅ Complete | `download-typst.js`, `download-tinymist.js` |
 | **Configuration** | ✅ Complete | `app/Config/tinymist.php` |
 | **Backend Enum** | ✅ Complete | `PageEditorType.php` |
@@ -231,3 +224,9 @@ $command = sprintf(
 ## Observed occasional problems
 
 - The preview can stop watching the file. Since we do not terminate the session right away, the effect can persist until preview server discards the process
+
+### Needs to be done
+
+- Write unit tests
+- Manual testing with various documents
+- Performance testing with large documents

@@ -32,8 +32,10 @@ export class TinymistConnectionsManager {
 
         this.updateStatus = this.updateStatus.bind(this);
         this.updateToken = this.updateToken.bind(this);
+        this.destroy = this.destroy.bind(this);
         window.$events.listen('tinymist-status', this.updateStatus);
         window.$events.listen('tinymist-token-renewed', this.updateToken);
+        window.$events.listen('tinymist-destroy', this.destroy);
 
         this.tokenManager = new TinymistTokenManager(this.pageId, this.wsToken);
     }
@@ -53,14 +55,6 @@ export class TinymistConnectionsManager {
         if (!this.previewBridgeClient || !this.fileSyncClient) {
             this.start();
         }
-    }
-
-    destroy(): void {
-        this.restartAllowed = false;
-
-        window.$events.emit('tinymist-fallback-enable', false);
-        window.$events.emit('tinymist-sync-disconnect');
-        window.$events.emit('tinymist-preview-disconnect');
     }
 
     private setupPreviewSockets(): void {
@@ -143,4 +137,11 @@ export class TinymistConnectionsManager {
         }
     }
 
+    destroy(): void {
+        this.restartAllowed = false;
+
+        window.$events.emit('tinymist-fallback-enable', false);
+        window.$events.emit('tinymist-sync-disconnect');
+        window.$events.emit('tinymist-preview-disconnect');
+    }
 }

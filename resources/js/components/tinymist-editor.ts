@@ -10,11 +10,7 @@ export class TinymistEditor extends Component {
     }
 
     getText(): string {
-        return this.app?.getEntryText() ?? "";
-    }
-
-    syncContentToTextarea(): string {
-        return this.app?.syncEntryContentToTextarea() ?? "";
+        return this.app?.getText() ?? "";
     }
 
     async getContent(): Promise<{ tinymist: string }> {

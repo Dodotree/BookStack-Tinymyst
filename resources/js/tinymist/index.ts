@@ -20,9 +20,8 @@ export class TinymistApp {
 
     private uniqueTabId: string;
     private pageId: number;
-    private editorUI: TinymistEditorUI | null = null;
-    private connectionsManager: TinymistConnectionsManager | null = null;
-    private formSubmitHandler: (() => string) | null = null;
+    getText: (() => string) = () => "supposed to be overridden in setup";
+    private syncTextGetText: (() => string) = () => "supposed to be overridden in setup";
     private consoleToggleHandler: ((collapsed?: boolean) => void) | null = null;
 
     constructor(root: HTMLElement, refs: TinymistRefs, opts: TinymistOpts) {
@@ -40,24 +39,24 @@ export class TinymistApp {
             this.refs.imagePreviewImage as HTMLImageElement,
             this.refs.imagePreviewMessage as HTMLDivElement,
         );
-        this.editorUI = editorUI;
 
         new TinymistThemeSettings(this.root);
         new TinymistFileDropdown(this.refs.fileList as HTMLSelectElement);
         new TinymistConsole(this.refs.console);
         new TinymistFallbackCompiler(this.pageId);
 
-        this.connectionsManager = new TinymistConnectionsManager({
+        const connectionsManager = new TinymistConnectionsManager({
             pageId: this.pageId,
             wsToken: this.opts.wsToken,
             uniqueTabId: this.uniqueTabId,
         });
-        this.connectionsManager.start();
+        connectionsManager.start();
 
         this.setupWasm();
 
-        this.formSubmitHandler = editorUI.syncEntryContentToTextarea;
-        this.root.closest("form")?.addEventListener("submit", this.formSubmitHandler);
+        this.getText = editorUI.getEntryText;
+        this.syncTextGetText = editorUI.syncEntryContentToTextarea;
+        this.root.closest("form")?.addEventListener("submit", this.syncTextGetText);
 
         this.consoleToggleHandler = (collapsed?: boolean) => {
             this.root.classList.toggle("tinymist-console-collapsed", collapsed);
@@ -65,53 +64,21 @@ export class TinymistApp {
         window.$events.listen("tinymist-console-toggle", this.consoleToggleHandler);
     }
 
-    getEntryText(): string {
-        return this.editorUI?.getEntryText() ?? "";
-    }
-
-    syncEntryContentToTextarea(): string {
-        return this.editorUI?.syncEntryContentToTextarea() ?? "";
-    }
-
     async getContent(): Promise<{ tinymist: string }> {
         return {
-            tinymist: this.syncEntryContentToTextarea(),
+            tinymist: this.syncTextGetText?.() || "",
         };
     }
 
-    destroy(): void {
-        this.connectionsManager?.destroy();
-        this.connectionsManager = null;
-
-        this.editorUI?.destroy();
-        this.editorUI = null;
-
-        if (this.formSubmitHandler) {
-            this.root.closest("form")?.removeEventListener("submit", this.formSubmitHandler);
-            this.formSubmitHandler = null;
-        }
-
-        if (this.consoleToggleHandler) {
-            window.$events.remove("tinymist-console-toggle", this.consoleToggleHandler);
-            this.consoleToggleHandler = null;
-        }
-    }
-
     private setupWasm(): void {
-        const previewElement = this.refs.preview as HTMLElement;
-        if (!previewElement) {
-            console.warn("[Preview Data] Preview element not found, skipping preview setup");
-            return;
-        }
-
         try {
-            new PreviewRenderer(previewElement);
+            new PreviewRenderer(this.refs.preview as HTMLElement);
             window.$events.emit("tinymist-wasm-init");
         } catch (error) {
-            console.error("[Preview Data] renderer setup failed:", error);
+            console.error("[Tinymist App] renderer setup failed:", error);
             window.$events.emit("tinymist-console-log", {
                 type: "error",
-                message: "⚠ [Preview Data] initialization failed: ",
+                message: "⚠ [App] renderer initialization failed: ",
                 details: error,
             });
         }
@@ -125,5 +92,18 @@ export class TinymistApp {
             rand[0].toString(36),
             rand[1].toString(36).slice(0, 4),
         ].join("-");
+    }
+
+    destroy(): void {
+        window.$events.emit('tinymist-destroy');
+
+        if (this.syncTextGetText) {
+            this.root.closest("form")?.removeEventListener("submit", this.syncTextGetText);
+        }
+
+        if (this.consoleToggleHandler) {
+            window.$events.remove("tinymist-console-toggle", this.consoleToggleHandler);
+            this.consoleToggleHandler = null;
+        }
     }
 }

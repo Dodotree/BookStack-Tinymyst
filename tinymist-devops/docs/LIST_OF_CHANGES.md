@@ -75,7 +75,6 @@ Make sure that  `$input['tinymist']` textarea field was synced with CodeMirror c
 - `resources/views/pages/parts/form.blade.php` - Form with hidden editor input
 - `resources/views/pages/parts/tinymist-editor.blade.php` - Textarea with name="tinymist"
 
-
 ## 📁 Files Created/Modified
 
 ### Configuration

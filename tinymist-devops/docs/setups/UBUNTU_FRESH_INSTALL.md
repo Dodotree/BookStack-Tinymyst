@@ -1,4 +1,4 @@
-## Upgrade and set vim as default editor
+# Upgrade and set vim as default editor
 
 ``` sh
 apt-get update
@@ -11,7 +11,7 @@ update-alternatives --config editor
 sudo vim /usr/share/vim/vimrc
 ```
 
-### Add to the end of file
+## Add to the end of file
 
 ``` rc
     " show existing tab with 4 spaces width
@@ -184,7 +184,7 @@ For detailed testing documentation, see `tinymist-devops/TESTING_SETUP.md`.
 
 ### Nginx configuration for tensorsum.com with free https
 
-Change: EMAIL="admin@tensorsum.com" to your real email in setup-letsencrypt.sh
+Change: `EMAIL="admin@tensorsum.com"` to your real email in setup-letsencrypt.sh
 
 ``` sh
 cd /var/www/bookstack/tinymist-devops
@@ -317,7 +317,7 @@ sudo deluser --remove-home tinymist || true
 
 Alternative approaches are `firejail` or nftables/cgroup policies, but the user-owner iptables rules above are the simplest for PM2 deployments.
 
-##### Same problem but not with pm2. If using systemd:
+##### Same problem but not with pm2. If using systemd
 
 ```bash
 sudo systemctl edit tinymist-preview.service
@@ -465,9 +465,9 @@ df -h /var/www
 
 ### Health Check Endpoints
 
-- **Application**: https://tensorsum.com
-- **Status**: https://tensorsum.com/status
-- **SSL Test**: https://www.ssllabs.com/ssltest/analyze.html?d=tensorsum.com
+- **Application**: `https://tensorsum.com`
+- **Status**: `https://tensorsum.com/status`
+- **SSL Test**: `https://www.ssllabs.com/ssltest/analyze.html?d=tensorsum.com`
 
 ### Cleaning Up
 
@@ -548,5 +548,3 @@ npm run build
 php artisan optimize:clear
 php artisan queue:restart
 systemctl restart php8.3-fpm.service
-
-

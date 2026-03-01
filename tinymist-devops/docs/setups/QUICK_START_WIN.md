@@ -15,19 +15,18 @@ This guide helps a developer run BookStack with the Tinymist editor locally on W
 
 1) Clone the repo and enter the folder.
 2) Copy the environment file and set values:
-
-- APP_URL (example: http://localhost:8000)
-- DB_HOST, DB_DATABASE, DB_USERNAME, DB_PASSWORD
-- TINYMIST_WS_SECRET (required for WebSocket auth; see below)
+   - APP_URL (example: `http://localhost:8000`)
+   - DB_HOST, DB_DATABASE, DB_USERNAME, DB_PASSWORD
+   - TINYMIST_WS_SECRET (required for WebSocket auth; see below)
 
 3) Install backend dependencies:
 
-- composer install
+   - composer install
 
 4) Install frontend dependencies (also downloads Typst/Tinymist binaries into vendor/bin):
 
-- npm install
-	- or: npm ci
+   - npm install
+   - or: npm ci
 
 ## Database setup
 
@@ -87,9 +86,9 @@ If missing, re-run npm install.
 
 ### Clear Tinymist working files
 
+Note: The editor content is loaded from `storage/app/tinymist/page_<id>/entry.typ` if it exists and is newer than DB. Delete the file to force DB content.
+The file sync service writes to `storage/app/tinymist/page_<id>/entry.typ`.
 
-Note: The editor content is loaded from storage/app/tinymist/page_<id>/entry.typ if it exists and is newer than DB. Delete the file to force DB content.
-- The file sync service writes to `storage/app/tinymist/page_<id>/entry.typ`.
 ### Find or kill stray Tinymist processes (Windows)
 
 PowerShell:
@@ -104,8 +103,8 @@ CMD:
 
 ### Check logs
 
-- Laravel: storage/logs/laravel.log
-- Tinymist preview: storage/logs/tinymist_preview_<pageId>.log
+- Laravel: `storage/logs/laravel.log`
+- Tinymist preview: `storage/logs/tinymist_preview_<pageId>.log`
 
 ## Common issues
 
