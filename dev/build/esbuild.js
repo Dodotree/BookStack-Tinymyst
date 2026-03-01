@@ -18,7 +18,7 @@ const entryPoints = {
     ),
     markdown: path.join(__dirname, "../../resources/js/markdown/index.mts"),
     wysiwyg: path.join(__dirname, "../../resources/js/wysiwyg/index.ts"),
-    tinymist: path.join(__dirname, "../../resources/js/tinymist/index.ts"),
+    tinymist: path.join(__dirname, "../../resources/js/tinymist-bookstack.ts"),
 };
 
 // Locate our output directory
