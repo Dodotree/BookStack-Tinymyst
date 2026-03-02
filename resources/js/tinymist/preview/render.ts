@@ -47,23 +47,25 @@ export class PreviewRenderer {
     private cursorSpotlightUserEnabled = true;
     private scrollIntoViewUserEnabled = true;
 
-
-    constructor(
-        previewElement: HTMLElement,
-    ) {
+    constructor(previewElement: HTMLElement) {
         this.previewElement = previewElement;
         if (!previewElement) {
-            console.warn("[Preview Data] Preview element not found, skipping preview setup");
+            console.warn(
+                "[Preview Data] Preview element not found, skipping preview setup",
+            );
             return;
         }
 
         this.handleSyncInit = this.handleSyncInit.bind(this);
         this.dispose = this.dispose.bind(this);
-        window.$tmEventBus.listen("tinymist-wasm-init", this.handleSyncInit)
-        window.$tmEventBus.listen("tinymist-wasm-dispose", this.dispose);
+        window.$tmEventBus.listen("wasm-init", this.handleSyncInit);
+        window.$tmEventBus.listen("wasm-dispose", this.dispose);
 
         this.updateSVG = this.updateSVG.bind(this);
-        window.$tmEventBus.listen<{svg: string, docVersion:string}>("tinymist-fallback-compiled-svg", ({svg, docVersion}) => this.updateSVG(svg));
+        window.$tmEventBus.listen<{ svg: string; docVersion: string }>(
+            "fallback-compiled-svg",
+            ({ svg, docVersion }) => this.updateSVG(svg),
+        );
 
         this.handleSyncMessage = this.handleSyncMessage.bind(this);
         this.handleZoomIn = this.handleZoomIn.bind(this);
@@ -75,20 +77,37 @@ export class PreviewRenderer {
         this.handlePanMouseUp = this.handlePanMouseUp.bind(this);
         this.handleCursorPosition = this.handleCursorPosition.bind(this);
 
-        window.$tmEventBus.listen("tinymist-data-binary", this.handleSyncMessage);
-        window.$tmEventBus.listen("tinymist-preview-cursor-position", this.handleCursorPosition);
+        window.$tmEventBus.listen("data-binary", this.handleSyncMessage);
+        window.$tmEventBus.listen(
+            "preview-cursor-position",
+            this.handleCursorPosition,
+        );
 
-        window.$tmEventBus.listen("tinymist-active-file-change", (payload: { fileName: string; url: string }) => {
-            this.activeFileName = payload.fileName;
-            this.applyCursorSpotlightState();
-            this.applyScrollIntoViewState();
-        });
-        this.previewElement.closest(".tinymist-preview-pane")?.addEventListener("click", this.handlePreviewPaneClick);
+        window.$tmEventBus.listen(
+            "active-file-change",
+            (payload: { fileName: string; url: string }) => {
+                this.activeFileName = payload.fileName;
+                this.applyCursorSpotlightState();
+                this.applyScrollIntoViewState();
+            },
+        );
+        this.previewElement
+            .closest(".tinymist-preview-pane")
+            ?.addEventListener("click", this.handlePreviewPaneClick);
 
-        this.previewElement.addEventListener("mousedown", this.handlePanMouseDown);
-        this.previewElement.addEventListener("mousemove", this.handlePanMouseMove);
+        this.previewElement.addEventListener(
+            "mousedown",
+            this.handlePanMouseDown,
+        );
+        this.previewElement.addEventListener(
+            "mousemove",
+            this.handlePanMouseMove,
+        );
         this.previewElement.addEventListener("mouseup", this.handlePanMouseUp);
-        this.previewElement.addEventListener("mouseleave", this.handlePanMouseUp);
+        this.previewElement.addEventListener(
+            "mouseleave",
+            this.handlePanMouseUp,
+        );
 
         this.applyCursorSpotlightState();
         this.applyScrollIntoViewState();
@@ -100,18 +119,31 @@ export class PreviewRenderer {
             await this.initialize();
         } catch (err) {
             console.error("[Preview WASM] Failed to initialize:", err);
-            window.$tmEventBus.emit("tinymist-console-log", { type: "error", message: "[Preview WASM] init failed", details: err });
+            window.$tmEventBus.emit("console-log", {
+                type: "error",
+                message: "[Preview WASM] init failed",
+                details: err,
+            });
         }
     }
 
-    private async handleSyncMessage({command, payload} : {command: string, payload: Uint8Array}): Promise<void> {
-            // Queue processing to maintain order
-            this.processingQueue = this.processingQueue.then(() =>
-                this.handleBinaryMessage(command, payload)
-            ).catch((err) => {
-                console.error('[Preview WASM] Error processing binary message:', err);
+    private async handleSyncMessage({
+        command,
+        payload,
+    }: {
+        command: string;
+        payload: Uint8Array;
+    }): Promise<void> {
+        // Queue processing to maintain order
+        this.processingQueue = this.processingQueue
+            .then(() => this.handleBinaryMessage(command, payload))
+            .catch((err) => {
+                console.error(
+                    "[Preview WASM] Error processing binary message:",
+                    err,
+                );
             });
-        }
+    }
 
     async initialize() {
         try {
@@ -129,16 +161,18 @@ export class PreviewRenderer {
             }
 
             console.log("[Preview WASM] typst-ts-renderer initialized");
-
         } catch (error) {
-            console.error("[Preview WASM] Failed to initialize typst-ts-renderer:", error);
+            console.error(
+                "[Preview WASM] Failed to initialize typst-ts-renderer:",
+                error,
+            );
             throw error;
         }
     }
 
     private async ensureSession(): Promise<RenderSession> {
         if (!this.renderer) {
-            throw new Error('Renderer not initialized');
+            throw new Error("Renderer not initialized");
         }
 
         if (this.session) {
@@ -146,108 +180,121 @@ export class PreviewRenderer {
         }
 
         if (!this.sessionPromise) {
-            console.log('[Preview WASM] Creating persistent session');
-            this.sessionPromise = new Promise<RenderSession>((resolve, reject) => {
-                this.renderer!.runWithSession(async (session) => {
-                    this.session = session;
-                    this.hasInitialDocument = false;
-                    resolve(session);
+            console.log("[Preview WASM] Creating persistent session");
+            this.sessionPromise = new Promise<RenderSession>(
+                (resolve, reject) => {
+                    this.renderer!.runWithSession(async (session) => {
+                        this.session = session;
+                        this.hasInitialDocument = false;
+                        resolve(session);
 
-                    await new Promise<void>((res) => {
-                        this.sessionResolve = res;
+                        await new Promise<void>((res) => {
+                            this.sessionResolve = res;
+                        });
+                    }).catch((err) => {
+                        this.session = null;
+                        this.sessionPromise = null;
+                        this.sessionResolve = null;
+                        reject(err);
                     });
-                }).catch((err) => {
-                    this.session = null;
-                    this.sessionPromise = null;
-                    this.sessionResolve = null;
-                    reject(err);
-                });
-            });
+                },
+            );
         }
 
         return this.sessionPromise;
     }
 
     private async handleBinaryMessage(command: string, payload: Uint8Array) {
+        // console.log(`[Preview WASM] Message command "${command}" (payload ${payload.length} bytes)`);
+        if (!this.renderer) {
+            console.warn("[Preview WASM] Renderer not ready");
+            return;
+        }
 
-            // console.log(`[Preview WASM] Message command "${command}" (payload ${payload.length} bytes)`);
-            if (!this.renderer) {
-                console.warn("[Preview WASM] Renderer not ready");
-                return;
+        if (command !== "diff-v1" && command !== "new") {
+            console.warn(`[Preview WASM] Unexpected command: ${command}`);
+            return;
+        }
+
+        try {
+            const isDiff = command === "diff-v1";
+            let action: "reset" | "merge" =
+                command === "new" ? "reset" : "merge"; // 'merge' or 'reset'
+
+            const session = await this.ensureSession();
+
+            if (isDiff && !this.hasInitialDocument) {
+                console.warn(
+                    "[Preview WASM] Treating first diff as full reset",
+                );
+                action = "reset";
             }
 
-            if (command !== 'diff-v1' && command !== 'new') {
-                console.warn(`[Preview WASM] Unexpected command: ${command}`);
-                return;
+            console.log(
+                `[Preview WASM] Applying ${action} with ${payload.length} bytes`,
+            );
+            // same as session.manipulateData
+            const diffResult = this.renderer!.manipulateData({
+                renderSession: session,
+                action,
+                data: payload,
+            });
+
+            console.log(
+                "[Preview WASM] Data applied successfully, diffResult:",
+                diffResult,
+            );
+
+            if (action === "reset") {
+                this.hasInitialDocument = true;
             }
 
-            try {
-                const isDiff = command === 'diff-v1';
-                let action: 'reset' | 'merge' = command === 'new' ? 'reset' : 'merge'; // 'merge' or 'reset'
+            // Always comes as an empty array?
+            // try {
+            //     const customData = await this.renderer!.getCustomV1({
+            //         renderSession: session,
+            //     });
+            //     console.log('[Preview WASM] Custom data:', customData);
+            // } catch (e) {
+            //     console.log('[Preview WASM] No custom data:', e);
+            // }
 
-                const session = await this.ensureSession();
+            console.log("[Preview WASM] Rendering to SVG...");
+            // defaults are all true, right now have no use for inline helper script
+            // css needed to hide text overlays for copy/paste, now css included in page editor blade
+            // could be simple session.renderSvg({});
+            const svg = await session.renderSvg({
+                data_selection: {
+                    body: true,
+                    defs: true,
+                    css: false,
+                    js: false,
+                },
+            });
 
-                if (isDiff && !this.hasInitialDocument) {
-                    console.warn('[Preview WASM] Treating first diff as full reset');
-                    action = 'reset';
-                }
+            // It comes as SVG string with data-reuse-from="data-tid hash" attributes
+            // Probably it needs a morphing library
+            // const svgDiff = session.renderSvgDiff({data_selection: { body: true, defs: true, css: false, js: false }});
+            // console.log('[Preview WASM] SVG diff:', svgDiff);
 
-                console.log(`[Preview WASM] Applying ${action} with ${payload.length} bytes`);
-                // same as session.manipulateData
-                const diffResult = this.renderer!.manipulateData({
-                    renderSession: session,
-                    action,
-                    data: payload,
-                });
+            this.updateSVG(svg);
 
-                console.log("[Preview WASM] Data applied successfully, diffResult:", diffResult);
+            // const svgDoc = this.previewElement.querySelector('svg.typst-doc');
+            // const helperCode = document.querySelector('svg.typst-doc script')?.textContent;
+            // it contains handleTypstLocation function and adds location.hash #loc-page-x-y
+            // if (helperCode && svgDoc) {
+            //     const run = document.createElement("script");
+            //     run.textContent = helperCode;
+            //     // document.head.append(run);
+            //     svgDoc.append(run);
+            //     // window.typstProcessSvg(svgDoc as SVGElement);
+            // }
 
-                if (action === 'reset') {
-                    this.hasInitialDocument = true;
-                }
-
-                // Always comes as an empty array?
-                // try {
-                //     const customData = await this.renderer!.getCustomV1({
-                //         renderSession: session,
-                //     });
-                //     console.log('[Preview WASM] Custom data:', customData);
-                // } catch (e) {
-                //     console.log('[Preview WASM] No custom data:', e);
-                // }
-
-                console.log('[Preview WASM] Rendering to SVG...');
-                // defaults are all true, right now have no use for inline helper script
-                // css needed to hide text overlays for copy/paste, now css included in page editor blade
-                // could be simple session.renderSvg({});
-                const svg = await session.renderSvg({
-                    data_selection: { body: true, defs: true, css: false, js: false },
-                });
-
-                // It comes as SVG string with data-reuse-from="data-tid hash" attributes
-                // Probably it needs a morphing library
-                // const svgDiff = session.renderSvgDiff({data_selection: { body: true, defs: true, css: false, js: false }});
-                // console.log('[Preview WASM] SVG diff:', svgDiff);
-
-                this.updateSVG(svg);
-
-                // const svgDoc = this.previewElement.querySelector('svg.typst-doc');
-                // const helperCode = document.querySelector('svg.typst-doc script')?.textContent;
-                // it contains handleTypstLocation function and adds location.hash #loc-page-x-y
-                // if (helperCode && svgDoc) {
-                //     const run = document.createElement("script");
-                //     run.textContent = helperCode;
-                //     // document.head.append(run);
-                //     svgDoc.append(run);
-                //     // window.typstProcessSvg(svgDoc as SVGElement);
-                // }
-
-                console.log('[Preview WASM] Render complete');
-                window.$tmEventBus.emit("tinymist-data-cursor-show"); // reinsert cursor if possible
-
-            } catch (e: any) {
-                console.error(`[Preview WASM] Rendering failed:`, e);
-                this.previewElement.innerHTML = `
+            console.log("[Preview WASM] Render complete");
+            window.$tmEventBus.emit("data-cursor-show"); // reinsert cursor if possible
+        } catch (e: any) {
+            console.error(`[Preview WASM] Rendering failed:`, e);
+            this.previewElement.innerHTML = `
                     <div style="padding: 20px; color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px;">
                         <h4>Preview Rendering Failed</h4>
                         <p><strong>Command:</strong> ${command}</p>
@@ -258,9 +305,8 @@ export class PreviewRenderer {
                         </p>
                     </div>
                 `;
-                await this.recoverRenderer(e);
-            }
-
+            await this.recoverRenderer(e);
+        }
     }
 
     updateSVG(svg: string, docVersion?: number) {
@@ -268,7 +314,9 @@ export class PreviewRenderer {
         // TODO: optimize so those shouldn't run on each change
         this.previewElement.querySelector(".text-muted.p-m")?.remove();
         this.previewElement.querySelector(".tinymist-error")?.remove();
-        let svgHost = this.previewElement.querySelector(".tinymist-document") as HTMLElement | null;
+        let svgHost = this.previewElement.querySelector(
+            ".tinymist-document",
+        ) as HTMLElement | null;
         if (!svgHost) {
             svgHost = document.createElement("div");
             svgHost.className = "tinymist-document";
@@ -293,8 +341,13 @@ export class PreviewRenderer {
         this.session = null;
         this.renderer = null;
 
-        this.previewElement.closest(".tinymist-preview-pane")?.removeEventListener("click", this.handlePreviewPaneClick);
-        window.$tmEventBus.remove("tinymist-preview-cursor-position", this.handleCursorPosition);
+        this.previewElement
+            .closest(".tinymist-preview-pane")
+            ?.removeEventListener("click", this.handlePreviewPaneClick);
+        window.$tmEventBus.remove(
+            "preview-cursor-position",
+            this.handleCursorPosition,
+        );
 
         console.log("[Preview WASM] Renderer disposed");
     }
@@ -316,12 +369,17 @@ export class PreviewRenderer {
         if (!enabled) {
             this.stopPanning();
         }
-        this.previewElement.classList.toggle("tinymist-preview-pan-enabled", enabled);
+        this.previewElement.classList.toggle(
+            "tinymist-preview-pan-enabled",
+            enabled,
+        );
         this.applyPanButtonState();
     }
 
     private handlePreviewPaneClick(event: Event): void {
-        const button = (event.target as Element | null)?.closest("button[data-action]") as HTMLButtonElement | null;
+        const button = (event.target as Element | null)?.closest(
+            "button[data-action]",
+        ) as HTMLButtonElement | null;
         if (!button) {
             return;
         }
@@ -341,11 +399,13 @@ export class PreviewRenderer {
                 this.handlePanToggle(!this.panEnabled);
                 break;
             case "previewScrollIntoViewToggle":
-                this.scrollIntoViewUserEnabled = !this.scrollIntoViewUserEnabled;
+                this.scrollIntoViewUserEnabled =
+                    !this.scrollIntoViewUserEnabled;
                 this.applyScrollIntoViewState();
                 break;
             case "previewCursorSpotlightToggle":
-                this.cursorSpotlightUserEnabled = !this.cursorSpotlightUserEnabled;
+                this.cursorSpotlightUserEnabled =
+                    !this.cursorSpotlightUserEnabled;
                 this.applyCursorSpotlightState();
                 break;
             default:
@@ -354,24 +414,40 @@ export class PreviewRenderer {
     }
 
     private applyPanButtonState(): void {
-        const button = this.previewElement.closest(".tinymist-preview-pane")?.querySelector('button[data-action="previewPanToggle"]') as HTMLButtonElement | null;
+        const button = this.previewElement
+            .closest(".tinymist-preview-pane")
+            ?.querySelector(
+                'button[data-action="previewPanToggle"]',
+            ) as HTMLButtonElement | null;
         if (!button) {
             return;
         }
         button.setAttribute("aria-pressed", this.panEnabled.toString());
-        button.setAttribute("title", this.panEnabled ? "Disable Hand Tool" : "Enable Hand Tool");
+        button.setAttribute(
+            "title",
+            this.panEnabled ? "Disable Hand Tool" : "Enable Hand Tool",
+        );
     }
 
     private applyCursorSpotlightState(): void {
-        const enabled = this.cursorSpotlightUserEnabled && this.activeFileName === "entry.typ";
+        const enabled =
+            this.cursorSpotlightUserEnabled &&
+            this.activeFileName === "entry.typ";
 
-        const button = this.previewElement.closest(".tinymist-preview-pane")?.querySelector('button[data-action="previewCursorSpotlightToggle"]') as HTMLButtonElement | null;
+        const button = this.previewElement
+            .closest(".tinymist-preview-pane")
+            ?.querySelector(
+                'button[data-action="previewCursorSpotlightToggle"]',
+            ) as HTMLButtonElement | null;
         if (button) {
             button.setAttribute("aria-pressed", enabled.toString());
-            button.setAttribute("title", enabled ? "Disable Caret Spotlight" : "Enable Caret Spotlight");
+            button.setAttribute(
+                "title",
+                enabled ? "Disable Caret Spotlight" : "Enable Caret Spotlight",
+            );
         }
 
-        window.$tmEventBus.emit("tinymist-cursor-spotlight-toggle", {
+        window.$tmEventBus.emit("cursor-spotlight-toggle", {
             enabled,
             activeFile: this.activeFileName,
             userEnabled: this.cursorSpotlightUserEnabled,
@@ -379,23 +455,41 @@ export class PreviewRenderer {
     }
 
     private applyScrollIntoViewState(): void {
-        const enabled = this.scrollIntoViewUserEnabled && this.activeFileName === "entry.typ";
+        const enabled =
+            this.scrollIntoViewUserEnabled &&
+            this.activeFileName === "entry.typ";
 
-        const button = this.previewElement.closest(".tinymist-preview-pane")?.querySelector('button[data-action="previewScrollIntoViewToggle"]') as HTMLButtonElement | null;
+        const button = this.previewElement
+            .closest(".tinymist-preview-pane")
+            ?.querySelector(
+                'button[data-action="previewScrollIntoViewToggle"]',
+            ) as HTMLButtonElement | null;
         if (button) {
             button.setAttribute("aria-pressed", enabled.toString());
-            button.setAttribute("title", enabled ? "Disable Scroll Into View" : "Enable Scroll Into View");
+            button.setAttribute(
+                "title",
+                enabled
+                    ? "Disable Scroll Into View"
+                    : "Enable Scroll Into View",
+            );
         }
 
-        window.$tmEventBus.emit("tinymist-cursor-scroll-into-view-toggle", {
+        window.$tmEventBus.emit("cursor-scroll-into-view-toggle", {
             enabled,
             activeFile: this.activeFileName,
             userEnabled: this.scrollIntoViewUserEnabled,
         });
     }
 
-    private handleCursorPosition(payload: { contentX?: number; contentY?: number; width?: number; height?: number }): void {
-        const enabled = this.scrollIntoViewUserEnabled && this.activeFileName === "entry.typ";
+    private handleCursorPosition(payload: {
+        contentX?: number;
+        contentY?: number;
+        width?: number;
+        height?: number;
+    }): void {
+        const enabled =
+            this.scrollIntoViewUserEnabled &&
+            this.activeFileName === "entry.typ";
         if (!enabled) {
             return;
         }
@@ -408,10 +502,20 @@ export class PreviewRenderer {
             return;
         }
 
-        this.scrollPreviewToClosestVisibleArea(contentX, contentY, width, height);
+        this.scrollPreviewToClosestVisibleArea(
+            contentX,
+            contentY,
+            width,
+            height,
+        );
     }
 
-    private scrollPreviewToClosestVisibleArea(contentX: number, contentY: number, width: number, height: number): void {
+    private scrollPreviewToClosestVisibleArea(
+        contentX: number,
+        contentY: number,
+        width: number,
+        height: number,
+    ): void {
         const viewportWidth = this.previewElement.clientWidth;
         const viewportHeight = this.previewElement.clientHeight;
         if (viewportWidth <= 0 || viewportHeight <= 0) {
@@ -422,9 +526,11 @@ export class PreviewRenderer {
         const marginY = Math.max(24, Math.min(120, viewportHeight * 0.1));
 
         const minVisibleX = this.previewElement.scrollLeft + marginX;
-        const maxVisibleX = this.previewElement.scrollLeft + viewportWidth - marginX;
+        const maxVisibleX =
+            this.previewElement.scrollLeft + viewportWidth - marginX;
         const minVisibleY = this.previewElement.scrollTop + marginY;
-        const maxVisibleY = this.previewElement.scrollTop + viewportHeight - marginY;
+        const maxVisibleY =
+            this.previewElement.scrollTop + viewportHeight - marginY;
 
         const cursorLeft = contentX - width / 2;
         const cursorRight = contentX + width / 2;
@@ -449,7 +555,10 @@ export class PreviewRenderer {
         nextScrollLeft = Math.max(0, nextScrollLeft);
         nextScrollTop = Math.max(0, nextScrollTop);
 
-        if (Math.abs(nextScrollLeft - this.previewElement.scrollLeft) < 1 && Math.abs(nextScrollTop - this.previewElement.scrollTop) < 1) {
+        if (
+            Math.abs(nextScrollLeft - this.previewElement.scrollLeft) < 1 &&
+            Math.abs(nextScrollTop - this.previewElement.scrollTop) < 1
+        ) {
             return;
         }
 
@@ -461,13 +570,18 @@ export class PreviewRenderer {
     }
 
     private setZoom(level: number): void {
-        const clamped = Math.min(this.zoomMax, Math.max(this.zoomMin, Number(level)));
+        const clamped = Math.min(
+            this.zoomMax,
+            Math.max(this.zoomMin, Number(level)),
+        );
         this.zoomLevel = Number(clamped.toFixed(2));
         this.applyZoomToSvg();
     }
 
     private applyZoomToSvg(): void {
-        const svg = this.previewElement.querySelector("svg") as SVGElement | null;
+        const svg = this.previewElement.querySelector(
+            "svg",
+        ) as SVGElement | null;
         if (!svg) {
             return;
         }
@@ -528,14 +642,16 @@ export class PreviewRenderer {
 
     private async recoverRenderer(error: Error): Promise<void> {
         if (this.recovering) {
-            console.warn("[Preview WASM] Recovery already in progress, skipping additional request");
+            console.warn(
+                "[Preview WASM] Recovery already in progress, skipping additional request",
+            );
             return;
         }
 
         this.recovering = true;
         this.recoveryAttempts += 1;
 
-        window.$tmEventBus.emit("tinymist-console-log", {
+        window.$tmEventBus.emit("console-log", {
             type: "warning",
             message: `[Preview WASM] Renderer failed (${error.message ?? error}). Restarting session...`,
         });
@@ -543,13 +659,13 @@ export class PreviewRenderer {
         try {
             this.dispose();
             await this.initialize();
-            window.$tmEventBus.emit("tinymist-console-log", {
+            window.$tmEventBus.emit("console-log", {
                 type: "success",
                 message: "[Preview WASM] Renderer session restarted",
             });
         } catch (restartError) {
             console.error("[Preview WASM] Recovery failed:", restartError);
-            window.$tmEventBus.emit("tinymist-console-log", {
+            window.$tmEventBus.emit("console-log", {
                 type: "error",
                 message: "[Preview WASM] Renderer recovery failed",
                 details: restartError,
@@ -558,5 +674,4 @@ export class PreviewRenderer {
             this.recovering = false;
         }
     }
-
 }

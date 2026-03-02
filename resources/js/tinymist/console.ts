@@ -12,22 +12,26 @@ export class TinymistConsole {
         this.handlePanelClick = this.handlePanelClick.bind(this);
         this.toggleConsole = this.toggleConsole.bind(this);
 
-        window.$tmEventBus.listen("tinymist-console-log", this.logMessage);
-        this.console.closest('#tinymist-console-panel')?.addEventListener('click', this.handlePanelClick);
+        window.$tmEventBus.listen("console-log", this.logMessage);
+        this.console
+            .closest("#tinymist-console-panel")
+            ?.addEventListener("click", this.handlePanelClick);
     }
 
     handlePanelClick(event: Event): void {
-        const button = (event.target as Element | null)?.closest('button[data-action]') as HTMLButtonElement | null;
+        const button = (event.target as Element | null)?.closest(
+            "button[data-action]",
+        ) as HTMLButtonElement | null;
         if (!button) {
             return;
         }
 
-        const action = button.getAttribute('data-action');
+        const action = button.getAttribute("data-action");
         switch (action) {
-            case 'toggleConsole':
+            case "toggleConsole":
                 this.toggleConsole(button);
                 break;
-            case 'clearConsole':
+            case "clearConsole":
                 this.clearConsole();
                 break;
             default:
@@ -37,21 +41,38 @@ export class TinymistConsole {
 
     toggleConsole(button?: HTMLButtonElement): void {
         this.collapsed = !this.collapsed;
-        window.$tmEventBus.emit('tinymist-console-toggle', this.collapsed);
+        window.$tmEventBus.emit("console-toggle", this.collapsed);
         if (button) {
-            button.setAttribute('aria-expanded', (!this.collapsed).toString());
-            button.setAttribute('title', this.collapsed ? 'Expand Console' : 'Collapse Console');
+            button.setAttribute("aria-expanded", (!this.collapsed).toString());
+            button.setAttribute(
+                "title",
+                this.collapsed ? "Expand Console" : "Collapse Console",
+            );
         }
 
-        this.console.setAttribute('aria-hidden', this.collapsed ? 'true' : 'false');
+        this.console.setAttribute(
+            "aria-hidden",
+            this.collapsed ? "true" : "false",
+        );
     }
 
-    logMessage({ type, message, details }: { type: "error" | "warning" | "info" | "success"; message: string; details?: any; }) {
+    logMessage({
+        type,
+        message,
+        details,
+    }: {
+        type: "error" | "warning" | "info" | "success";
+        message: string;
+        details?: any;
+    }) {
         const timestamp = new Date().toLocaleTimeString();
         const messageDiv = document.createElement("div");
         messageDiv.className = `console-message ${type}`;
-        messageDiv.innerHTML = `<span class="text-muted">[${timestamp}]</span> `
-            + this.escapeHtml(message) + '<br>' + this.getErrorDetails(details!);
+        messageDiv.innerHTML =
+            `<span class="text-muted">[${timestamp}]</span> ` +
+            this.escapeHtml(message) +
+            "<br>" +
+            this.getErrorDetails(details!);
 
         this.console.appendChild(messageDiv);
         // Auto-scroll to bottom
@@ -64,17 +85,24 @@ export class TinymistConsole {
         return div.innerHTML;
     }
 
-    getErrorDetails(error : any): string {
-        if( !error ) {
-            return '';
+    getErrorDetails(error: any): string {
+        if (!error) {
+            return "";
         } else if (error instanceof DOMException) {
             return `<code>DOMException:\nname: ${error.name}\nmessage: ${error.message}</code>`;
         } else if (error instanceof Error) {
-            return `<code>\ntype: ${typeof error}\nname: ${error.name}\n`
-                + `message: ${error.message}\ncause: ${error.cause}`
-                + JSON.stringify(error, null, 2) + '</code>';
-        } else if (error instanceof Object && error?.type === 'error' && error.message) {
-            return `<code>${error.message} ${error?.code}</code>`
+            return (
+                `<code>\ntype: ${typeof error}\nname: ${error.name}\n` +
+                `message: ${error.message}\ncause: ${error.cause}` +
+                JSON.stringify(error, null, 2) +
+                "</code>"
+            );
+        } else if (
+            error instanceof Object &&
+            error?.type === "error" &&
+            error.message
+        ) {
+            return `<code>${error.message} ${error?.code}</code>`;
         }
         return `<code>${JSON.stringify(error, null, 2)}</code>`;
     }
@@ -85,7 +113,9 @@ export class TinymistConsole {
     }
 
     destroy(): void {
-        window.$tmEventBus.remove("tinymist-console-log", this.logMessage);
-        this.console.closest('#tinymist-console-panel')?.removeEventListener('click', this.handlePanelClick);
+        window.$tmEventBus.remove("console-log", this.logMessage);
+        this.console
+            .closest("#tinymist-console-panel")
+            ?.removeEventListener("click", this.handlePanelClick);
     }
 }

@@ -1,8 +1,8 @@
-import {TinymistTokenManager} from './token-manager';
-import {TinymistFileSyncClient} from './sync-and-lsp';
-import {PreviewBridgeClient} from './preview-ws';
-import {PreviewControlPlane} from '../preview/control-plane';
-import {PreviewDataPlane} from '../preview/data-plane';
+import { TinymistTokenManager } from "./token-manager";
+import { TinymistFileSyncClient } from "./sync-and-lsp";
+import { PreviewBridgeClient } from "./preview-ws";
+import { PreviewControlPlane } from "../preview/control-plane";
+import { PreviewDataPlane } from "../preview/data-plane";
 
 export type TinymistConnectionsManagerOptions = {
     pageId: number;
@@ -33,16 +33,16 @@ export class TinymistConnectionsManager {
         this.updateStatus = this.updateStatus.bind(this);
         this.updateToken = this.updateToken.bind(this);
         this.destroy = this.destroy.bind(this);
-        window.$tmEventBus.listen('tinymist-status', this.updateStatus);
-        window.$tmEventBus.listen('tinymist-token-renewed', this.updateToken);
-        window.$tmEventBus.listen('tinymist-destroy', this.destroy);
+        window.$tmEventBus.listen("status", this.updateStatus);
+        window.$tmEventBus.listen("token-renewed", this.updateToken);
+        window.$tmEventBus.listen("destroy", this.destroy);
 
         this.tokenManager = new TinymistTokenManager(this.pageId, this.wsToken);
     }
 
     start(): void {
         if (!this.wsToken) {
-            window.$tmEventBus.emit("tinymist-invalid-token");
+            window.$tmEventBus.emit("invalid-token");
             return;
         }
         void this.setupPreviewSockets();
@@ -62,8 +62,8 @@ export class TinymistConnectionsManager {
             if (!this.previewBridgeClient) {
                 this.previewBridgeClient = new PreviewBridgeClient(
                     this.pageId,
-                    this.wsToken || '',
-                    this.uniqueTabId
+                    this.wsToken || "",
+                    this.uniqueTabId,
                 );
             }
 
@@ -72,11 +72,11 @@ export class TinymistConnectionsManager {
                 new PreviewDataPlane();
             }
 
-            window.$tmEventBus.emit('tinymist-preview-connect');
+            window.$tmEventBus.emit("preview-connect");
         } catch (error) {
-            window.$tmEventBus.emit('tinymist-console-log', {
-                type: 'error',
-                message: 'Failed to initialize preview sockets',
+            window.$tmEventBus.emit("console-log", {
+                type: "error",
+                message: "Failed to initialize preview sockets",
                 details: error,
             });
         }
@@ -87,15 +87,15 @@ export class TinymistConnectionsManager {
             if (!this.fileSyncClient) {
                 this.fileSyncClient = new TinymistFileSyncClient(
                     this.pageId,
-                    this.wsToken || '',
-                    this.uniqueTabId
+                    this.wsToken || "",
+                    this.uniqueTabId,
                 );
             }
-            window.$tmEventBus.emit('tinymist-sync-connect');
+            window.$tmEventBus.emit("sync-connect");
         } catch (error) {
-            window.$tmEventBus.emit('tinymist-console-log', {
-                type: 'error',
-                message: 'Failed to initialize file sync LSP',
+            window.$tmEventBus.emit("console-log", {
+                type: "error",
+                message: "Failed to initialize file sync LSP",
                 details: error,
             });
         }
@@ -103,13 +103,13 @@ export class TinymistConnectionsManager {
 
     private updateStatus(status: { what: string; connected: boolean }): void {
         switch (status.what) {
-            case 'file-lsp-ws':
+            case "file-lsp-ws":
                 this.fileSyncConnected = status.connected;
                 break;
-            case 'preview-ws':
+            case "preview-ws":
                 this.bridgeConnected = status.connected;
                 if (status.connected) {
-                    window.$tmEventBus.emit('tinymist-preview-send-data', 'current');
+                    window.$tmEventBus.emit("preview-send-data", "current");
                 }
                 break;
         }
@@ -122,17 +122,19 @@ export class TinymistConnectionsManager {
                 return;
             }
             this.fallbackMode = true;
-            window.$tmEventBus.emit('tinymist-console-log', {
-                type: 'warning',
-                message: this.restartAllowed ? '⚠ Entering fallback mode' : '⚠ Disconnected and restart disabled',
+            window.$tmEventBus.emit("console-log", {
+                type: "warning",
+                message: this.restartAllowed
+                    ? "⚠ Entering fallback mode"
+                    : "⚠ Disconnected and restart disabled",
             });
-            window.$tmEventBus.emit('tinymist-fallback-enable', this.restartAllowed);
+            window.$tmEventBus.emit("fallback-enable", this.restartAllowed);
         } else {
             this.fallbackMode = false;
-            window.$tmEventBus.emit('tinymist-fallback-enable', false);
-            window.$tmEventBus.emit('tinymist-console-log', {
-                type: 'success',
-                message: '[WS manager] connections active, fallback off',
+            window.$tmEventBus.emit("fallback-enable", false);
+            window.$tmEventBus.emit("console-log", {
+                type: "success",
+                message: "[WS manager] connections active, fallback off",
             });
         }
     }
@@ -140,8 +142,8 @@ export class TinymistConnectionsManager {
     destroy(): void {
         this.restartAllowed = false;
 
-        window.$tmEventBus.emit('tinymist-fallback-enable', false);
-        window.$tmEventBus.emit('tinymist-sync-disconnect');
-        window.$tmEventBus.emit('tinymist-preview-disconnect');
+        window.$tmEventBus.emit("fallback-enable", false);
+        window.$tmEventBus.emit("sync-disconnect");
+        window.$tmEventBus.emit("preview-disconnect");
     }
 }

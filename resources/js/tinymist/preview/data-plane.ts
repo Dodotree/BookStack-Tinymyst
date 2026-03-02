@@ -4,14 +4,22 @@ export class PreviewDataPlane {
 
     constructor() {
         this.handleBridgeDataMessage = this.handleBridgeDataMessage.bind(this);
-        window.$tmEventBus.listen("tinymist-preview-data-message", this.handleBridgeDataMessage);
-        window.$tmEventBus.listen("tinymist-cursor-spotlight-toggle", ({ enabled }: { enabled?: boolean }) => {
-            this.cursorSpotlightEnabled = Boolean(enabled);
-        });
+        window.$tmEventBus.listen(
+            "preview-data-message",
+            this.handleBridgeDataMessage,
+        );
+        window.$tmEventBus.listen(
+            "cursor-spotlight-toggle",
+            ({ enabled }: { enabled?: boolean }) => {
+                this.cursorSpotlightEnabled = Boolean(enabled);
+            },
+        );
     }
 
     private handleBridgeDataMessage(msg: Uint8Array): void {
-        console.log(`[Preview Data] Data message (length: ${msg.byteLength} bytes) adding to processing queue`);
+        console.log(
+            `[Preview Data] Data message (length: ${msg.byteLength} bytes) adding to processing queue`,
+        );
         this.processingQueue = this.processingQueue
             .then(async () => {
                 await this.handleBinaryMessage(msg);
@@ -24,21 +32,28 @@ export class PreviewDataPlane {
     private async handleBinaryMessage(msg: Uint8Array) {
         try {
             const rawLength = msg.length;
-            console.log(`[Preview Data] Raw message length: ${rawLength} bytes`);
+            console.log(
+                `[Preview Data] Raw message length: ${rawLength} bytes`,
+            );
             // Parse message format: "type,payload"
             const commaIndex = msg.indexOf(44); // ASCII for ','
             if (commaIndex === -1) {
-                console.warn("[Preview Data] Invalid data plane message format", msg);
+                console.warn(
+                    "[Preview Data] Invalid data plane message format",
+                    msg,
+                );
                 return;
             }
 
             const command = new TextDecoder().decode(msg.slice(0, commaIndex));
             const payload = msg.slice(commaIndex + 1);
 
-            console.log(`[Preview Data] Message command "${command}" (payload ${payload.length} bytes, raw ${rawLength})`);
+            console.log(
+                `[Preview Data] Message command "${command}" (payload ${payload.length} bytes, raw ${rawLength})`,
+            );
 
             switch (command) {
-                case 'diff-v1':
+                case "diff-v1":
                     // console.log(`[Preview Data] Received diff-v1 (${payload.length} bytes)`);
 
                     // Try to peek at the diff content (it's binary, but might have readable parts)
@@ -49,16 +64,22 @@ export class PreviewDataPlane {
                     //     console.log('[Preview Data] Could not decode diff sample');
                     // }
 
-                    window.$tmEventBus.emit("tinymist-data-binary", { command, payload });
+                    window.$tmEventBus.emit("data-binary", {
+                        command,
+                        payload,
+                    });
                     break;
 
-                case 'new':
+                case "new":
                     // console.log(`[Preview Data] Received new document (${payload.length} bytes)`);
-                    window.$tmEventBus.emit("tinymist-data-binary", { command, payload });
+                    window.$tmEventBus.emit("data-binary", {
+                        command,
+                        payload,
+                    });
                     break;
 
                 // Successful reply to Control Plane "changeCursorPosition" request
-                case 'cursor-paths': {
+                case "cursor-paths": {
                     if (!this.cursorSpotlightEnabled) {
                         return;
                     }
@@ -66,51 +87,75 @@ export class PreviewDataPlane {
                     try {
                         const parsed = JSON.parse(decoded);
                         // console.info('[Preview Data] Cursor paths parsed:', parsed);
-                        window.$tmEventBus.emit("tinymist-data-cursor-paths", parsed);
+                        window.$tmEventBus.emit("data-cursor-paths", parsed);
                     } catch (err) {
-                        console.error('[Preview Data] Cursor paths not valid JSON:', err);
+                        console.error(
+                            "[Preview Data] Cursor paths not valid JSON:",
+                            err,
+                        );
                     }
                     break;
                 }
 
-                case 'partial-rendering':
-                    const enabled = new TextDecoder().decode(payload) === 'true';
+                case "partial-rendering":
+                    const enabled =
+                        new TextDecoder().decode(payload) === "true";
                     console.log(`[Preview Data] Partial rendering: ${enabled}`);
                     break;
 
-                case 'jump':
+                case "jump":
                     const coords = new TextDecoder().decode(payload).split(" ");
                     const [page, x, y] = coords.map(Number);
-                    console.log(`[Preview Data] Jump to page ${page}, x: ${x}, y: ${y}`);
+                    console.log(
+                        `[Preview Data] Jump to page ${page}, x: ${x}, y: ${y}`,
+                    );
                     break;
 
-                case 'viewport':
+                case "viewport":
                     const decoded = new TextDecoder().decode(payload);
-                    console.log(`[Preview Data] Viewport payload (${payload.length} bytes):`, decoded);
+                    console.log(
+                        `[Preview Data] Viewport payload (${payload.length} bytes):`,
+                        decoded,
+                    );
                     break;
 
-                case 'cursor':
+                case "cursor":
                     const cursorDecoded = new TextDecoder().decode(payload);
-                    console.log(`[Preview Data] Cursor payload (${payload.length} bytes):`, cursorDecoded);
+                    console.log(
+                        `[Preview Data] Cursor payload (${payload.length} bytes):`,
+                        cursorDecoded,
+                    );
                     break;
 
-                case 'invert-colors':
-                    const invertColorsDecoded = new TextDecoder().decode(payload);
-                    console.log(`[Preview Data] Invert colors payload (${payload.length} bytes):`, invertColorsDecoded);
+                case "invert-colors":
+                    const invertColorsDecoded = new TextDecoder().decode(
+                        payload,
+                    );
+                    console.log(
+                        `[Preview Data] Invert colors payload (${payload.length} bytes):`,
+                        invertColorsDecoded,
+                    );
                     break;
 
                 // Not sure what kind of outline is that, usually Control Plane receives "outline" events
-                case 'outline':
+                case "outline":
                     const outlineDecoded = new TextDecoder().decode(payload);
-                    console.log(`[Preview Data] Outline payload (${payload.length} bytes):`, outlineDecoded);
+                    console.log(
+                        `[Preview Data] Outline payload (${payload.length} bytes):`,
+                        outlineDecoded,
+                    );
                     break;
 
                 default:
-                    console.warn(`[Preview Data] Unknown data plane command: ${command}`);
+                    console.warn(
+                        `[Preview Data] Unknown data plane command: ${command}`,
+                    );
             }
-
         } catch (error) {
-            console.error("[Preview Data] Failed to handle binary message:", error);
+            console.error(
+                "[Preview Data] Failed to handle binary message:",
+                error,
+            );
         }
     }
 }

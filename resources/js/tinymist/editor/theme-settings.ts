@@ -66,7 +66,7 @@ export class TinymistThemeSettings {
         }
 
         // One way to open
-        window.$tmEventBus.listen("tinymist-theme-settings-open", () => {
+        window.$tmEventBus.listen("theme-settings-open", () => {
             if (!this.overlay) return;
             this.overlay.hidden = false;
             this.overlay.classList.add("is-visible");

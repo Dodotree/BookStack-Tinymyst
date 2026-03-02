@@ -141,13 +141,13 @@ export class TinymistEditorUI {
             // Hide original textarea
             this.editor.style.display = "none";
 
-            window.$tmEventBus.emit("tinymist-console-log", { type: "info", message: "CodeMirror editor initialized" });
+            window.$tmEventBus.emit("console-log", { type: "info", message: "CodeMirror editor initialized" });
 
         } catch (error) {
             this.editor.style.display = "block";
             this.editor.addEventListener("input", this.onInput);
             console.error("[Editor] Failed to initialize CodeMirror:", error);
-            window.$tmEventBus.emit("tinymist-console-log",
+            window.$tmEventBus.emit("console-log",
                 { type: "error", message: "[Editor] Failed to initialize CodeMirror editor", details: error });
         }
     }
@@ -295,12 +295,12 @@ export class TinymistEditorUI {
     }
 
     setupListeners() {
-        window.$tmEventBus.listen("tinymist-sync-full-state", this.syncFullStateFromServer);
-        window.$tmEventBus.listen("tinymist-prune-snapshots", this.pruneSnapshots);
-        window.$tmEventBus.listen("tinymist-fallback-enable", (enabled: boolean) => this.fallbackEnabled = enabled);
-        window.$tmEventBus.listen("tinymist-active-file-change", this.setActiveFile);
-        window.$tmEventBus.listen("editor::insert", this.insertFromEditorEvent);
-        window.$tmEventBus.listen("tinymist-attachment-reset-file", this.resetAttachmentFileFromServer);
+        window.$tmEventBus.listen("sync-full-state", this.syncFullStateFromServer);
+        window.$tmEventBus.listen("prune-snapshots", this.pruneSnapshots);
+        window.$tmEventBus.listen("fallback-enable", (enabled: boolean) => this.fallbackEnabled = enabled);
+        window.$tmEventBus.listen("active-file-change", this.setActiveFile);
+        window.$tmEventBus.listen("insert", this.insertFromEditorEvent);
+        window.$tmEventBus.listen("reset-file", this.resetAttachmentFileFromServer);
 
         // Button actions, it counts on event bubbling to the container
         this.editor.closest(".tinymist-editor-pane")?.addEventListener("click", this.buttonsListener);
@@ -312,11 +312,11 @@ export class TinymistEditorUI {
     }
 
     removeListeners() {
-        window.$tmEventBus.remove("tinymist-sync-full-state", this.syncFullStateFromServer);
-        window.$tmEventBus.remove("tinymist-prune-snapshots", this.pruneSnapshots);
-        window.$tmEventBus.remove("tinymist-active-file-change", this.setActiveFile);
-        window.$tmEventBus.remove("editor::insert", this.insertFromEditorEvent);
-        window.$tmEventBus.remove("tinymist-attachment-reset-file", this.resetAttachmentFileFromServer);
+        window.$tmEventBus.remove("sync-full-state", this.syncFullStateFromServer);
+        window.$tmEventBus.remove("prune-snapshots", this.pruneSnapshots);
+        window.$tmEventBus.remove("active-file-change", this.setActiveFile);
+        window.$tmEventBus.remove("insert", this.insertFromEditorEvent);
+        window.$tmEventBus.remove("reset-file", this.resetAttachmentFileFromServer);
         this.editor.removeEventListener("input", this.onInput);
         this.editor.closest(".tinymist-editor-pane")?.removeEventListener("click", this.buttonsListener);
         window.removeEventListener("beforeunload", this.destroy);
@@ -326,7 +326,7 @@ export class TinymistEditorUI {
     onInput() {
         // Notify Bookstack page editor of changes, also fallback is using it
         if (this.activeFileName === this.entryFileName) {
-            window.$tmEventBus.emit("editor-tinymist-change", "");
+            window.$tmEventBus.emit("text-change", "");
         }
     }
 
@@ -359,7 +359,7 @@ export class TinymistEditorUI {
                 this.insertHeading();
                 break;
             case "changeCodeMirrorSettings":
-                window.$tmEventBus.emit("tinymist-theme-settings-open");
+                window.$tmEventBus.emit("theme-settings-open");
                 break;
             default:
                 console.warn(`[Editor]Unknown button action: ${action}`);
@@ -446,7 +446,7 @@ export class TinymistEditorUI {
             if (payload.content !== currentText) {
                 this.setText(payload.content, true);
             }
-            window.$tmEventBus.emit("tinymist-console-log",
+            window.$tmEventBus.emit("console-log",
                 { type: "info", message: `[Editor] Document ${payload.fileName} synchronized from server` });
         }
     }
@@ -494,7 +494,7 @@ export class TinymistEditorUI {
             this.setText("", true);
         }
 
-        window.$tmEventBus.emit("tinymist-sync-open-file", { fileName: fileName });
+        window.$tmEventBus.emit("sync-open-file", { fileName: fileName });
     }
 
     onDocumentChange(transactions: readonly Transaction[]) {
@@ -550,12 +550,12 @@ export class TinymistEditorUI {
 
         // After applying changes back end will be at current docVersion with current content
         if (this.fallbackEnabled && fileName === this.entryFileName) {
-            window.$tmEventBus.emit("tinymist-fallback-compile", {
+            window.$tmEventBus.emit("fallback-compile", {
                 content: state.currentContent,
                 docVersion: state.docVersion,
             });
         } else if (!this.fallbackEnabled) {
-            window.$tmEventBus.emit("tinymist-text-diff", {
+            window.$tmEventBus.emit("text-diff", {
                 fileName,
                 changes: pendingChanges,
                 docVersion: state.docVersion,
@@ -615,7 +615,7 @@ export class TinymistEditorUI {
     }
 
     private emitDirtyState(fileName: string, isDirty: boolean): void {
-        window.$tmEventBus.emit("tinymist-attachment-dirty-state", {
+        window.$tmEventBus.emit("file-dirty-state", {
             fileName,
             isDirty,
         });
@@ -652,7 +652,7 @@ export class TinymistEditorUI {
             this.diagnosticsProcessor.triggerLinting([]);
         }
 
-        window.$tmEventBus.emit("tinymist-sync-open-file", { fileName });
+        window.$tmEventBus.emit("sync-open-file", { fileName });
     }
 
     private getSnapshotContext(docVersion: number, fileName: string): { snapshot: string; changeSet: ChangeSet } {
@@ -697,7 +697,7 @@ export class TinymistEditorUI {
         // Get cursor position and line
         const pos = state.selection.main.head;
         const line = state.doc.lineAt(pos);
-        window.$tmEventBus.emit("tinymist-control", {
+        window.$tmEventBus.emit("control", {
             event: "changeCursorPosition",
             fileName: this.entryFileName,
             line: line.number - 1, // 0-indexed

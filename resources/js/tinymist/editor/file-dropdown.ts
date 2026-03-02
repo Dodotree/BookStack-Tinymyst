@@ -3,81 +3,104 @@ import { url } from "inspector";
 export class TinymistFileDropdown {
     fileSelect!: HTMLSelectElement;
     private fileSyncWSConnected = false;
-    private activeFileName = 'entry.typ';
-    private loadedFileStateByName: Map<string, boolean> = new Map([['entry.typ', true]]);
+    private activeFileName = "entry.typ";
+    private loadedFileStateByName: Map<string, boolean> = new Map([
+        ["entry.typ", true],
+    ]);
     private dirtyAttachmentByName: Map<string, boolean> = new Map();
     private readonly changeHandler: () => void;
 
     constructor(fileSelect: HTMLSelectElement) {
-
         this.fileSelect = fileSelect;
         this.dirtyMapUpdateHandler = this.dirtyMapUpdateHandler.bind(this);
         this.changeHandler = this.onSelectChange.bind(this);
-        this.fileSelect.addEventListener('change', this.changeHandler);
+        this.fileSelect.addEventListener("change", this.changeHandler);
 
-        window.$tmEventBus.listen('tinymist-status', (status: { what?: string; connected?: boolean }) => {
-            if (status?.what !== 'file-lsp-ws') {
-                return;
-            }
-            this.fileSyncWSConnected = Boolean(status.connected);
-        });
+        window.$tmEventBus.listen(
+            "status",
+            (status: { what?: string; connected?: boolean }) => {
+                if (status?.what !== "file-lsp-ws") {
+                    return;
+                }
+                this.fileSyncWSConnected = Boolean(status.connected);
+            },
+        );
 
-        window.$tmEventBus.listen('tinymist-sync-full-state',  (payload: { fileName?: string }) => {
-            const fileName = String(payload?.fileName || '').trim();
-            if (!fileName) {
-                return;
-            }
-            this.loadedFileStateByName.set(fileName, true);
-        }) ;
+        window.$tmEventBus.listen(
+            "sync-full-state",
+            (payload: { fileName?: string }) => {
+                const fileName = String(payload?.fileName || "").trim();
+                if (!fileName) {
+                    return;
+                }
+                this.loadedFileStateByName.set(fileName, true);
+            },
+        );
 
-        window.$tmEventBus.listen('attachments-page-updated', (data: { html?: string }) => {
-            if (!data) {
-                return;
-            }
-            this.refreshFileDropdown(data.html || '');
-        });
+        window.$tmEventBus.listen(
+            "files-updated",
+            (data: { html?: string }) => {
+                if (!data) {
+                    return;
+                }
+                this.refreshFileDropdown(data.html || "");
+            },
+        );
 
-        window.$tmEventBus.listen('tinymist-attachments-dirty-map-updated', this.dirtyMapUpdateHandler);
+        window.$tmEventBus.listen(
+            "files-dirty-updated",
+            this.dirtyMapUpdateHandler,
+        );
     }
 
     private onSelectChange(): void {
-        const selectedFile = (this.fileSelect?.value || 'entry.typ').trim();
+        const selectedFile = (this.fileSelect?.value || "entry.typ").trim();
         if (!selectedFile) {
             this.fileSelect.value = this.activeFileName;
             return;
         }
 
         const isImage = this.isImageFileName(selectedFile);
-        const hasLoadedState = Boolean(this.loadedFileStateByName.get(selectedFile));
+        const hasLoadedState = Boolean(
+            this.loadedFileStateByName.get(selectedFile),
+        );
 
         if (!this.fileSyncWSConnected && !isImage && !hasLoadedState) {
             this.fileSelect.value = this.activeFileName;
             const warning = `[Editor] Cannot open ${selectedFile} while file sync socket is offline: file state is not loaded yet.`;
             console.warn(warning);
-            window.$tmEventBus.emit('tinymist-console-log', {
-                type: 'warning',
+            window.$tmEventBus.emit("console-log", {
+                type: "warning",
                 message: warning,
             });
             return;
         }
 
         this.activeFileName = selectedFile;
-        window.$tmEventBus.emit("tinymist-active-file-change", {fileName: selectedFile, url: this.fileSelect.selectedOptions[0]?.dataset.fileUrl || ''});
+        window.$tmEventBus.emit("active-file-change", {
+            fileName: selectedFile,
+            url: this.fileSelect.selectedOptions[0]?.dataset.fileUrl || "",
+        });
     }
 
     private isImageFileName(fileName: string): boolean {
         return /\.(png|jpe?g|gif|webp|bmp|svg|ico|avif)$/i.test(fileName);
     }
 
-    private dirtyMapUpdateHandler(payload: { dirtyMap?: Record<string, boolean> }): void {
+    private dirtyMapUpdateHandler(payload: {
+        dirtyMap?: Record<string, boolean>;
+    }): void {
         if (!payload) {
             return;
         }
 
         this.dirtyAttachmentByName.clear();
-        const dirtyMap = payload.dirtyMap && typeof payload.dirtyMap === 'object' ? payload.dirtyMap : {};
+        const dirtyMap =
+            payload.dirtyMap && typeof payload.dirtyMap === "object"
+                ? payload.dirtyMap
+                : {};
         Object.entries(dirtyMap).forEach(([fileName, isDirty]) => {
-            const normalized = String(fileName || '').trim();
+            const normalized = String(fileName || "").trim();
             if (!normalized) {
                 return;
             }
@@ -92,34 +115,36 @@ export class TinymistFileDropdown {
             return;
         }
         const parser = new DOMParser();
-        const doc = parser.parseFromString(attachmentsHtml, 'text/html');
+        const doc = parser.parseFromString(attachmentsHtml, "text/html");
         const linkByName = new Map<string, string>();
-        Array.from(doc.querySelectorAll('a')).forEach(link => {
-            const name = (link.textContent || '').trim();
-            if (!name || name === 'entry.typ') {
+        Array.from(doc.querySelectorAll("a")).forEach((link) => {
+            const name = (link.textContent || "").trim();
+            if (!name || name === "entry.typ") {
                 return;
             }
-            const href = String(link.getAttribute('href') || '').trim();
+            const href = String(link.getAttribute("href") || "").trim();
             if (href) {
                 linkByName.set(name, href);
             } else if (!linkByName.has(name)) {
-                linkByName.set(name, '');
+                linkByName.set(name, "");
             }
         });
 
         const attachmentNames = Array.from(linkByName.keys());
-        const selectedValue = this.fileSelect.value || 'entry.typ';
+        const selectedValue = this.fileSelect.value || "entry.typ";
 
-        this.fileSelect.innerHTML = '';
-        this.fileSelect.add(new Option('entry.typ', 'entry.typ'));
-        attachmentNames.forEach(name => {
+        this.fileSelect.innerHTML = "";
+        this.fileSelect.add(new Option("entry.typ", "entry.typ"));
+        attachmentNames.forEach((name) => {
             const option = new Option(name, name);
-            option.dataset.fileUrl = linkByName.get(name) || '';
+            option.dataset.fileUrl = linkByName.get(name) || "";
             this.fileSelect?.add(option);
         });
 
-        const hasPrevious = Array.from(this.fileSelect.options).some(option => option.value === selectedValue);
-        this.fileSelect.value = hasPrevious ? selectedValue : 'entry.typ';
+        const hasPrevious = Array.from(this.fileSelect.options).some(
+            (option) => option.value === selectedValue,
+        );
+        this.fileSelect.value = hasPrevious ? selectedValue : "entry.typ";
         this.applyDirtyCueToDropdown();
     }
 
@@ -127,9 +152,9 @@ export class TinymistFileDropdown {
         if (!this.fileSelect) {
             return;
         }
-        Array.from(this.fileSelect.options).forEach(option => {
-            const fileName = (option.value || '').trim();
-            if (!fileName || fileName === 'entry.typ') {
+        Array.from(this.fileSelect.options).forEach((option) => {
+            const fileName = (option.value || "").trim();
+            if (!fileName || fileName === "entry.typ") {
                 option.text = fileName || option.text;
                 return;
             }
@@ -140,7 +165,10 @@ export class TinymistFileDropdown {
     }
 
     destroy() {
-        this.fileSelect?.removeEventListener('change', this.changeHandler);
-        window.$tmEventBus.remove('tinymist-attachments-dirty-map-updated', this.dirtyMapUpdateHandler);
+        this.fileSelect?.removeEventListener("change", this.changeHandler);
+        window.$tmEventBus.remove(
+            "files-dirty-updated",
+            this.dirtyMapUpdateHandler,
+        );
     }
 }

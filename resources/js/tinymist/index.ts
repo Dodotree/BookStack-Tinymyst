@@ -27,8 +27,9 @@ export class TinymistApp {
 
     private uniqueTabId: string;
     private pageId: number;
-    getText: (() => string) = () => "supposed to be overridden in setup";
-    private syncTextGetText: (() => string) = () => "supposed to be overridden in setup";
+    getText: () => string = () => "supposed to be overridden in setup";
+    private syncTextGetText: () => string = () =>
+        "supposed to be overridden in setup";
     private consoleToggleHandler: ((collapsed?: boolean) => void) | null = null;
 
     constructor(root: HTMLElement, refs: TinymistRefs, opts: TinymistOpts) {
@@ -67,12 +68,14 @@ export class TinymistApp {
 
         this.getText = editorUI.getEntryText;
         this.syncTextGetText = editorUI.syncEntryContentToTextarea;
-        this.root.closest("form")?.addEventListener("submit", this.syncTextGetText);
+        this.root
+            .closest("form")
+            ?.addEventListener("submit", this.syncTextGetText);
 
         this.consoleToggleHandler = (collapsed?: boolean) => {
             this.root.classList.toggle("tinymist-console-collapsed", collapsed);
         };
-        window.$tmEventBus.listen("tinymist-console-toggle", this.consoleToggleHandler);
+        window.$tmEventBus.listen("console-toggle", this.consoleToggleHandler);
     }
 
     async getContent(): Promise<{ tinymist: string }> {
@@ -84,10 +87,10 @@ export class TinymistApp {
     private setupWasm(): void {
         try {
             new PreviewRenderer(this.refs.preview as HTMLElement);
-            window.$tmEventBus.emit("tinymist-wasm-init");
+            window.$tmEventBus.emit("wasm-init");
         } catch (error) {
             console.error("[Tinymist App] renderer setup failed:", error);
-            window.$tmEventBus.emit("tinymist-console-log", {
+            window.$tmEventBus.emit("console-log", {
                 type: "error",
                 message: "⚠ [App] renderer initialization failed: ",
                 details: error,
@@ -106,14 +109,19 @@ export class TinymistApp {
     }
 
     destroy(): void {
-        window.$tmEventBus.emit('tinymist-destroy');
+        window.$tmEventBus.emit("destroy");
 
         if (this.syncTextGetText) {
-            this.root.closest("form")?.removeEventListener("submit", this.syncTextGetText);
+            this.root
+                .closest("form")
+                ?.removeEventListener("submit", this.syncTextGetText);
         }
 
         if (this.consoleToggleHandler) {
-            window.$tmEventBus.remove("tinymist-console-toggle", this.consoleToggleHandler);
+            window.$tmEventBus.remove(
+                "console-toggle",
+                this.consoleToggleHandler,
+            );
             this.consoleToggleHandler = null;
         }
     }
