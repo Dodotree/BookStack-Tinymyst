@@ -172,7 +172,7 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
                     console.debug(
                         `[FilesLSP WS] Received diagnostics \x1b[31m${fileName}\x1b[0m docVersion: \x1b[94m${docVersion}\x1b[0m, diagnosticCount: ${msg.diagnostics?.length || 0}`,
                     );
-                    window.$tmEventBus.emit("lsp-diagnostics", {
+                    window.$tmEventBus.emit("diagnostics", {
                         fileName,
                         diagnostics: msg.diagnostics || [],
                         docVersion,

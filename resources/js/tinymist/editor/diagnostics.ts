@@ -1,9 +1,8 @@
-// diagnostics receives data either from LSP via editor_ws
+// diagnostics receives data either from LSP via websocket
 // or from fallback typst compiler output, parsed
-
 // it inserts red wavy underlines for errors as decorations
 // and reports to console if applicable
-// semantic highlights have to be translucent to not obscure the underlines
+// Note: semantic highlights backgrounds have to be translucent to not obscure the underlines
 
 import { EditorView } from "@codemirror/view";
 import { Diagnostic, setDiagnostics } from "@codemirror/lint";
@@ -17,12 +16,11 @@ export class DiagnosticsProcessor {
 
     constructor(editorView: EditorView | null = null) {
         this.editorView = editorView;
-        this.getSnapshotContext = () => ({ snapshot: "", changeSet: ChangeSet.empty(0) });
+        this.getSnapshotContext = () => ({ snapshot: "should be overridden", changeSet: ChangeSet.empty(0) });
         this.activeFileName = "entry.typ";
 
         this.mapDiagnosticsToCurrent = this.mapDiagnosticsToCurrent.bind(this);
         window.$tmEventBus.listen("diagnostics", this.mapDiagnosticsToCurrent);
-        window.$tmEventBus.listen("lsp-diagnostics", this.mapDiagnosticsToCurrent);
         window.$tmEventBus.listen("active-file-change", (payload: { fileName: string; url: string }) => {
             this.activeFileName = payload.fileName;
         });
@@ -54,18 +52,6 @@ export class DiagnosticsProcessor {
         }
     }
 
-    private positionToOffsetInText(text: string, line: number, column: number): number {
-        const lines = text.split('\n');
-        if (line < 0 || line >= lines.length) return 0;
-
-        let offset = 0;
-        for (let i = 0; i < line; i++) {
-            offset += lines[i].length + 1; // +1 for newline
-        }
-        offset += Math.min(column, lines[line].length);
-        return offset;
-    }
-
     private mapDiagnosticsToCurrent = (payload: { diagnostics: any[]; docVersion?: number; fileName: string }) => {
         if (!payload || !Array.isArray(payload.diagnostics) ||!this.editorView || typeof payload.docVersion !== "number") {
             return;
@@ -76,6 +62,13 @@ export class DiagnosticsProcessor {
         }
 
         const context = this.getSnapshotContext(payload.docVersion, payload.fileName);
+        const snapshotLineLen = context.snapshot.split('\n').map(line => line.length + 1); // +1 for newline
+        const snapshotOffsets = snapshotLineLen
+            .reduce((acc, len, idx) => {
+                acc[idx] = (acc[idx - 1] || 0) + len;
+                return acc;
+            }, [] as number[]);
+
         const currentDoc = this.editorView.state.doc;
 
         const mappedDiagnostics = payload.diagnostics.map((diag) => {
@@ -87,62 +80,28 @@ export class DiagnosticsProcessor {
             const startChar = typeof start.character === "number" ? start.character : 0;
             const endChar = typeof end.character === "number" ? end.character : startChar;
 
-            let startOffset = this.positionToOffsetInText(context.snapshot, startLine, startChar);
-            let endOffset = this.positionToOffsetInText(context.snapshot, endLine, endChar);
+            // [line,char] to offset in snapshot, line ending new line is ignored
+            let startOffset = (snapshotOffsets[startLine - 1] || 0) + Math.min(startChar, snapshotLineLen[startLine] - 1);
+            let endOffset = (snapshotOffsets[endLine - 1] || 0) + Math.min(endChar, snapshotLineLen[endLine] - 1);
+            // Map offsets through changes to current document
             startOffset = context.changeSet.mapPos(startOffset, 1);
             endOffset = context.changeSet.mapPos(endOffset, -1);
-
-            const startLineInfo = currentDoc.lineAt(Math.min(startOffset, currentDoc.length));
-            const endLineInfo = currentDoc.lineAt(Math.min(endOffset, currentDoc.length));
-
-            return {
-                ...diag,
-                range: {
-                    start: {
-                        line: startLineInfo.number - 1,
-                        character: Math.max(0, startOffset - startLineInfo.from),
-                    },
-                    end: {
-                        line: endLineInfo.number - 1,
-                        character: Math.max(0, endOffset - endLineInfo.from),
-                    },
-                },
-            };
-        });
-        this.updateDiagnosticsFromLsp(mappedDiagnostics);
-    }
-
-    updateDiagnosticsFromLsp = (diagnostics: any[]) => {
-        if (!this.editorView || !Array.isArray(diagnostics)) {
-            return;
-        }
-
-        const doc = this.editorView.state.doc;
-        const cmDiagnostics = diagnostics.map((d) => {
-            const range = d.range || {};
-            const start = range.start || {};
-            const end = range.end || {};
-            const startLine = typeof start.line === "number" ? start.line + 1 : 1;
-            const endLine = typeof end.line === "number" ? end.line + 1 : startLine;
-            const startChar = typeof start.character === "number" ? start.character : 0;
-            const endChar = typeof end.character === "number" ? end.character : startChar;
-
-            const fromLine = doc.line(Math.min(Math.max(startLine, 1), doc.lines));
-            const toLine = doc.line(Math.min(Math.max(endLine, 1), doc.lines));
-            const from = Math.min(fromLine.from + startChar, fromLine.to);
-            const to = Math.min(toLine.from + endChar, toLine.to);
-
-            const severity = this.mapLspSeverity(d.severity);
+            // Get current CodeMirror lines. Guard against offsets that exceed current document length
+            const fromLine = currentDoc.lineAt(Math.min(startOffset, currentDoc.length));
+            const toLine = currentDoc.lineAt(Math.min(endOffset, currentDoc.length));
+            // Guard against character that exceeds line length
+            const from = Math.min(fromLine.from + Math.max(0, startOffset - fromLine.from), fromLine.to);
+            const to = Math.min(toLine.from + Math.max(0, endOffset - toLine.from), toLine.to);
 
             return {
                 from,
-                to: Math.max(from + 1, to),
-                severity,
-                message: d.message || "LSP diagnostic",
+                to: Math.max(from + 1, to), // Ensure at least 1 character is underlined
+                severity: this.mapLspSeverity(diag.severity),
+                message: diag.message || "LSP diagnostic",
             };
         });
 
-        this.triggerLinting(cmDiagnostics);
+        this.triggerLinting(mappedDiagnostics);
     }
 
     triggerLinting(newDiagnostics: Diagnostic[]): void {

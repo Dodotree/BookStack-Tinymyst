@@ -1,5 +1,3 @@
-import { url } from "inspector";
-
 export class TinymistFileDropdown {
     fileSelect!: HTMLSelectElement;
     private fileSyncWSConnected = false;
@@ -8,13 +6,13 @@ export class TinymistFileDropdown {
         ["entry.typ", true],
     ]);
     private dirtyAttachmentByName: Map<string, boolean> = new Map();
-    private readonly changeHandler: () => void;
 
     constructor(fileSelect: HTMLSelectElement) {
         this.fileSelect = fileSelect;
         this.dirtyMapUpdateHandler = this.dirtyMapUpdateHandler.bind(this);
-        this.changeHandler = this.onSelectChange.bind(this);
-        this.fileSelect.addEventListener("change", this.changeHandler);
+
+        this.onSelectChange = this.onSelectChange.bind(this);
+        this.fileSelect.addEventListener("change", this.onSelectChange);
 
         window.$tmEventBus.listen(
             "status",
@@ -165,7 +163,7 @@ export class TinymistFileDropdown {
     }
 
     destroy() {
-        this.fileSelect?.removeEventListener("change", this.changeHandler);
+        this.fileSelect?.removeEventListener("change", this.onSelectChange);
         window.$tmEventBus.remove(
             "files-dirty-updated",
             this.dirtyMapUpdateHandler,

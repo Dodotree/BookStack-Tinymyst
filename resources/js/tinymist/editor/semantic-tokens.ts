@@ -211,9 +211,20 @@ export class SemanticTokenProcessor {
             return regions;
         }
         const currentDoc = this.editorView.state.doc;
+        const snapshotLines = baseText.split("\n");
+        const snapshotLineStarts: number[] = [];
+        let offset = 0;
+        for (const line of snapshotLines) {
+            snapshotLineStarts.push(offset);
+            offset += line.length + 1;
+        }
+
         return regions.map((region) => {
-            const baseStartOffset = this.positionToOffsetInText(baseText, region.line - 1, region.start);
-            const baseEndOffset = this.positionToOffsetInText(baseText, region.line - 1, region.start + region.len);
+            const lineIndex = Math.max(0, region.line - 1);
+            const lineStart = snapshotLineStarts[lineIndex] ?? 0;
+            const lineLength = snapshotLines[lineIndex]?.length ?? 0;
+            const baseStartOffset = lineStart + Math.min(region.start, lineLength);
+            const baseEndOffset = lineStart + Math.min(region.start + region.len, lineLength);
 
             const mappedStart = changeSet.mapPos(baseStartOffset, 1);
             const mappedEnd = changeSet.mapPos(baseEndOffset, -1);
@@ -233,20 +244,6 @@ export class SemanticTokenProcessor {
                 modifiers: region.modifiers,
             };
         });
-    }
-
-    private positionToOffsetInText(text: string, line: number, column: number): number {
-        const lines = text.split("\n");
-        if (line < 0 || line >= lines.length) {
-            return 0;
-        }
-
-        let offset = 0;
-        for (let i = 0; i < line; i++) {
-            offset += lines[i].length + 1;
-        }
-        offset += Math.min(column, lines[line].length);
-        return offset;
     }
 
     processSemanticTokens(
