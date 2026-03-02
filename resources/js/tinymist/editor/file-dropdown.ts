@@ -15,14 +15,14 @@ export class TinymistFileDropdown {
         this.changeHandler = this.onSelectChange.bind(this);
         this.fileSelect.addEventListener('change', this.changeHandler);
 
-        window.$events.listen('tinymist-status', (status: { what?: string; connected?: boolean }) => {
+        window.$tmEventBus.listen('tinymist-status', (status: { what?: string; connected?: boolean }) => {
             if (status?.what !== 'file-lsp-ws') {
                 return;
             }
             this.fileSyncWSConnected = Boolean(status.connected);
         });
 
-        window.$events.listen('tinymist-sync-full-state',  (payload: { fileName?: string }) => {
+        window.$tmEventBus.listen('tinymist-sync-full-state',  (payload: { fileName?: string }) => {
             const fileName = String(payload?.fileName || '').trim();
             if (!fileName) {
                 return;
@@ -30,14 +30,14 @@ export class TinymistFileDropdown {
             this.loadedFileStateByName.set(fileName, true);
         }) ;
 
-        window.$events.listen('attachments-page-updated', (data: { html?: string }) => {
+        window.$tmEventBus.listen('attachments-page-updated', (data: { html?: string }) => {
             if (!data) {
                 return;
             }
             this.refreshFileDropdown(data.html || '');
         });
 
-        window.$events.listen('tinymist-attachments-dirty-map-updated', this.dirtyMapUpdateHandler);
+        window.$tmEventBus.listen('tinymist-attachments-dirty-map-updated', this.dirtyMapUpdateHandler);
     }
 
     private onSelectChange(): void {
@@ -54,7 +54,7 @@ export class TinymistFileDropdown {
             this.fileSelect.value = this.activeFileName;
             const warning = `[Editor] Cannot open ${selectedFile} while file sync socket is offline: file state is not loaded yet.`;
             console.warn(warning);
-            window.$events.emit('tinymist-console-log', {
+            window.$tmEventBus.emit('tinymist-console-log', {
                 type: 'warning',
                 message: warning,
             });
@@ -62,7 +62,7 @@ export class TinymistFileDropdown {
         }
 
         this.activeFileName = selectedFile;
-        window.$events.emit("tinymist-active-file-change", {fileName: selectedFile, url: this.fileSelect.selectedOptions[0]?.dataset.fileUrl || ''});
+        window.$tmEventBus.emit("tinymist-active-file-change", {fileName: selectedFile, url: this.fileSelect.selectedOptions[0]?.dataset.fileUrl || ''});
     }
 
     private isImageFileName(fileName: string): boolean {
@@ -141,6 +141,6 @@ export class TinymistFileDropdown {
 
     destroy() {
         this.fileSelect?.removeEventListener('change', this.changeHandler);
-        window.$events.remove('tinymist-attachments-dirty-map-updated', this.dirtyMapUpdateHandler);
+        window.$tmEventBus.remove('tinymist-attachments-dirty-map-updated', this.dirtyMapUpdateHandler);
     }
 }

@@ -21,9 +21,9 @@ export class DiagnosticsProcessor {
         this.activeFileName = "entry.typ";
 
         this.mapDiagnosticsToCurrent = this.mapDiagnosticsToCurrent.bind(this);
-        window.$events.listen("tinymist-diagnostics", this.mapDiagnosticsToCurrent);
-        window.$events.listen("tinymist-lsp-diagnostics", this.mapDiagnosticsToCurrent);
-        window.$events.listen("tinymist-active-file-change", (payload: { fileName: string; url: string }) => {
+        window.$tmEventBus.listen("tinymist-diagnostics", this.mapDiagnosticsToCurrent);
+        window.$tmEventBus.listen("tinymist-lsp-diagnostics", this.mapDiagnosticsToCurrent);
+        window.$tmEventBus.listen("tinymist-active-file-change", (payload: { fileName: string; url: string }) => {
             this.activeFileName = payload.fileName;
         });
     }
@@ -157,7 +157,7 @@ export class DiagnosticsProcessor {
     logToConsole(diagnostics: Diagnostic[]): void {
         diagnostics.forEach(diag => {
             const logMessage = `[Diagnostic] ${diag.message} ${diag.severity} (from ${diag.from}, to ${diag.to})`;
-            window.$events.emit("tinymist-console-log", { type: diag.severity, message: logMessage });
+            window.$tmEventBus.emit("tinymist-console-log", { type: diag.severity, message: logMessage });
         });
     }
 

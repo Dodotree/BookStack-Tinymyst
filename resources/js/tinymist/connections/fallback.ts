@@ -14,8 +14,8 @@ export class TinymistFallbackCompiler {
 
     constructor(pageId: number) {
         this.pageId = pageId;
-        window.$events.listen("tinymist-fallback-enable", (enabled: boolean) => this.enabled = enabled);
-        window.$events.listen("tinymist-fallback-compile", async ({ docVersion, content }: { docVersion: number; content: string }) => {
+        window.$tmEventBus.listen("tinymist-fallback-enable", (enabled: boolean) => this.enabled = enabled);
+        window.$tmEventBus.listen("tinymist-fallback-compile", async ({ docVersion, content }: { docVersion: number; content: string }) => {
             await this.compile(docVersion, content, this.pageId);
         });
     }
@@ -29,7 +29,7 @@ export class TinymistFallbackCompiler {
         }
 
         console.log(`[Typst] Starting Typst compilation #${docVersion} (fallback mode)`);
-        window.$events.emit("tinymist-console-log",{ type: "info", message: "[Typst] Compiling..." });
+        window.$tmEventBus.emit("tinymist-console-log",{ type: "info", message: "[Typst] Compiling..." });
 
         try {
             const response = await window.$http.post('/ajax/tinymist/compile', { content, docVersion, pageId });
@@ -44,36 +44,36 @@ export class TinymistFallbackCompiler {
 
                 if (data.success) {
                     // Store and show SVG
-                    window.$events.emit("tinymist-fallback-compiled-svg", { svg: data.svg || "", docVersion: data.docVersion });
-                    window.$events.emit("tinymist-console-log",{ type: "success", message: `[Typst] Compiled successfully (${content.length} chars)` });
+                    window.$tmEventBus.emit("tinymist-fallback-compiled-svg", { svg: data.svg || "", docVersion: data.docVersion });
+                    window.$tmEventBus.emit("tinymist-console-log",{ type: "success", message: `[Typst] Compiled successfully (${content.length} chars)` });
 
                     // Update cached diagnostics
                     if (data.diagnostics && data.diagnostics.length > 0) {
-                        window.$events.emit("tinymist-diagnostics", { diagnostics: data.diagnostics, docVersion: data.docVersion });
+                        window.$tmEventBus.emit("tinymist-diagnostics", { diagnostics: data.diagnostics, docVersion: data.docVersion });
                     } else {
                         // Clear diagnostics on successful compilation with no errors
                         console.log('[Typst] Clearing diagnostics (success with no errors)');
-                        window.$events.emit("tinymist-diagnostics", { diagnostics: [], docVersion: data.docVersion });
+                        window.$tmEventBus.emit("tinymist-diagnostics", { diagnostics: [], docVersion: data.docVersion });
                     }
                 } else {
                     if (data.diagnostics && Array.isArray(data.diagnostics) && data.diagnostics.length > 0) {
-                        window.$events.emit("tinymist-diagnostics", { diagnostics: data.diagnostics, docVersion: data.docVersion });
+                        window.$tmEventBus.emit("tinymist-diagnostics", { diagnostics: data.diagnostics, docVersion: data.docVersion });
                     } else {
                         // No diagnostics parsed - log raw errors as fallback
-                        data.errors?.forEach((error) =>  window.$events.emit("tinymist-console-log",{ type: "error", message: "[Typst] Compile Error", details: error }));
+                        data.errors?.forEach((error) =>  window.$tmEventBus.emit("tinymist-console-log",{ type: "error", message: "[Typst] Compile Error", details: error }));
                     }
                 }
             } else if (typeof respData === 'string') {
                 // Server returned a plain string error/message
-                window.$events.emit("tinymist-console-log",{ type: "error", message: "[Typst] Server response", details: respData });
+                window.$tmEventBus.emit("tinymist-console-log",{ type: "error", message: "[Typst] Server response", details: respData });
             } else {
                 // Unexpected response shape
                 console.error('[Typst] Unexpected compile response:', response);
-                window.$events.emit("tinymist-console-log",{ type: "error", message: "[Typst] Unexpected server response.", details: response });
+                window.$tmEventBus.emit("tinymist-console-log",{ type: "error", message: "[Typst] Unexpected server response.", details: response });
             }
         } catch (error) {
             console.error('[Typst] Compilation failed:', error);
-            window.$events.emit("tinymist-console-log",{ type: "error", message: "[Typst] Compilation failed. Check console for details.", details: error });
+            window.$tmEventBus.emit("tinymist-console-log",{ type: "error", message: "[Typst] Compilation failed. Check console for details.", details: error });
         }
     }
 

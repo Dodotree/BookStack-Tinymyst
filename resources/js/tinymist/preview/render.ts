@@ -59,11 +59,11 @@ export class PreviewRenderer {
 
         this.handleSyncInit = this.handleSyncInit.bind(this);
         this.dispose = this.dispose.bind(this);
-        window.$events.listen("tinymist-wasm-init", this.handleSyncInit)
-        window.$events.listen("tinymist-wasm-dispose", this.dispose);
+        window.$tmEventBus.listen("tinymist-wasm-init", this.handleSyncInit)
+        window.$tmEventBus.listen("tinymist-wasm-dispose", this.dispose);
 
         this.updateSVG = this.updateSVG.bind(this);
-        window.$events.listen<{svg: string, docVersion:string}>("tinymist-fallback-compiled-svg", ({svg, docVersion}) => this.updateSVG(svg));
+        window.$tmEventBus.listen<{svg: string, docVersion:string}>("tinymist-fallback-compiled-svg", ({svg, docVersion}) => this.updateSVG(svg));
 
         this.handleSyncMessage = this.handleSyncMessage.bind(this);
         this.handleZoomIn = this.handleZoomIn.bind(this);
@@ -75,10 +75,10 @@ export class PreviewRenderer {
         this.handlePanMouseUp = this.handlePanMouseUp.bind(this);
         this.handleCursorPosition = this.handleCursorPosition.bind(this);
 
-        window.$events.listen("tinymist-data-binary", this.handleSyncMessage);
-        window.$events.listen("tinymist-preview-cursor-position", this.handleCursorPosition);
+        window.$tmEventBus.listen("tinymist-data-binary", this.handleSyncMessage);
+        window.$tmEventBus.listen("tinymist-preview-cursor-position", this.handleCursorPosition);
 
-        window.$events.listen("tinymist-active-file-change", (payload: { fileName: string; url: string }) => {
+        window.$tmEventBus.listen("tinymist-active-file-change", (payload: { fileName: string; url: string }) => {
             this.activeFileName = payload.fileName;
             this.applyCursorSpotlightState();
             this.applyScrollIntoViewState();
@@ -100,7 +100,7 @@ export class PreviewRenderer {
             await this.initialize();
         } catch (err) {
             console.error("[Preview WASM] Failed to initialize:", err);
-            window.$events.emit("tinymist-console-log", { type: "error", message: "[Preview WASM] init failed", details: err });
+            window.$tmEventBus.emit("tinymist-console-log", { type: "error", message: "[Preview WASM] init failed", details: err });
         }
     }
 
@@ -243,7 +243,7 @@ export class PreviewRenderer {
                 // }
 
                 console.log('[Preview WASM] Render complete');
-                window.$events.emit("tinymist-data-cursor-show"); // reinsert cursor if possible
+                window.$tmEventBus.emit("tinymist-data-cursor-show"); // reinsert cursor if possible
 
             } catch (e: any) {
                 console.error(`[Preview WASM] Rendering failed:`, e);
@@ -294,7 +294,7 @@ export class PreviewRenderer {
         this.renderer = null;
 
         this.previewElement.closest(".tinymist-preview-pane")?.removeEventListener("click", this.handlePreviewPaneClick);
-        window.$events.remove("tinymist-preview-cursor-position", this.handleCursorPosition);
+        window.$tmEventBus.remove("tinymist-preview-cursor-position", this.handleCursorPosition);
 
         console.log("[Preview WASM] Renderer disposed");
     }
@@ -371,7 +371,7 @@ export class PreviewRenderer {
             button.setAttribute("title", enabled ? "Disable Caret Spotlight" : "Enable Caret Spotlight");
         }
 
-        window.$events.emit("tinymist-cursor-spotlight-toggle", {
+        window.$tmEventBus.emit("tinymist-cursor-spotlight-toggle", {
             enabled,
             activeFile: this.activeFileName,
             userEnabled: this.cursorSpotlightUserEnabled,
@@ -387,7 +387,7 @@ export class PreviewRenderer {
             button.setAttribute("title", enabled ? "Disable Scroll Into View" : "Enable Scroll Into View");
         }
 
-        window.$events.emit("tinymist-cursor-scroll-into-view-toggle", {
+        window.$tmEventBus.emit("tinymist-cursor-scroll-into-view-toggle", {
             enabled,
             activeFile: this.activeFileName,
             userEnabled: this.scrollIntoViewUserEnabled,
@@ -535,7 +535,7 @@ export class PreviewRenderer {
         this.recovering = true;
         this.recoveryAttempts += 1;
 
-        window.$events.emit("tinymist-console-log", {
+        window.$tmEventBus.emit("tinymist-console-log", {
             type: "warning",
             message: `[Preview WASM] Renderer failed (${error.message ?? error}). Restarting session...`,
         });
@@ -543,13 +543,13 @@ export class PreviewRenderer {
         try {
             this.dispose();
             await this.initialize();
-            window.$events.emit("tinymist-console-log", {
+            window.$tmEventBus.emit("tinymist-console-log", {
                 type: "success",
                 message: "[Preview WASM] Renderer session restarted",
             });
         } catch (restartError) {
             console.error("[Preview WASM] Recovery failed:", restartError);
-            window.$events.emit("tinymist-console-log", {
+            window.$tmEventBus.emit("tinymist-console-log", {
                 type: "error",
                 message: "[Preview WASM] Renderer recovery failed",
                 details: restartError,

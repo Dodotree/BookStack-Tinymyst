@@ -20,8 +20,8 @@ export class TinymistTokenManager {
 
         this.disconnect = this.disconnect.bind(this);
         this.renewToken = this.renewToken.bind(this);
-        window.$events.listen("tinymist-all-disconnect", this.disconnect);
-        window.$events.listen("tinymist-invalid-token", this.renewToken);
+        window.$tmEventBus.listen("tinymist-all-disconnect", this.disconnect);
+        window.$tmEventBus.listen("tinymist-invalid-token", this.renewToken);
 
         if (token) {
             this.scheduleTokenRenewal();
@@ -35,7 +35,7 @@ export class TinymistTokenManager {
         this.token = token;
         this.decodeAndStoreTokenExpiry(token);
         this.scheduleTokenRenewal();
-        window.$events.emit("tinymist-token-renewed", this.token as string);
+        window.$tmEventBus.emit("tinymist-token-renewed", this.token as string);
     }
 
     private decodeAndStoreTokenExpiry(token: string): void {
@@ -106,17 +106,17 @@ export class TinymistTokenManager {
                 this.token = data.token;
                 this.tokenExpiry = data.expires_at;
 
-                window.$events.emit("tinymist-token-renewed", this.token as string);
+                window.$tmEventBus.emit("tinymist-token-renewed", this.token as string);
 
                 // Schedule next renewal
                 this.scheduleTokenRenewal();
             } else {
                 console.error('[Auth Token] Token renewal failed:', data.error || 'Unknown error');
-                window.$events.emit("tinymist-console-log",{ type: "error", message: "[Auth Token] token renewal failed", details: data });
+                window.$tmEventBus.emit("tinymist-console-log",{ type: "error", message: "[Auth Token] token renewal failed", details: data });
             }
         } catch (error) {
             console.error('[Auth Token] Token renewal request failed:', error);
-            window.$events.emit("tinymist-console-log",{ type: "error", message: "[Auth Token] token renewal failed", details: error });
+            window.$tmEventBus.emit("tinymist-console-log",{ type: "error", message: "[Auth Token] token renewal failed", details: error });
         }
     }
 

@@ -4,8 +4,8 @@ export class PreviewDataPlane {
 
     constructor() {
         this.handleBridgeDataMessage = this.handleBridgeDataMessage.bind(this);
-        window.$events.listen("tinymist-preview-data-message", this.handleBridgeDataMessage);
-        window.$events.listen("tinymist-cursor-spotlight-toggle", ({ enabled }: { enabled?: boolean }) => {
+        window.$tmEventBus.listen("tinymist-preview-data-message", this.handleBridgeDataMessage);
+        window.$tmEventBus.listen("tinymist-cursor-spotlight-toggle", ({ enabled }: { enabled?: boolean }) => {
             this.cursorSpotlightEnabled = Boolean(enabled);
         });
     }
@@ -49,12 +49,12 @@ export class PreviewDataPlane {
                     //     console.log('[Preview Data] Could not decode diff sample');
                     // }
 
-                    window.$events.emit("tinymist-data-binary", { command, payload });
+                    window.$tmEventBus.emit("tinymist-data-binary", { command, payload });
                     break;
 
                 case 'new':
                     // console.log(`[Preview Data] Received new document (${payload.length} bytes)`);
-                    window.$events.emit("tinymist-data-binary", { command, payload });
+                    window.$tmEventBus.emit("tinymist-data-binary", { command, payload });
                     break;
 
                 // Successful reply to Control Plane "changeCursorPosition" request
@@ -66,7 +66,7 @@ export class PreviewDataPlane {
                     try {
                         const parsed = JSON.parse(decoded);
                         // console.info('[Preview Data] Cursor paths parsed:', parsed);
-                        window.$events.emit("tinymist-data-cursor-paths", parsed);
+                        window.$tmEventBus.emit("tinymist-data-cursor-paths", parsed);
                     } catch (err) {
                         console.error('[Preview Data] Cursor paths not valid JSON:', err);
                     }

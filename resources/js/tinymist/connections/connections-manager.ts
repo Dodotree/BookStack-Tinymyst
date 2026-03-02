@@ -33,16 +33,16 @@ export class TinymistConnectionsManager {
         this.updateStatus = this.updateStatus.bind(this);
         this.updateToken = this.updateToken.bind(this);
         this.destroy = this.destroy.bind(this);
-        window.$events.listen('tinymist-status', this.updateStatus);
-        window.$events.listen('tinymist-token-renewed', this.updateToken);
-        window.$events.listen('tinymist-destroy', this.destroy);
+        window.$tmEventBus.listen('tinymist-status', this.updateStatus);
+        window.$tmEventBus.listen('tinymist-token-renewed', this.updateToken);
+        window.$tmEventBus.listen('tinymist-destroy', this.destroy);
 
         this.tokenManager = new TinymistTokenManager(this.pageId, this.wsToken);
     }
 
     start(): void {
         if (!this.wsToken) {
-            window.$events.emit("tinymist-invalid-token");
+            window.$tmEventBus.emit("tinymist-invalid-token");
             return;
         }
         void this.setupPreviewSockets();
@@ -72,9 +72,9 @@ export class TinymistConnectionsManager {
                 new PreviewDataPlane();
             }
 
-            window.$events.emit('tinymist-preview-connect');
+            window.$tmEventBus.emit('tinymist-preview-connect');
         } catch (error) {
-            window.$events.emit('tinymist-console-log', {
+            window.$tmEventBus.emit('tinymist-console-log', {
                 type: 'error',
                 message: 'Failed to initialize preview sockets',
                 details: error,
@@ -91,9 +91,9 @@ export class TinymistConnectionsManager {
                     this.uniqueTabId
                 );
             }
-            window.$events.emit('tinymist-sync-connect');
+            window.$tmEventBus.emit('tinymist-sync-connect');
         } catch (error) {
-            window.$events.emit('tinymist-console-log', {
+            window.$tmEventBus.emit('tinymist-console-log', {
                 type: 'error',
                 message: 'Failed to initialize file sync LSP',
                 details: error,
@@ -109,7 +109,7 @@ export class TinymistConnectionsManager {
             case 'preview-ws':
                 this.bridgeConnected = status.connected;
                 if (status.connected) {
-                    window.$events.emit('tinymist-preview-send-data', 'current');
+                    window.$tmEventBus.emit('tinymist-preview-send-data', 'current');
                 }
                 break;
         }
@@ -122,15 +122,15 @@ export class TinymistConnectionsManager {
                 return;
             }
             this.fallbackMode = true;
-            window.$events.emit('tinymist-console-log', {
+            window.$tmEventBus.emit('tinymist-console-log', {
                 type: 'warning',
                 message: this.restartAllowed ? '⚠ Entering fallback mode' : '⚠ Disconnected and restart disabled',
             });
-            window.$events.emit('tinymist-fallback-enable', this.restartAllowed);
+            window.$tmEventBus.emit('tinymist-fallback-enable', this.restartAllowed);
         } else {
             this.fallbackMode = false;
-            window.$events.emit('tinymist-fallback-enable', false);
-            window.$events.emit('tinymist-console-log', {
+            window.$tmEventBus.emit('tinymist-fallback-enable', false);
+            window.$tmEventBus.emit('tinymist-console-log', {
                 type: 'success',
                 message: '[WS manager] connections active, fallback off',
             });
@@ -140,8 +140,8 @@ export class TinymistConnectionsManager {
     destroy(): void {
         this.restartAllowed = false;
 
-        window.$events.emit('tinymist-fallback-enable', false);
-        window.$events.emit('tinymist-sync-disconnect');
-        window.$events.emit('tinymist-preview-disconnect');
+        window.$tmEventBus.emit('tinymist-fallback-enable', false);
+        window.$tmEventBus.emit('tinymist-sync-disconnect');
+        window.$tmEventBus.emit('tinymist-preview-disconnect');
     }
 }

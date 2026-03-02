@@ -22,8 +22,8 @@ export class PreviewBridgeClient extends TinymistWebSocketClient {
 
         this.handleOutgoingControl = this.handleOutgoingControl.bind(this);
         this.handleOutgoingData = this.handleOutgoingData.bind(this);
-        window.$events.listen("tinymist-preview-send-control", this.handleOutgoingControl);
-        window.$events.listen("tinymist-preview-send-data", this.handleOutgoingData);
+        window.$tmEventBus.listen("tinymist-preview-send-control", this.handleOutgoingControl);
+        window.$tmEventBus.listen("tinymist-preview-send-data", this.handleOutgoingData);
     }
 
     protected handleMessage(data: any): void {
@@ -33,12 +33,12 @@ export class PreviewBridgeClient extends TinymistWebSocketClient {
                 console.log(`[Preview WS] Received pong`);
                 return;
             }
-            window.$events.emit("tinymist-preview-control-message", payload);
+            window.$tmEventBus.emit("tinymist-preview-control-message", payload);
         };
 
         const forwardData = (buffer: ArrayBuffer) => {
             // console.log(`[Preview WS] Forwarding data buffer length: ${buffer.byteLength}`);
-            window.$events.emit("tinymist-preview-data-message", new Uint8Array(buffer));
+            window.$tmEventBus.emit("tinymist-preview-data-message", new Uint8Array(buffer));
         };
 
         // Check data type

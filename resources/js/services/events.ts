@@ -1,6 +1,7 @@
 import {HttpError} from "./http";
 
 type Listener = (data: any) => void;
+const MAX_STACK_SIZE = 10;
 
 export class EventManager {
     protected listeners: Record<string, Listener[]> = {};
@@ -11,6 +12,9 @@ export class EventManager {
      */
     emit(eventName: string, eventData: {} = {}): void {
         this.stack.push({name: eventName, data: eventData});
+        if (this.stack.length > MAX_STACK_SIZE) {
+            this.stack.shift();
+        }
 
         const listenersToRun = this.listeners[eventName] || [];
         for (const listener of listenersToRun) {

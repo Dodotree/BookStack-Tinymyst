@@ -52,8 +52,8 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
 
         this.sendChanges = this.sendChanges.bind(this);
         this.openFile = this.openFile.bind(this);
-        window.$events.listen("tinymist-text-diff", this.sendChanges);
-        window.$events.listen("tinymist-sync-open-file", this.openFile);
+        window.$tmEventBus.listen("tinymist-text-diff", this.sendChanges);
+        window.$tmEventBus.listen("tinymist-sync-open-file", this.openFile);
     }
 
     openFile(payload: { fileName: string }): void {
@@ -108,7 +108,7 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
 
                 case 'fullState':
                     console.debug(`[FilesLSP WS] Received full state \x1b[31m${fileName}\x1b[0m, docVersion: \x1b[94m${docVersion}\x1b[0m`);
-                    window.$events.emit("tinymist-sync-full-state", {
+                    window.$tmEventBus.emit("tinymist-sync-full-state", {
                         fileName,
                         content: msg.content,
                         docVersion,
@@ -117,40 +117,40 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
 
                 case 'semanticTokens':
                     console.debug(`[FilesLSP WS] Received semantic tokens FULL \x1b[31m${fileName}\x1b[0m docVersion: \x1b[94m${docVersion}\x1b[0m, resultId: \x1b[32m${msg.resultId}\x1b[0m, tokenCount: ${msg.tokens?.length || 0}`);
-                    window.$events.emit("tinymist-lsp-semantic-tokens", {
+                    window.$tmEventBus.emit("tinymist-lsp-semantic-tokens", {
                         fileName,
                         tokens: msg.tokens || [],
                         resultId: msg.resultId,
                         docVersion,
                     });
-                    window.$events.emit("tinymist-prune-snapshots", { fileName, docVersion });
+                    window.$tmEventBus.emit("tinymist-prune-snapshots", { fileName, docVersion });
                     break;
 
                 case 'semanticTokensDelta':
                     console.debug(`[FilesLSP WS] Received semantic tokens DELTA \x1b[31m${fileName}\x1b[0m docVersion: \x1b[94m${docVersion}\x1b[0m, editCount: ${msg.edits?.length || 0}, resultId: \x1b[32m${msg.resultId}\x1b[0m, previousResultId: \x1b[32m${msg.previousResultId}\x1b[0m`);
-                    window.$events.emit("tinymist-lsp-semantic-tokens-delta", {
+                    window.$tmEventBus.emit("tinymist-lsp-semantic-tokens-delta", {
                         fileName,
                         edits: msg.edits || [],
                         resultId: msg.resultId,
                         previousResultId: msg.previousResultId,
                         docVersion,
                     });
-                    window.$events.emit("tinymist-prune-snapshots", { fileName, docVersion });
+                    window.$tmEventBus.emit("tinymist-prune-snapshots", { fileName, docVersion });
                     break;
 
                 case 'diagnostics':
                     console.debug(`[FilesLSP WS] Received diagnostics \x1b[31m${fileName}\x1b[0m docVersion: \x1b[94m${docVersion}\x1b[0m, diagnosticCount: ${msg.diagnostics?.length || 0}`);
-                    window.$events.emit("tinymist-lsp-diagnostics", {
+                    window.$tmEventBus.emit("tinymist-lsp-diagnostics", {
                         fileName,
                         diagnostics: msg.diagnostics || [],
                         docVersion,
                     });
-                    window.$events.emit("tinymist-prune-snapshots", { fileName, docVersion });
+                    window.$tmEventBus.emit("tinymist-prune-snapshots", { fileName, docVersion });
                     break;
 
                 case 'error':
                     console.error('[FilesLSP WS] Server error:', msg);
-                    window.$events.emit("tinymist-console-log",{ type: "error", message: "[FilesLSP WS] Server error", details: msg });
+                    window.$tmEventBus.emit("tinymist-console-log",{ type: "error", message: "[FilesLSP WS] Server error", details: msg });
                     break;
 
                 default:
@@ -176,7 +176,7 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
             this.socket.close(1000, 'Client disconnected');
             this.socket = null;
             console.log("[FilesLSP WS] Intentionally disconnected");
-            window.$events.emit("tinymist-status", { what: "file-lsp-ws", connected: false });
+            window.$tmEventBus.emit("tinymist-status", { what: "file-lsp-ws", connected: false });
         }
 
     }

@@ -12,7 +12,7 @@ export class TinymistConsole {
         this.handlePanelClick = this.handlePanelClick.bind(this);
         this.toggleConsole = this.toggleConsole.bind(this);
 
-        window.$events.listen("tinymist-console-log", this.logMessage);
+        window.$tmEventBus.listen("tinymist-console-log", this.logMessage);
         this.console.closest('#tinymist-console-panel')?.addEventListener('click', this.handlePanelClick);
     }
 
@@ -37,7 +37,7 @@ export class TinymistConsole {
 
     toggleConsole(button?: HTMLButtonElement): void {
         this.collapsed = !this.collapsed;
-        window.$events.emit('tinymist-console-toggle', this.collapsed);
+        window.$tmEventBus.emit('tinymist-console-toggle', this.collapsed);
         if (button) {
             button.setAttribute('aria-expanded', (!this.collapsed).toString());
             button.setAttribute('title', this.collapsed ? 'Expand Console' : 'Collapse Console');
@@ -85,7 +85,7 @@ export class TinymistConsole {
     }
 
     destroy(): void {
-        window.$events.remove("tinymist-console-log", this.logMessage);
+        window.$tmEventBus.remove("tinymist-console-log", this.logMessage);
         this.console.closest('#tinymist-console-panel')?.removeEventListener('click', this.handlePanelClick);
     }
 }

@@ -31,10 +31,10 @@ export class PreviewCursor {
         this.dispose = this.dispose.bind(this);
         this.pathToSelector = this.pathToSelector.bind(this);
         this.showCursor = this.showCursor.bind(this);
-        window.$events.listen("tinymist-wasm-dispose", this.dispose);
-        window.$events.listen("tinymist-data-cursor-paths", this.pathToSelector);
-        window.$events.listen("tinymist-data-cursor-show", this.showCursor);
-        window.$events.listen("tinymist-cursor-spotlight-toggle", ({ enabled }: { enabled?: boolean }) => {
+        window.$tmEventBus.listen("tinymist-wasm-dispose", this.dispose);
+        window.$tmEventBus.listen("tinymist-data-cursor-paths", this.pathToSelector);
+        window.$tmEventBus.listen("tinymist-data-cursor-show", this.showCursor);
+        window.$tmEventBus.listen("tinymist-cursor-spotlight-toggle", ({ enabled }: { enabled?: boolean }) => {
             this.spotlightEnabled = Boolean(enabled);
             if (!this.spotlightEnabled) {
                 this.hideCursor();
@@ -260,7 +260,7 @@ export class PreviewCursor {
 
         const contentX = glyphRect.left - previewRect.left + this.previewElement.scrollLeft + glyphRect.width / 2;
         const contentY = glyphRect.top - previewRect.top + this.previewElement.scrollTop + glyphRect.height / 2;
-        window.$events.emit("tinymist-preview-cursor-position", {
+        window.$tmEventBus.emit("tinymist-preview-cursor-position", {
             contentX,
             contentY,
             width: glyphRect.width,
