@@ -43,14 +43,34 @@ const COLOR_TOKENS = new Set(
 
 export class TinymistThemeSettings {
     private static readonly FONT_TOKENS = new Set(["tm-font-mono", "tm-font-ui"]);
-    private root: HTMLElement;
+    private root: HTMLElement|null;
     private overlay: HTMLElement | null;
     private currentSettings: ThemeSettingValues = {};
     private stylesheetDefaults: ThemeSettingValues = { ...FALLBACK_THEME_SETTINGS };
+    private listenersBound = false;
 
     constructor(root: HTMLElement) {
         this.root = root;
+        this.overlay = this.root?.querySelector(".tinymist-theme-settings-overlay");
+        if (!this.root || !this.overlay) {
+            return;
+        }
 
+        this.updateInput = this.updateInput.bind(this);
+        this.reset = this.reset.bind(this);
+        this.destroy = this.destroy.bind(this);
+        this.closeOverlay = this.closeOverlay.bind(this);
+        this.handleThemeSettingsOpen = this.handleThemeSettingsOpen.bind(this);
+        this.handleOverlayClick = this.handleOverlayClick.bind(this);
+        this.handleWindowKeyUp = this.handleWindowKeyUp.bind(this);
+
+        // One way to open
+        window.$tmEventBus.listen("theme-settings-open", this.handleThemeSettingsOpen);
+        window.$tmEventBus.listen("destroy", this.destroy);
+    }
+
+    // fires only once if the user decides to use settings, so we can delay setup until then
+    ensureSettingsLoaded(): void {
         // Ensure stored settings are loaded
         this.stylesheetDefaults = this.readDefaultsFromStylesheet();
         const stored = this.readStoredSettings();
@@ -60,42 +80,48 @@ export class TinymistThemeSettings {
         };
         this.applyStateToEditor(this.currentSettings);
 
-        this.overlay = this.root.querySelector(".tinymist-theme-settings-overlay");
-        if (!this.overlay) {
+        this.renderHighlightColorNodes();
+        this.syncStateToInputs();
+
+        const isDarkMode = document.documentElement.classList.contains("dark-mode");
+        const splitControls = this.overlay?.querySelectorAll<HTMLElement>(".color-split") ?? [];
+        splitControls.forEach((control) => {
+            control.dataset.activeTheme = isDarkMode ? "dark" : "light";
+        });
+
+        if (this.listenersBound) {
             return;
         }
+        this.addRemoveListeners(true);
+    }
 
-        // One way to open
-        window.$tmEventBus.listen("theme-settings-open", () => {
-            if (!this.overlay) return;
-            this.overlay.hidden = false;
-            this.overlay.classList.add("is-visible");
-            this.ensureSettingsLoaded();
-        });
+    addRemoveListeners(adding=true): void {
+        if(!this.overlay) {
+            return;
+        }
+        const method = adding ? "addEventListener" : "removeEventListener";
 
         // Many ways to close
-        const close = () => {
-            if (!this.overlay) return;
-            this.overlay.classList.remove("is-visible");
-            this.overlay.hidden = true;
-        };
-        const closeButtons = this.overlay?.querySelectorAll('button[data-action="closeThemeSettings"]') ?? [];
+        const closeButtons = this.overlay.querySelectorAll<HTMLButtonElement>('button[data-action="closeThemeSettings"]');
         closeButtons.forEach((button) => {
-            button.addEventListener("click", () => close());
+            button[method]("click", this.closeOverlay);
         });
-        this.overlay?.addEventListener("click", (event) => {
-            if (event.target === this.overlay) {
-                close();
-            }
-        });
-        window.addEventListener("keyup", (event) => {
-            if (event.key === "Escape" && !!this.overlay && !this.overlay.hidden) {
-                close();
-            }
+        this.overlay[method]("click", this.handleOverlayClick);
+        window[method]("keyup", this.handleWindowKeyUp);
+
+        // add listeners to inputs
+        const inputs = this.overlay?.querySelectorAll<HTMLInputElement>("[data-tm-token]") ?? [];
+        inputs.forEach((input) => {
+            const token = input.dataset.tmToken;
+            if (!token) return;
+            const eventName = input.type === "color" || TinymistThemeSettings.FONT_TOKENS.has(token) ? "input" : "change";
+            input[method](eventName, this.updateInput);
         });
 
-        this.updateInput = this.updateInput.bind(this);
-        this.reset = this.reset.bind(this);
+        const resetButton = this.overlay?.querySelector<HTMLButtonElement>('button[data-action="resetThemeSettings"]') ?? null;
+        resetButton?.[method]("click", this.reset);
+
+        this.listenersBound = adding;
     }
 
     private applyStateToEditor(settings: ThemeSettingValues): void {
@@ -105,9 +131,9 @@ export class TinymistThemeSettings {
     }
 
     private applyTokenToEditor(token: string, value: string): void {
-        this.root.style.setProperty(`--${token}`, value);
+        this.root?.style.setProperty(`--${token}`, value);
         if (token === "tm-font-mono") {
-            this.root.style.setProperty("--font-code", value);
+            this.root?.style.setProperty("--font-code", value);
         }
     }
 
@@ -137,28 +163,36 @@ export class TinymistThemeSettings {
         this.persistSettings();
     }
 
-    // fires only once if the user decides to use settings, so we can delay setup until then
-    ensureSettingsLoaded(): void {
-        this.renderHighlightColorNodes();
-        this.syncStateToInputs();
+    private readonly closeOverlay = (): void => {
+        if (!this.overlay) return;
+        this.overlay.classList.remove("is-visible");
+        this.overlay.hidden = true;
+    };
 
-        const isDarkMode = document.documentElement.classList.contains("dark-mode");
-        const splitControls = this.overlay?.querySelectorAll<HTMLElement>(".color-split") ?? [];
-        splitControls.forEach((control) => {
-            control.dataset.activeTheme = isDarkMode ? "dark" : "light";
-        });
+    private readonly handleThemeSettingsOpen = (): void => {
+        if (!this.overlay) return;
+        this.overlay.hidden = false;
+        this.overlay.classList.add("is-visible");
+        this.ensureSettingsLoaded();
+    };
 
-        // add listeners to inputs
-        const inputs = this.overlay?.querySelectorAll<HTMLInputElement>("[data-tm-token]") ?? [];
-        inputs.forEach((input) => {
-            const token = input.dataset.tmToken;
-            if (!token) return;
-            const eventName = input.type === "color" || TinymistThemeSettings.FONT_TOKENS.has(token) ? "input" : "change";
-            input.addEventListener(eventName, this.updateInput);
-        });
+    private readonly handleOverlayClick = (event: Event): void => {
+        if (event.target === this.overlay) {
+            this.closeOverlay();
+        }
+    };
 
-        const resetButton = this.overlay?.querySelector<HTMLButtonElement>('button[data-action="resetThemeSettings"]');
-        resetButton?.addEventListener("click", this.reset);
+    private readonly handleWindowKeyUp = (event: Event): void => {
+        if ((event as KeyboardEvent).key === "Escape" && !!this.overlay && !this.overlay.hidden) {
+            this.closeOverlay();
+        }
+    };
+
+    destroy(): void {
+        this.addRemoveListeners(false);
+        this.overlay = null;
+        this.currentSettings = {};
+        this.root = null;
     }
 
     private renderHighlightColorNodes(): void {
@@ -400,7 +434,7 @@ export class TinymistThemeSettings {
     }
 
     private readDefaultsFromStylesheet(): ThemeSettingValues {
-        const computedRootStyle = getComputedStyle(this.root);
+        const computedRootStyle = getComputedStyle(this.root!);
         const defaults: ThemeSettingValues = {};
 
         THEME_TOKENS.forEach((token) => {
@@ -442,7 +476,7 @@ export class TinymistThemeSettings {
         probe.style.visibility = "hidden";
         probe.style.pointerEvents = "none";
         probe.style.inset = "0";
-        this.root.appendChild(probe);
+        this.root?.appendChild(probe);
 
         const color = getComputedStyle(probe).color;
         probe.remove();
@@ -450,20 +484,18 @@ export class TinymistThemeSettings {
     }
 
     private readComputedCodeFont(): string {
-        const editorLine = this.root.querySelector<HTMLElement>(".cm-editor .cm-line, .cm-editor .cm-gutter");
+        const editorLine = this.root?.querySelector<HTMLElement>(".cm-editor .cm-line, .cm-editor .cm-gutter");
         if (editorLine) {
             return getComputedStyle(editorLine).fontFamily.trim();
         }
-
-        return getComputedStyle(this.root).getPropertyValue("--font-code").trim();
+        return getComputedStyle(this.root!).getPropertyValue("--font-code").trim();
     }
 
     private readComputedUiFont(): string {
-        const previewPane = this.root.querySelector<HTMLElement>(".tinymist-preview-pane");
+        const previewPane = this.root?.querySelector<HTMLElement>(".tinymist-preview-pane");
         if (!previewPane) {
             return "";
         }
-
         return getComputedStyle(previewPane).fontFamily.trim();
     }
 

@@ -28,7 +28,7 @@ export class PreviewRenderer {
     private previewElement: HTMLElement;
     private hasInitialDocument: boolean = false; // Track if we've received initial document to decide if "reset" instead of "merge" is needed
     private processingQueue: Promise<void> = Promise.resolve();
-    private cursorInitialized: boolean = false;
+
     private recovering: boolean = false;
     private recoveryAttempts: number = 0;
     private zoomLevel = 1;
@@ -43,6 +43,7 @@ export class PreviewRenderer {
     private panStartY = 0;
     private panStartScrollLeft = 0;
     private panStartScrollTop = 0;
+
     private activeFileName = "entry.typ";
     private cursorSpotlightUserEnabled = true;
     private scrollIntoViewUserEnabled = true;
@@ -55,18 +56,11 @@ export class PreviewRenderer {
             );
             return;
         }
+        new PreviewCursor(this.previewElement);
 
         this.handleSyncInit = this.handleSyncInit.bind(this);
         this.dispose = this.dispose.bind(this);
-        window.$tmEventBus.listen("wasm-init", this.handleSyncInit);
-        window.$tmEventBus.listen("wasm-dispose", this.dispose);
-
         this.updateSVG = this.updateSVG.bind(this);
-        window.$tmEventBus.listen<{ svg: string; docVersion: string }>(
-            "fallback-compiled-svg",
-            ({ svg, docVersion }) => this.updateSVG(svg),
-        );
-
         this.handleSyncMessage = this.handleSyncMessage.bind(this);
         this.handleZoomIn = this.handleZoomIn.bind(this);
         this.handleZoomOut = this.handleZoomOut.bind(this);
@@ -76,6 +70,14 @@ export class PreviewRenderer {
         this.handlePanMouseMove = this.handlePanMouseMove.bind(this);
         this.handlePanMouseUp = this.handlePanMouseUp.bind(this);
         this.handleCursorPosition = this.handleCursorPosition.bind(this);
+
+        window.$tmEventBus.listen("wasm-init", this.handleSyncInit);
+        window.$tmEventBus.listen("wasm-dispose", this.dispose);
+
+        window.$tmEventBus.listen<{ svg: string; docVersion: string }>(
+            "fallback-compiled-svg",
+            ({ svg, docVersion }) => this.updateSVG(svg),
+        );
 
         window.$tmEventBus.listen("data-binary", this.handleSyncMessage);
         window.$tmEventBus.listen(
@@ -91,27 +93,33 @@ export class PreviewRenderer {
                 this.applyScrollIntoViewState();
             },
         );
-        this.previewElement
-            .closest(".tinymist-preview-pane")
-            ?.addEventListener("click", this.handlePreviewPaneClick);
 
-        this.previewElement.addEventListener(
-            "mousedown",
-            this.handlePanMouseDown,
-        );
-        this.previewElement.addEventListener(
-            "mousemove",
-            this.handlePanMouseMove,
-        );
-        this.previewElement.addEventListener("mouseup", this.handlePanMouseUp);
-        this.previewElement.addEventListener(
-            "mouseleave",
-            this.handlePanMouseUp,
-        );
-
+        this.addRemoveListeners(true);
         this.applyCursorSpotlightState();
         this.applyScrollIntoViewState();
         this.applyPanButtonState();
+    }
+
+    private addRemoveListeners(adding: boolean = true): void {
+        const method = adding ? "addEventListener" : "removeEventListener";
+
+        this.previewElement
+            .closest(".tinymist-preview-pane")
+            ?.[method]("click", this.handlePreviewPaneClick);
+
+        this.previewElement[method](
+            "mousedown",
+            this.handlePanMouseDown
+        );
+        this.previewElement[method](
+            "mousemove",
+            this.handlePanMouseMove,
+        );
+        this.previewElement[method]("mouseup", this.handlePanMouseUp);
+        this.previewElement[method](
+            "mouseleave",
+            this.handlePanMouseUp,
+        );
     }
 
     private async handleSyncInit(): Promise<void> {
@@ -154,11 +162,6 @@ export class PreviewRenderer {
             await this.renderer.init({
                 getModule: () => renderModule, // Returns Uint8Array from esbuild WASM plugin
             });
-
-            if (!this.cursorInitialized) {
-                new PreviewCursor(this.previewElement);
-                this.cursorInitialized = true;
-            }
 
             console.log("[Preview WASM] typst-ts-renderer initialized");
         } catch (error) {
@@ -327,29 +330,6 @@ export class PreviewRenderer {
         this.baseSvgWidth = null;
         this.baseSvgHeight = null;
         this.applyZoomToSvg();
-    }
-
-    dispose() {
-        this.hasInitialDocument = false;
-        this.processingQueue = Promise.resolve();
-        if (this.sessionResolve) {
-            this.sessionResolve();
-            this.sessionResolve = null;
-        }
-
-        this.sessionPromise = null;
-        this.session = null;
-        this.renderer = null;
-
-        this.previewElement
-            .closest(".tinymist-preview-pane")
-            ?.removeEventListener("click", this.handlePreviewPaneClick);
-        window.$tmEventBus.remove(
-            "preview-cursor-position",
-            this.handleCursorPosition,
-        );
-
-        console.log("[Preview WASM] Renderer disposed");
     }
 
     private handleZoomIn(): void {
@@ -601,33 +581,35 @@ export class PreviewRenderer {
         svg.style.maxWidth = "none";
     }
 
-    private handlePanMouseDown(event: MouseEvent): void {
-        if (!this.panEnabled || event.button !== 0) {
+    private handlePanMouseDown(event: Event): void {
+        const mouseEvent = event as MouseEvent;
+        if (!this.panEnabled || mouseEvent.button !== 0) {
             return;
         }
 
         this.isPanning = true;
-        this.panStartX = event.clientX;
-        this.panStartY = event.clientY;
+        this.panStartX = mouseEvent.clientX;
+        this.panStartY = mouseEvent.clientY;
         this.panStartScrollLeft = this.previewElement.scrollLeft;
         this.panStartScrollTop = this.previewElement.scrollTop;
         this.previewElement.classList.add("tinymist-preview-panning");
         event.preventDefault();
     }
 
-    private handlePanMouseMove(event: MouseEvent): void {
+    private handlePanMouseMove(event: Event): void {
         if (!this.isPanning) {
             return;
         }
 
-        const dx = event.clientX - this.panStartX;
-        const dy = event.clientY - this.panStartY;
+        const mouseEvent = event as MouseEvent;
+        const dx = mouseEvent.clientX - this.panStartX;
+        const dy = mouseEvent.clientY - this.panStartY;
         this.previewElement.scrollLeft = this.panStartScrollLeft - dx;
         this.previewElement.scrollTop = this.panStartScrollTop - dy;
         event.preventDefault();
     }
 
-    private handlePanMouseUp(): void {
+    private handlePanMouseUp(event: Event): void {
         if (!this.isPanning) {
             return;
         }
@@ -638,6 +620,26 @@ export class PreviewRenderer {
     private stopPanning(): void {
         this.isPanning = false;
         this.previewElement.classList.remove("tinymist-preview-panning");
+    }
+
+    dispose() {
+        this.hasInitialDocument = false;
+        this.processingQueue = Promise.resolve();
+        if (this.sessionResolve) {
+            this.sessionResolve();
+            this.sessionResolve = null;
+        }
+
+        this.sessionPromise = null;
+        this.session = null;
+        this.renderer = null;
+
+        console.log("[Preview WASM] Renderer disposed");
+    }
+
+    destroy() {
+        this.dispose();
+        this.addRemoveListeners(false);
     }
 
     private async recoverRenderer(error: Error): Promise<void> {

@@ -23,6 +23,14 @@ export class DiagnosticsProcessor {
         window.$tmEventBus.listen("diagnostics", this.mapDiagnosticsToCurrent);
         window.$tmEventBus.listen("active-file-change", (payload: { fileName: string; url: string }) => {
             this.activeFileName = payload.fileName;
+            this.triggerLinting([]);
+        });
+        window.$tmEventBus.listen("reset-file", (payload: { fileName: string }) => {
+            this.triggerLinting([]);
+        });
+        window.$tmEventBus.listen("destroy", () => {
+            this.editorView = null;
+            this.getSnapshotContext = () => ({ snapshot: "Destroyed", changeSet: ChangeSet.empty(0) });
         });
     }
 
@@ -32,10 +40,6 @@ export class DiagnosticsProcessor {
     ): void {
         this.editorView = view;
         this.getSnapshotContext = getSnapshotContext;
-    }
-
-    detachEditorView(): void {
-        this.editorView = null;
     }
 
     private mapLspSeverity(severity: number | undefined): "error" | "warning" | "info" {

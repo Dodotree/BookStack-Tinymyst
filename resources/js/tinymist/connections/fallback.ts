@@ -18,6 +18,7 @@ export class TinymistFallbackCompiler {
         window.$tmEventBus.listen("fallback-compile", async ({ docVersion, content }: { docVersion: number; content: string }) => {
             await this.compile(docVersion, content, this.pageId);
         });
+        window.$tmEventBus.listen("destroy", this.destroy);
     }
 
     /**
@@ -75,6 +76,10 @@ export class TinymistFallbackCompiler {
             console.error('[Typst] Compilation failed:', error);
             window.$tmEventBus.emit("console-log",{ type: "error", message: "[Typst] Compilation failed. Check console for details.", details: error });
         }
+    }
+
+    destroy(): void {
+        this.enabled = false;
     }
 
 }

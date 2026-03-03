@@ -24,8 +24,6 @@ export class PreviewControlPlane {
                 this.cursorSpotlightEnabled = Boolean(enabled);
             },
         );
-        // this.disconnect = this.disconnect.bind(this);
-        // window.$tmEventBus.listen("control-disconnect", this.disconnect);
     }
 
     private handleControlMessage(raw: string): void {
@@ -82,18 +80,18 @@ export class PreviewControlPlane {
                 type: "error",
                 message: "[Preview Control] Compilation failed",
             });
-            console.log("[Preview Control] Error:", msg);
+            console.error("[Preview Control] Compile Error:", msg);
         }
     }
 
     private onSyncChanges(msg: any) {
         // Handle synchronization
-        console.log("[Preview Control] Syncing changes:", msg);
+        console.log("[Preview Control] Syncing changes received but not used:", msg);
     }
 
     private onOutline(items: OutlineItem[]) {
         // Update table of contents
-        console.log("[Preview Control] Document outline:", items);
+        console.log("[Preview Control] Document outline received but not used:", items);
     }
 
     public sendControlMessage(message: any) {

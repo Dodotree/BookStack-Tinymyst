@@ -141,9 +141,5 @@ export class TinymistConnectionsManager {
 
     destroy(): void {
         this.restartAllowed = false;
-
-        window.$tmEventBus.emit("fallback-enable", false);
-        window.$tmEventBus.emit("sync-disconnect");
-        window.$tmEventBus.emit("preview-disconnect");
     }
 }

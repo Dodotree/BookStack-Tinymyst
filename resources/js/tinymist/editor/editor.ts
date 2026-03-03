@@ -304,23 +304,11 @@ export class TinymistEditorUI {
 
         // Button actions, it counts on event bubbling to the container
         this.editor.closest(".tinymist-editor-pane")?.addEventListener("click", this.buttonsListener);
-
-        // Clean up connections on page navigation
-        window.addEventListener("beforeunload", this.destroy);
-        // Also listen to pagehide for better mobile support
-        window.addEventListener("pagehide", this.destroy);
     }
 
     removeListeners() {
-        window.$tmEventBus.remove("sync-full-state", this.syncFullStateFromServer);
-        window.$tmEventBus.remove("prune-snapshots", this.pruneSnapshots);
-        window.$tmEventBus.remove("active-file-change", this.setActiveFile);
-        window.$tmEventBus.remove("insert", this.insertFromEditorEvent);
-        window.$tmEventBus.remove("reset-file", this.resetAttachmentFileFromServer);
         this.editor.removeEventListener("input", this.onInput);
         this.editor.closest(".tinymist-editor-pane")?.removeEventListener("click", this.buttonsListener);
-        window.removeEventListener("beforeunload", this.destroy);
-        window.removeEventListener("pagehide", this.destroy);
     }
 
     onInput() {
@@ -473,20 +461,14 @@ export class TinymistEditorUI {
         this.flushPendingChanges(this.activeFileName);
 
         this.activeFileName = fileName;
-
         if (this.isImageFile(fileName)) {
-            this.semanticTokens.clearHighlights();
-            this.diagnosticsProcessor.triggerLinting([]);
             this.showImagePreview(fileName, url);
             return;
         }
 
         this.showTextEditor();
         this.reconfigureEditorForFile(fileName);
-
         const state = this.getOrCreateFileState(fileName);
-        this.semanticTokens.clearHighlights();
-        this.diagnosticsProcessor.triggerLinting([]);
 
         if (state.loaded) {
             this.setText(state.currentContent, true);
@@ -646,11 +628,6 @@ export class TinymistEditorUI {
         state.currentContent = "";
         state.lastEmittedDirty = false;
         this.emitDirtyState(fileName, false);
-
-        if (this.activeFileName === fileName) {
-            this.semanticTokens.clearHighlights();
-            this.diagnosticsProcessor.triggerLinting([]);
-        }
 
         window.$tmEventBus.emit("sync-open-file", { fileName });
     }
@@ -865,8 +842,6 @@ export class TinymistEditorUI {
                 fileState.pendingDirtyTimer = null;
             }
         }
-        this.semanticTokens.clearHighlights();
-        this.semanticTokens.detachEditorView();
         this.removeListeners();
         if (this.editorView) {
             this.editorView.destroy();

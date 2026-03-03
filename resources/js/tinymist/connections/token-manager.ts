@@ -22,6 +22,7 @@ export class TinymistTokenManager {
         this.renewToken = this.renewToken.bind(this);
         window.$tmEventBus.listen("all-disconnect", this.disconnect);
         window.$tmEventBus.listen("invalid-token", this.renewToken);
+        window.$tmEventBus.listen("destroy", this.disconnect);
 
         if (token) {
             this.scheduleTokenRenewal();
@@ -127,9 +128,6 @@ export class TinymistTokenManager {
         }
     }
 
-    /**
-     * Disconnect from the WebSocket server
-     */
     disconnect(): void {
         this.clearTokenRenewalTimeout();
         this.token = null;

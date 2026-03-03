@@ -9,9 +9,10 @@ export class TinymistFileDropdown {
 
     constructor(fileSelect: HTMLSelectElement) {
         this.fileSelect = fileSelect;
-        this.dirtyMapUpdateHandler = this.dirtyMapUpdateHandler.bind(this);
 
+        this.dirtyMapUpdateHandler = this.dirtyMapUpdateHandler.bind(this);
         this.onSelectChange = this.onSelectChange.bind(this);
+        this.refreshFileDropdown = this.refreshFileDropdown.bind(this);
         this.fileSelect.addEventListener("change", this.onSelectChange);
 
         window.$tmEventBus.listen(
@@ -36,19 +37,16 @@ export class TinymistFileDropdown {
         );
 
         window.$tmEventBus.listen(
-            "files-updated",
-            (data: { html?: string }) => {
-                if (!data) {
-                    return;
-                }
-                this.refreshFileDropdown(data.html || "");
-            },
+            "files-updated",this.refreshFileDropdown
         );
 
         window.$tmEventBus.listen(
             "files-dirty-updated",
             this.dirtyMapUpdateHandler,
         );
+        window.$tmEventBus.listen("destroy", () => {
+            this.fileSelect.removeEventListener("change", this.onSelectChange);
+        });
     }
 
     private onSelectChange(): void {
@@ -108,12 +106,15 @@ export class TinymistFileDropdown {
         this.applyDirtyCueToDropdown();
     }
 
-    private refreshFileDropdown(attachmentsHtml: string): void {
+    private refreshFileDropdown(data: { html?: string }): void {
+        if (!data) {
+            return;
+        }
         if (!this.fileSelect) {
             return;
         }
         const parser = new DOMParser();
-        const doc = parser.parseFromString(attachmentsHtml, "text/html");
+        const doc = parser.parseFromString(data.html || "", "text/html");
         const linkByName = new Map<string, string>();
         Array.from(doc.querySelectorAll("a")).forEach((link) => {
             const name = (link.textContent || "").trim();
@@ -164,9 +165,5 @@ export class TinymistFileDropdown {
 
     destroy() {
         this.fileSelect?.removeEventListener("change", this.onSelectChange);
-        window.$tmEventBus.remove(
-            "files-dirty-updated",
-            this.dirtyMapUpdateHandler,
-        );
     }
 }

@@ -113,7 +113,6 @@ export class TinymistConsole {
     }
 
     destroy(): void {
-        window.$tmEventBus.remove("console-log", this.logMessage);
         this.console
             .closest("#tinymist-console-panel")
             ?.removeEventListener("click", this.handlePanelClick);

@@ -186,6 +186,21 @@ export class SemanticTokenProcessor {
         window.$tmEventBus.listen("lsp-semantic-tokens-delta", this.processSemanticTokensDelta);
         window.$tmEventBus.listen("active-file-change", (payload: { fileName: string; url: string }) => {
             this.activeFileName = payload.fileName;
+            this.editorView?.dispatch({
+                effects: clearHighlightsEffect.of(null),
+            });
+        });
+        window.$tmEventBus.listen("reset-file", (payload: { fileName: string }) => {
+            this.editorView?.dispatch({
+                effects: clearHighlightsEffect.of(null),
+            });
+        });
+        window.$tmEventBus.listen("destroy", () => {
+            this.editorView = null;
+            this.getSnapshotContext = () => ({ snapshot: "Destroyed", changeSet: ChangeSet.empty(0) });
+            this.encodedTokens = null;
+            this.lineSignatures.clear();
+            this.pendingSemanticHighlights = null;
         });
     }
 
@@ -195,11 +210,12 @@ export class SemanticTokenProcessor {
     ): void {
         this.editorView = view;
         this.getSnapshotContext = getSnapshotContext;
-        this.flushPendingHighlights();
-    }
 
-    detachEditorView(): void {
-        this.editorView = null;
+        if (!this.pendingSemanticHighlights) {
+            return;
+        }
+        this.addHighlights(this.pendingSemanticHighlights);
+        this.pendingSemanticHighlights = null;
     }
 
     private mapRegionsToCurrent(
@@ -210,19 +226,18 @@ export class SemanticTokenProcessor {
         if (!this.editorView) {
             return regions;
         }
+        const snapshotLineLen = baseText.split('\n').map(line => line.length + 1); // +1 for newline
+        const snapshotOffsets = snapshotLineLen
+            .reduce((acc, len, idx) => {
+                acc[idx] = (acc[idx - 1] || 0) + len;
+                return acc;
+            }, [] as number[]);
         const currentDoc = this.editorView.state.doc;
-        const snapshotLines = baseText.split("\n");
-        const snapshotLineStarts: number[] = [];
-        let offset = 0;
-        for (const line of snapshotLines) {
-            snapshotLineStarts.push(offset);
-            offset += line.length + 1;
-        }
 
         return regions.map((region) => {
             const lineIndex = Math.max(0, region.line - 1);
-            const lineStart = snapshotLineStarts[lineIndex] ?? 0;
-            const lineLength = snapshotLines[lineIndex]?.length ?? 0;
+            const lineStart = snapshotOffsets[lineIndex - 1] ?? 0;
+            const lineLength = snapshotLineLen[lineIndex] - 1; // -1 to ignore newline here
             const baseStartOffset = lineStart + Math.min(region.start, lineLength);
             const baseEndOffset = lineStart + Math.min(region.start + region.len, lineLength);
 
@@ -271,6 +286,22 @@ export class SemanticTokenProcessor {
         this.renderSemanticHighlights(mappedHighlights);
     }
 
+    private renderSemanticHighlights(highlights: HighlightRegion[]): void {
+        if (!this.editorView) {
+            this.pendingSemanticHighlights = highlights;
+            return;
+        }
+        this.pendingSemanticHighlights = null;
+        if (!highlights.length) {
+            // Not sure if we should remove all highlights if semantic tokens come back empty
+            // this.editorView.dispatch({
+            //     effects: clearHighlightsEffect.of(null),
+            // });
+            return;
+        }
+        this.addHighlights(highlights);
+    }
+
     processSemanticTokensDelta(payload: {
         edits: SemanticTokensDeltaEdit[];
         resultId?: string;
@@ -296,19 +327,13 @@ export class SemanticTokenProcessor {
 
         const updatedTokens = this.applySemanticTokensEdits(this.encodedTokens, payload.edits);
         const highlights = this.buildHighlights(updatedTokens);
-        const mappedHighlights = highlights;
 
-        // It looks like updated tokes are already in the current document coordinates,
+        // It looks like updated tokes are already in the current document coordinates for deltas,
         // Or getting there, while mapping updatedTokens throws RangeError (as if attempting to remove already removed position)
         // so no need to map them back from snapshot to current document
+        // TODO: create encodedTokens snapshot to go with resultId and docVersion, so we can validate and map deltas properly
 
-        // const snapshotCtx = this.getSnapshotContext(payload.docVersion, payload.fileName );
-        // const mappedHighlights = this.mapRegionsToCurrent(
-        //     highlights,
-        //     snapshotCtx.snapshot,
-        //     snapshotCtx.changeSet
-        // );
-        const nextSignatures = this.buildLineSignatures(mappedHighlights);
+        const nextSignatures = this.buildLineSignatures(highlights);
         const changedLines = this.getChangedLines(this.lineSignatures, nextSignatures);
 
         this.encodedTokens = updatedTokens;
@@ -319,53 +344,7 @@ export class SemanticTokenProcessor {
             return;
         }
 
-        if (!this.editorView) {
-            this.pendingSemanticHighlights = mappedHighlights;
-            return;
-        }
-
-        this.replaceHighlightsForLines(mappedHighlights, changedLines);
-    }
-
-    private resolveSemanticTokenType(tokenType: string): string | null {
-
-        if (!tokenType || tokenType === "text") {
-            return null;
-        }
-        if (tokenType === "identifier") {
-            return "variable";
-        }
-        if (highlightColors.includes(tokenType)) {
-            return tokenType;
-        }
-        return null;
-    }
-
-    private renderSemanticHighlights(highlights: HighlightRegion[]): void {
-        this.pendingSemanticHighlights = null;
-        if (!this.editorView) {
-            this.pendingSemanticHighlights = highlights;
-            return;
-        }
-        if (!highlights.length) {
-            this.clearHighlights();
-            return;
-        }
-        this.addHighlights(highlights);
-    }
-
-    flushPendingHighlights(): void {
-        const highlights = this.pendingSemanticHighlights;
-        this.pendingSemanticHighlights = null;
-        if (!this.editorView || highlights === null) {
-            return;
-        }
-        if (!highlights.length) {
-            // not sure why no highlights is better
-            // this.clearHighlights();
-            return;
-        }
-        this.addHighlights(highlights);
+        this.replaceHighlightsForLines(highlights, changedLines);
     }
 
     /**
@@ -375,58 +354,40 @@ export class SemanticTokenProcessor {
      */
     addHighlights(regions: HighlightRegion[]) {
         if (!this.editorView) {
-            console.warn("[Highlight] Editor view not available");
             return;
         }
-
         this.editorView.dispatch({
             effects: addHighlightsEffect.of(regions),
         });
     }
 
-    /**
-     * Clear all highlights from the editor
-     */
-    clearHighlights() {
-        if (!this.editorView) {
-            this.pendingSemanticHighlights = null;
-            return;
-        }
-
-        this.editorView.dispatch({
-            effects: clearHighlightsEffect.of(null),
-        });
-    }
-
     private replaceHighlightsForLines(highlights: HighlightRegion[], lines: number[]): void {
         if (!this.editorView) {
+            this.pendingSemanticHighlights = highlights;
             return;
         }
 
         const doc = this.editorView.state.doc;
         const regionsByLine = this.groupRegionsByLine(highlights);
-        const sortedLines = [...lines].sort((a, b) => a - b);
-
-        let rangeStart = sortedLines[0];
-        let prev = sortedLines[0];
 
         const flushRange = (startLine: number, endLine: number) => {
-            const from = doc.line(startLine).from;
-            const to = doc.line(endLine).to;
-            const regions: HighlightRegion[] = [];
-            for (let line = startLine; line <= endLine; line++) {
-                const lineRegions = regionsByLine.get(line);
-                if (lineRegions) {
-                    regions.push(...lineRegions);
-                }
-            }
-            this.editorView!.dispatch({
-                effects: replaceHighlightsEffect.of({ from, to, regions }),
+            const regions = Array.from(
+                { length: endLine - startLine + 1 },
+                (_, index) => regionsByLine.get(startLine + index) ?? []
+            ).flat();
+            this.editorView?.dispatch({
+                effects: replaceHighlightsEffect.of({
+                    from: doc.line(startLine).from,
+                    to: doc.line(endLine).to,
+                    regions
+                }),
             });
         };
 
-        for (let i = 1; i < sortedLines.length; i++) {
-            const line = sortedLines[i];
+        let rangeStart = lines[0];
+        let prev = lines[0];
+        for (let i = 1; i < lines.length; i++) {
+            const line = lines[i];
             if (line === prev + 1) {
                 prev = line;
                 continue;
@@ -468,52 +429,54 @@ export class SemanticTokenProcessor {
     decodeSemanticTokens(
         data: number[],
     ): Array<HighlightRegion> {
-        const tokens = [];
-        let line = 0;
-        let startChar = 0;
-
-        for (let i = 0; i < data.length; i += 5) {
-            const deltaLine = data[i];
-            const deltaStartChar = data[i + 1];
-            const length = data[i + 2];
-            const tokenType = data[i + 3];
-            const tokenModifierBits = data[i + 4];
-
-            // Update position
-            line += deltaLine;
-            if (deltaLine === 0) { // Another token on the same line, update start char
-                startChar += deltaStartChar;
-            } else {
-                startChar = deltaStartChar;
+        return data.reduce((acc, _, idx, arr) => {
+            if (idx % 5 !== 0) {
+                return acc;
             }
 
-            // Decode token modifiers from bitmask
-            const modifiers: string[] = [];
-            for (let j = 0; j < tokenModifiers.length; j++) {
-                if (tokenModifierBits & (1 << j)) {
-                    modifiers.push(tokenModifiers[j]);
-                }
-            }
+            const deltaLine = arr[idx];
+            const deltaStartChar = arr[idx + 1];
+            const length = arr[idx + 2];
+            const tokenType = arr[idx + 3];
+            const tokenModifierBits = arr[idx + 4];
 
-            tokens.push({
-                line,
-                start: startChar,
-                len:length,
+            acc.line += deltaLine;
+            acc.startChar = deltaLine === 0 ? acc.startChar + deltaStartChar : deltaStartChar;
+
+            const modifiers = tokenModifiers.flatMap((modifier, j) =>
+                (tokenModifierBits & (1 << j)) ? [modifier] : []
+            );
+            const normalizedModifiers = modifiers.length
+                ? [...new Set(
+                    modifiers.filter(
+                        (modifier): modifier is string =>
+                            typeof modifier === "string" && modifier.length > 0
+                    )
+                )]
+                : undefined;
+
+            acc.tokens.push({
+                line: acc.line,
+                start: acc.startChar,
+                len: length,
                 type: tokenTypes[tokenType] || `unknown(${tokenType})`,
-                modifiers: modifiers,
+                modifiers: normalizedModifiers,
             });
-        }
 
-        return tokens;
+            return acc;
+        }, {
+            line: 0,
+            startChar: 0,
+            tokens: [] as HighlightRegion[],
+        }).tokens;
     }
 
     private buildHighlights(tokens: number[]): HighlightRegion[] {
-        const highlights: HighlightRegion[] = [];
         const decodedTokens = this.decodeSemanticTokens(tokens);
 
-        for (const token of decodedTokens) {
+        return decodedTokens.reduce<HighlightRegion[]>((highlights, token) => {
             if (!token) {
-                continue;
+                return highlights;
             }
 
             const { line, start, len, type, modifiers } = token;
@@ -526,78 +489,74 @@ export class SemanticTokenProcessor {
                 len <= 0
             ) {
                 console.warn("[Semantic Tokens] Invalid token data:", token);
-                continue;
+                return highlights;
             }
 
-            const resolvedType = this.resolveSemanticTokenType(type);
-            if (!resolvedType) {
-                continue;
+            if (!type || type === "text") {
+                return highlights;
+            }
+            if (type !== "identifier" && !highlightColors.includes(type)) {
+                console.warn("[Semantic Tokens] Unknown token type:", type);
+                return highlights;
             }
 
             highlights.push({
                 line: line + 1,
                 start,
                 len,
-                type: resolvedType,
-                modifiers: Array.isArray(modifiers) && modifiers.length
-                    ? [...new Set(
-                        modifiers.filter(
-                            (modifier): modifier is string =>
-                                typeof modifier === "string" && modifier.length > 0
-                        )
-                    )]
-                    : undefined,
+                type: type === "identifier" ? "variable" : type,
+                modifiers,
             });
-        }
 
-        return highlights;
+            return highlights;
+        }, []);
     }
 
     private buildLineSignatures(highlights: HighlightRegion[]): Map<number, string> {
         const lineMap = this.groupRegionsByLine(highlights);
-        const signatures = new Map<number, string>();
-        for (const [line, regions] of lineMap.entries()) {
-            const signature = regions
+
+        const entries = [...lineMap.entries()].map(([line, regions]) => [
+            line,
+            regions
                 .map((region) => [
                     region.start,
                     region.len,
                     region.type,
                     ...(region.modifiers ?? []),
                 ].join(":"))
-                .join("|");
-            signatures.set(line, signature);
-        }
-        return signatures;
+                .join("|"),
+        ] as const);
+
+        return new Map<number, string>(entries);
     }
 
     private getChangedLines(
         previous: Map<number, string>,
         next: Map<number, string>
     ): number[] {
-        const lines = new Set<number>();
-        for (const [line, signature] of previous.entries()) {
+        const lines = [...previous.entries()].reduce<Set<number>>((acc, [line, signature]) => {
             if (next.get(line) !== signature) {
-                lines.add(line);
+                acc.add(line);
             }
-        }
-        for (const [line, signature] of next.entries()) {
+            return acc;
+        }, new Set<number>());
+
+        [...next.entries()].reduce<Set<number>>((acc, [line, signature]) => {
             if (previous.get(line) !== signature) {
-                lines.add(line);
+                acc.add(line);
             }
-        }
+            return acc;
+        }, lines);
+
         return [...lines].sort((a, b) => a - b);
     }
 
     private groupRegionsByLine(highlights: HighlightRegion[]): Map<number, HighlightRegion[]> {
-        const lineMap = new Map<number, HighlightRegion[]>();
-        for (const region of highlights) {
-            const list = lineMap.get(region.line);
-            if (list) {
-                list.push(region);
-            } else {
-                lineMap.set(region.line, [region]);
-            }
-        }
-        return lineMap;
+        return highlights.reduce<Map<number, HighlightRegion[]>>((lineMap, region) => {
+            const list = lineMap.get(region.line) ?? [];
+            list.push(region);
+            lineMap.set(region.line, list);
+            return lineMap;
+        }, new Map<number, HighlightRegion[]>());
     }
 }

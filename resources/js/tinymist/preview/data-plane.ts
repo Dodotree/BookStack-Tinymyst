@@ -1,5 +1,6 @@
 export class PreviewDataPlane {
     private processingQueue: Promise<void> = Promise.resolve();
+    private textDecoder = new TextDecoder();
     private cursorSpotlightEnabled = true;
 
     constructor() {
@@ -14,6 +15,10 @@ export class PreviewDataPlane {
                 this.cursorSpotlightEnabled = Boolean(enabled);
             },
         );
+        window.$tmEventBus.listen("destroy",() => {
+            this.textDecoder = null as any;
+            this.processingQueue = Promise.resolve();
+        });
     }
 
     private handleBridgeDataMessage(msg: Uint8Array): void {
@@ -45,7 +50,7 @@ export class PreviewDataPlane {
                 return;
             }
 
-            const command = new TextDecoder().decode(msg.slice(0, commaIndex));
+            const command = this.textDecoder.decode(msg.slice(0, commaIndex));
             const payload = msg.slice(commaIndex + 1);
 
             console.log(
@@ -83,7 +88,7 @@ export class PreviewDataPlane {
                     if (!this.cursorSpotlightEnabled) {
                         return;
                     }
-                    const decoded = new TextDecoder().decode(payload);
+                    const decoded = this.textDecoder.decode(payload);
                     try {
                         const parsed = JSON.parse(decoded);
                         // console.info('[Preview Data] Cursor paths parsed:', parsed);
@@ -99,12 +104,12 @@ export class PreviewDataPlane {
 
                 case "partial-rendering":
                     const enabled =
-                        new TextDecoder().decode(payload) === "true";
+                        this.textDecoder.decode(payload) === "true";
                     console.log(`[Preview Data] Partial rendering: ${enabled}`);
                     break;
 
                 case "jump":
-                    const coords = new TextDecoder().decode(payload).split(" ");
+                    const coords = this.textDecoder.decode(payload).split(" ");
                     const [page, x, y] = coords.map(Number);
                     console.log(
                         `[Preview Data] Jump to page ${page}, x: ${x}, y: ${y}`,
@@ -112,7 +117,7 @@ export class PreviewDataPlane {
                     break;
 
                 case "viewport":
-                    const decoded = new TextDecoder().decode(payload);
+                    const decoded = this.textDecoder.decode(payload);
                     console.log(
                         `[Preview Data] Viewport payload (${payload.length} bytes):`,
                         decoded,
@@ -120,7 +125,7 @@ export class PreviewDataPlane {
                     break;
 
                 case "cursor":
-                    const cursorDecoded = new TextDecoder().decode(payload);
+                    const cursorDecoded = this.textDecoder.decode(payload);
                     console.log(
                         `[Preview Data] Cursor payload (${payload.length} bytes):`,
                         cursorDecoded,
@@ -128,7 +133,7 @@ export class PreviewDataPlane {
                     break;
 
                 case "invert-colors":
-                    const invertColorsDecoded = new TextDecoder().decode(
+                    const invertColorsDecoded = this.textDecoder.decode(
                         payload,
                     );
                     console.log(
@@ -139,7 +144,7 @@ export class PreviewDataPlane {
 
                 // Not sure what kind of outline is that, usually Control Plane receives "outline" events
                 case "outline":
-                    const outlineDecoded = new TextDecoder().decode(payload);
+                    const outlineDecoded = this.textDecoder.decode(payload);
                     console.log(
                         `[Preview Data] Outline payload (${payload.length} bytes):`,
                         outlineDecoded,

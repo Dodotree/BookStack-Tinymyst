@@ -32,6 +32,16 @@ export class EventBus {
     }
 
     /**
+     * Remove all listeners so references can be released.
+     */
+    destroy(): void {
+        for (const eventName of Object.keys(this.listeners)) {
+            this.listeners[eventName].clear();
+        }
+        this.listeners = {};
+    }
+
+    /**
      * Emit an event for public use.
      * Sends the event via the native DOM event handling system.
      */

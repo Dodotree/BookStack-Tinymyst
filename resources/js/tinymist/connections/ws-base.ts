@@ -61,6 +61,7 @@ export abstract class TinymistWebSocketClient {
         window.$tmEventBus.listen(this.config.disconnectEvent, this.disconnect);
         window.$tmEventBus.listen("all-disconnect", this.disconnect);
         window.$tmEventBus.listen("token-renewed", this.updateTokenOnNode);
+        window.$tmEventBus.listen("destroy", this.disconnect);
     }
 
     protected async handleSyncConnect(): Promise<void> {

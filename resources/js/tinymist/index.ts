@@ -76,6 +76,11 @@ export class TinymistApp {
             this.root.classList.toggle("tinymist-console-collapsed", collapsed);
         };
         window.$tmEventBus.listen("console-toggle", this.consoleToggleHandler);
+
+        // Clean up connections on page navigation
+        window.addEventListener("beforeunload", this.destroy);
+        // Also listen to pagehide for better mobile support
+        window.addEventListener("pagehide", this.destroy);
     }
 
     async getContent(): Promise<{ tinymist: string }> {
@@ -110,6 +115,8 @@ export class TinymistApp {
 
     destroy(): void {
         window.$tmEventBus.emit("destroy");
+        window.removeEventListener("beforeunload", this.destroy);
+        window.removeEventListener("pagehide", this.destroy);
 
         if (this.syncTextGetText) {
             this.root
@@ -117,12 +124,7 @@ export class TinymistApp {
                 ?.removeEventListener("submit", this.syncTextGetText);
         }
 
-        if (this.consoleToggleHandler) {
-            window.$tmEventBus.remove(
-                "console-toggle",
-                this.consoleToggleHandler,
-            );
-            this.consoleToggleHandler = null;
-        }
+        this.consoleToggleHandler = null;
+        window.$tmEventBus.destroy();
     }
 }

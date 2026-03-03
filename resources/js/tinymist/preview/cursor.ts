@@ -28,10 +28,10 @@ export class PreviewCursor {
     ) {
         this.previewElement = previewElement;
 
-        this.dispose = this.dispose.bind(this);
+        this.destroy = this.destroy.bind(this);
         this.pathToSelector = this.pathToSelector.bind(this);
         this.showCursor = this.showCursor.bind(this);
-        window.$tmEventBus.listen("wasm-dispose", this.dispose);
+        this.onViewportChange = this.showCursor.bind(this);
         window.$tmEventBus.listen("data-cursor-paths", this.pathToSelector);
         window.$tmEventBus.listen("data-cursor-show", this.showCursor);
         window.$tmEventBus.listen("cursor-spotlight-toggle", ({ enabled }: { enabled?: boolean }) => {
@@ -42,8 +42,8 @@ export class PreviewCursor {
                 this.showCursor();
             }
         });
+        window.$tmEventBus.listen("destroy", this.destroy);
 
-        this.onViewportChange = this.showCursor.bind(this);
         this.previewElement.addEventListener('scroll', this.onViewportChange, { passive: true });
         window.addEventListener('resize', this.onViewportChange, { passive: true });
     }
@@ -276,16 +276,16 @@ export class PreviewCursor {
         this.cursorCircle = null;
     }
 
-    dispose() {
+    destroy() {
         this.hideCursor();
 
         this.overlayElement?.remove();
         this.overlayElement = null;
         this.overlaySvg = null;
+
         this.previewElement.removeEventListener('scroll', this.onViewportChange);
         window.removeEventListener('resize', this.onViewportChange);
-
-        // console.debug("[Preview WASM] Cursor disposed");
+        this.previewElement = null as any;
     }
 
 }
