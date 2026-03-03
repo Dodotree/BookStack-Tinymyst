@@ -11,8 +11,20 @@ import {
 } from "@codemirror/view";
 
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
-import { ChangeSet, Compartment, EditorState, Extension, Transaction } from "@codemirror/state";
-import { LanguageDescription, LanguageSupport, StreamLanguage, defaultHighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import {
+    ChangeSet,
+    Compartment,
+    EditorState,
+    Extension,
+    Transaction,
+} from "@codemirror/state";
+import {
+    LanguageDescription,
+    LanguageSupport,
+    StreamLanguage,
+    defaultHighlightStyle,
+    syntaxHighlighting,
+} from "@codemirror/language";
 import { markdown } from "@codemirror/lang-markdown";
 import { css } from "@codemirror/lang-css";
 import { html } from "@codemirror/lang-html";
@@ -28,7 +40,7 @@ import { toml } from "@codemirror/legacy-modes/mode/toml";
 import { SemanticTokenProcessor, highlightField } from "./semantic-tokens";
 import { DiagnosticsProcessor } from "./diagnostics";
 
-import { ENTRY_FILE_NAME, tmEvents } from "../constants";
+import { ENTRY_FILE_NAME, tmEvents, tmSelectors } from "../constants";
 
 type FileSnapshot = {
     docVersion: number;
@@ -48,7 +60,6 @@ type FileSyncState = {
     snapshots: FileSnapshot[];
 };
 
-
 export class TinymistEditorUI {
     editor: HTMLTextAreaElement;
     editorView: EditorView | null = null;
@@ -61,7 +72,8 @@ export class TinymistEditorUI {
     private fallbackEnabled = false;
     private readonly languageCompartment = new Compartment();
     private readonly highlightCompartment = new Compartment();
-    private readonly isDarkMode = document.documentElement.classList.contains("dark-mode");
+    private readonly isDarkMode =
+        document.documentElement.classList.contains("dark-mode");
 
     private readonly entryFileName = ENTRY_FILE_NAME;
     private activeFileName = this.entryFileName;
@@ -76,7 +88,7 @@ export class TinymistEditorUI {
         editor: HTMLTextAreaElement,
         imageViewContainer: HTMLDivElement,
         imageViewElement: HTMLImageElement,
-        imageViewMessage: HTMLDivElement
+        imageViewMessage: HTMLDivElement,
     ) {
         this.editor = editor;
         this.imageViewContainer = imageViewContainer;
@@ -87,21 +99,23 @@ export class TinymistEditorUI {
         this.getSnapshotContext = this.getSnapshotContext.bind(this);
         // Those are hooks for Bookstack's native form submission and for fallback mode
         this.getEntryText = this.getEntryText.bind(this);
-        this.syncEntryContentToTextarea = this.syncEntryContentToTextarea.bind(this);
+        this.syncEntryContentToTextarea =
+            this.syncEntryContentToTextarea.bind(this);
 
-        this.updateListenerForCodeMirror = this.updateListenerForCodeMirror.bind(this);
+        this.updateListenerForCodeMirror =
+            this.updateListenerForCodeMirror.bind(this);
         this.syncFullStateFromServer = this.syncFullStateFromServer.bind(this);
         this.pruneSnapshots = this.pruneSnapshots.bind(this);
         this.onInput = this.onInput.bind(this);
         this.buttonsListener = this.buttonsListener.bind(this);
         this.insertFromEditorEvent = this.insertFromEditorEvent.bind(this);
-        this.resetAttachmentFileFromServer = this.resetAttachmentFileFromServer.bind(this);
+        this.resetAttachmentFileFromServer =
+            this.resetAttachmentFileFromServer.bind(this);
         this.setActiveFile = this.setActiveFile.bind(this);
         this.destroy = this.destroy.bind(this);
 
         this.setupCodeMirror();
         this.setupListeners();
-
 
         this.diagnosticsProcessor.attachEditorView(
             this.editorView!,
@@ -112,7 +126,11 @@ export class TinymistEditorUI {
             this.getSnapshotContext,
         );
 
-        this.resetSyncStateForFile({ fileName: this.entryFileName, docVersion: 1, content: this.editor.value });
+        this.resetSyncStateForFile({
+            fileName: this.entryFileName,
+            docVersion: 1,
+            content: this.editor.value,
+        });
     }
 
     async setupCodeMirror() {
@@ -124,13 +142,17 @@ export class TinymistEditorUI {
                     lineNumbers(), // Enable line numbers
                     highlightActiveLineGutter(), // Highlight current line number in gutter
                     highlightActiveLine(), // Highlight current line
-                    this.languageCompartment.of(this.getLanguageExtensionForFile(this.activeFileName)),
+                    this.languageCompartment.of(
+                        this.getLanguageExtensionForFile(this.activeFileName),
+                    ),
                     this.highlightCompartment.of(this.getHighlightExtension()),
                     highlightField, // Add custom highlighting support
                     history(),
                     keymap.of([...historyKeymap, ...defaultKeymap]),
                     EditorView.editable.of(true), // Make editor editable
-                    EditorView.updateListener.of(this.updateListenerForCodeMirror),
+                    EditorView.updateListener.of(
+                        this.updateListenerForCodeMirror,
+                    ),
                 ],
             });
 
@@ -143,19 +165,27 @@ export class TinymistEditorUI {
             // Hide original textarea
             this.editor.style.display = "none";
 
-            window.$tmEventBus.emit(tmEvents.ConsoleLog, { type: "info", message: "CodeMirror editor initialized" });
-
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
+                type: "info",
+                message: "CodeMirror editor initialized",
+            });
         } catch (error) {
             this.editor.style.display = "block";
             this.editor.addEventListener("input", this.onInput);
             console.error("[Editor] Failed to initialize CodeMirror:", error);
-            window.$tmEventBus.emit(tmEvents.ConsoleLog,
-                { type: "error", message: "[Editor] Failed to initialize CodeMirror editor", details: error });
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
+                type: "error",
+                message: "[Editor] Failed to initialize CodeMirror editor",
+                details: error,
+            });
         }
     }
 
     private getHighlightExtension(): Extension {
-        return syntaxHighlighting(this.isDarkMode ? oneDarkHighlightStyle : defaultHighlightStyle, { fallback: true });
+        return syntaxHighlighting(
+            this.isDarkMode ? oneDarkHighlightStyle : defaultHighlightStyle,
+            { fallback: true },
+        );
     }
 
     private getMarkdownLanguageExtension(): Extension {
@@ -178,7 +208,8 @@ export class TinymistEditorUI {
                 LanguageDescription.of({
                     name: "shell",
                     alias: ["sh", "bash", "zsh", "shell"],
-                    load: async () => new LanguageSupport(StreamLanguage.define(shell)),
+                    load: async () =>
+                        new LanguageSupport(StreamLanguage.define(shell)),
                 }),
             ],
         });
@@ -235,8 +266,12 @@ export class TinymistEditorUI {
 
         this.editorView.dispatch({
             effects: [
-                this.languageCompartment.reconfigure(this.getLanguageExtensionForFile(fileName)),
-                this.highlightCompartment.reconfigure(this.getHighlightExtension()),
+                this.languageCompartment.reconfigure(
+                    this.getLanguageExtensionForFile(fileName),
+                ),
+                this.highlightCompartment.reconfigure(
+                    this.getHighlightExtension(),
+                ),
             ],
         });
     }
@@ -246,20 +281,27 @@ export class TinymistEditorUI {
     }
 
     private showImagePreview(fileName: string, url: string): void {
-
-        if (!this.imageViewContainer || !this.imageViewElement || !this.imageViewMessage) {
+        if (
+            !this.imageViewContainer ||
+            !this.imageViewElement ||
+            !this.imageViewMessage
+        ) {
             return;
         }
 
         this.imageViewContainer.hidden = false;
         if (this.editorView) {
-            this.editorView.dom.style.setProperty('display', 'none', 'important');
+            this.editorView.dom.style.setProperty(
+                "display",
+                "none",
+                "important",
+            );
         }
-        this.editor.style.display = 'none';
+        this.editor.style.display = "none";
 
         if (!url) {
             this.imageViewElement.hidden = true;
-            this.imageViewElement.removeAttribute('src');
+            this.imageViewElement.removeAttribute("src");
             this.imageViewMessage.hidden = false;
             this.imageViewMessage.textContent = `Image preview unavailable for ${fileName}.`;
             return;
@@ -276,13 +318,13 @@ export class TinymistEditorUI {
         }
         if (this.imageViewElement) {
             this.imageViewElement.hidden = true;
-            this.imageViewElement.removeAttribute('src');
+            this.imageViewElement.removeAttribute("src");
         }
         if (this.editorView) {
-            this.editorView.dom.style.display = '';
+            this.editorView.dom.style.display = "";
             return;
         }
-        this.editor.style.display = 'block';
+        this.editor.style.display = "block";
     }
 
     updateListenerForCodeMirror(update: any) {
@@ -297,20 +339,36 @@ export class TinymistEditorUI {
     }
 
     setupListeners() {
-        window.$tmEventBus.listen(tmEvents.SyncFullState, this.syncFullStateFromServer);
+        window.$tmEventBus.listen(
+            tmEvents.SyncFullState,
+            this.syncFullStateFromServer,
+        );
         window.$tmEventBus.listen(tmEvents.PruneSnapshots, this.pruneSnapshots);
-        window.$tmEventBus.listen(tmEvents.FallbackEnable, (enabled: boolean) => this.fallbackEnabled = enabled);
-        window.$tmEventBus.listen(tmEvents.ActiveFileChange, this.setActiveFile);
+        window.$tmEventBus.listen(
+            tmEvents.FallbackEnable,
+            (enabled: boolean) => (this.fallbackEnabled = enabled),
+        );
+        window.$tmEventBus.listen(
+            tmEvents.ActiveFileChange,
+            this.setActiveFile,
+        );
         window.$tmEventBus.listen(tmEvents.Insert, this.insertFromEditorEvent);
-        window.$tmEventBus.listen(tmEvents.ResetFile, this.resetAttachmentFileFromServer);
+        window.$tmEventBus.listen(
+            tmEvents.ResetFile,
+            this.resetAttachmentFileFromServer,
+        );
 
         // Button actions, it counts on event bubbling to the container
-        this.editor.closest(".tinymist-editor-pane")?.addEventListener("click", this.buttonsListener);
+        this.editor
+            .closest(tmSelectors.EditorPane)
+            ?.addEventListener("click", this.buttonsListener);
     }
 
     removeListeners() {
         this.editor.removeEventListener("input", this.onInput);
-        this.editor.closest(".tinymist-editor-pane")?.removeEventListener("click", this.buttonsListener);
+        this.editor
+            .closest(tmSelectors.EditorPane)
+            ?.removeEventListener("click", this.buttonsListener);
     }
 
     onInput() {
@@ -322,7 +380,7 @@ export class TinymistEditorUI {
 
     buttonsListener(event: Event) {
         if (!event.target) return;
-        const button = (event.target as Element).closest("button[data-action]");
+        const button = (event.target as Element).closest(tmSelectors.ActionButton);
         if (button === null) return;
 
         const action = button.getAttribute("data-action");
@@ -356,18 +414,28 @@ export class TinymistEditorUI {
         }
     }
 
-    private getSelectionInfo(): { selectedText: string; from: number; to: number } {
+    private getSelectionInfo(): {
+        selectedText: string;
+        from: number;
+        to: number;
+    } {
         if (this.editorView) {
             const selection = this.editorView.state.selection.main;
             return {
-                selectedText: this.editorView.state.doc.sliceString(selection.from, selection.to),
+                selectedText: this.editorView.state.doc.sliceString(
+                    selection.from,
+                    selection.to,
+                ),
                 from: selection.from,
                 to: selection.to,
             };
         }
 
         return {
-            selectedText: this.editor.value.substring(this.editor.selectionStart, this.editor.selectionEnd),
+            selectedText: this.editor.value.substring(
+                this.editor.selectionStart,
+                this.editor.selectionEnd,
+            ),
             from: this.editor.selectionStart,
             to: this.editor.selectionEnd,
         };
@@ -390,7 +458,12 @@ export class TinymistEditorUI {
             return;
         }
 
-        this.editor.setRangeText(replacement, this.editor.selectionStart, this.editor.selectionEnd, "end");
+        this.editor.setRangeText(
+            replacement,
+            this.editor.selectionStart,
+            this.editor.selectionEnd,
+            "end",
+        );
         this.editor.focus();
         this.onInput();
     }
@@ -404,13 +477,16 @@ export class TinymistEditorUI {
         const selectedSrc = selection.selectedText.trim();
         const src = selectedSrc.length > 0 ? selectedSrc : "image.png";
         const escapedSrc = this.escapeTypstString(src);
-        this.replaceSelection(`#image("${escapedSrc}", width: 100%, height: 100%, fit: "cover", scaling: "smooth", alt: "my image description")`);
+        this.replaceSelection(
+            `#image("${escapedSrc}", width: 100%, height: 100%, fit: "cover", scaling: "smooth", alt: "my image description")`,
+        );
     }
 
     private insertLink(): void {
         const selection = this.getSelectionInfo();
         const selectedUrl = selection.selectedText.trim();
-        const url = selectedUrl.length > 0 ? selectedUrl : "https://example.com";
+        const url =
+            selectedUrl.length > 0 ? selectedUrl : "https://example.com";
         const escapedUrl = this.escapeTypstString(url);
         this.replaceSelection(`#link("${escapedUrl}")[\n  See example.com\n]`);
     }
@@ -425,7 +501,11 @@ export class TinymistEditorUI {
         this.replaceSelection("```python\n\n```");
     }
 
-    syncFullStateFromServer(payload: { content: string; docVersion: number; fileName: string }) {
+    syncFullStateFromServer(payload: {
+        content: string;
+        docVersion: number;
+        fileName: string;
+    }) {
         const state = this.getOrCreateFileState(payload.fileName);
         state.loaded = true;
         state.currentContent = payload.content;
@@ -436,8 +516,10 @@ export class TinymistEditorUI {
             if (payload.content !== currentText) {
                 this.setText(payload.content, true);
             }
-            window.$tmEventBus.emit(tmEvents.ConsoleLog,
-                { type: "info", message: `[Editor] Document ${payload.fileName} synchronized from server` });
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
+                type: "info",
+                message: `[Editor] Document ${payload.fileName} synchronized from server`,
+            });
         }
     }
 
@@ -482,7 +564,12 @@ export class TinymistEditorUI {
     }
 
     onDocumentChange(transactions: readonly Transaction[]) {
-        if (transactions.some((tr) => tr.annotation(Transaction.userEvent) === "tinymist-sync")) {
+        if (
+            transactions.some(
+                (tr) =>
+                    tr.annotation(Transaction.userEvent) === "tinymist-sync",
+            )
+        ) {
             return;
         }
         const state = this.getOrCreateFileState(this.activeFileName);
@@ -504,15 +591,22 @@ export class TinymistEditorUI {
         const lastSnapshot = state.snapshots.at(-1);
         if (lastSnapshot) {
             state.snapshots[state.snapshots.length - 1].afterTransactions =
-                lastSnapshot.afterTransactions ? lastSnapshot.afterTransactions.compose(changes) : changes;
+                lastSnapshot.afterTransactions
+                    ? lastSnapshot.afterTransactions.compose(changes)
+                    : changes;
         }
 
         if (state.pendingSendTimer) {
             clearTimeout(state.pendingSendTimer);
         }
-        state.pendingSendTimer = setTimeout(() => {
-            this.flushPendingChanges(fileName);
-        }, this.fallbackEnabled ? this.fallbackDebounceMs : this.changeDebounceMs);
+        state.pendingSendTimer = setTimeout(
+            () => {
+                this.flushPendingChanges(fileName);
+            },
+            this.fallbackEnabled
+                ? this.fallbackDebounceMs
+                : this.changeDebounceMs,
+        );
     }
 
     private flushPendingChanges(fileName: string): void {
@@ -556,18 +650,26 @@ export class TinymistEditorUI {
         }
     }
 
-    private resetSyncStateForFile(payload: {fileName: string, docVersion: number, content: string}): void {
+    private resetSyncStateForFile(payload: {
+        fileName: string;
+        docVersion: number;
+        content: string;
+    }): void {
         const state = this.getOrCreateFileState(payload.fileName);
-        console.log(`[Editor] Resetting sync state for ${payload.fileName} to docVersion ${payload.docVersion}`);
+        console.log(
+            `[Editor] Resetting sync state for ${payload.fileName} to docVersion ${payload.docVersion}`,
+        );
         state.docVersion = payload.docVersion;
         state.currentContent = payload.content;
         state.savedContentHash = this.hashString(payload.content);
         state.loaded = true;
-        state.snapshots = [{
-            docVersion: payload.docVersion,
-            snapshot: payload.content,
-            afterTransactions: ChangeSet.empty(payload.content.length),
-        }];
+        state.snapshots = [
+            {
+                docVersion: payload.docVersion,
+                snapshot: payload.content,
+                afterTransactions: ChangeSet.empty(payload.content.length),
+            },
+        ];
         if (state.pendingSendTimer) {
             clearTimeout(state.pendingSendTimer);
             state.pendingSendTimer = null;
@@ -589,7 +691,9 @@ export class TinymistEditorUI {
         }
         state.pendingDirtyTimer = setTimeout(() => {
             state.pendingDirtyTimer = null;
-            const nextDirty = this.hashString(state.currentContent) !== state.savedContentHash;
+            const nextDirty =
+                this.hashString(state.currentContent) !==
+                state.savedContentHash;
             if (nextDirty === state.lastEmittedDirty) {
                 return;
             }
@@ -605,7 +709,9 @@ export class TinymistEditorUI {
         });
     }
 
-    private resetAttachmentFileFromServer(payload: { fileName?: string }): void {
+    private resetAttachmentFileFromServer(payload: {
+        fileName?: string;
+    }): void {
         const fileName = String(payload?.fileName || "").trim();
         if (!fileName || fileName === this.entryFileName) {
             return;
@@ -622,11 +728,13 @@ export class TinymistEditorUI {
         }
 
         state.loaded = false;
-        state.snapshots = [{
-            docVersion: state.docVersion,
-            snapshot: "",
-            afterTransactions: ChangeSet.empty(0),
-        }];
+        state.snapshots = [
+            {
+                docVersion: state.docVersion,
+                snapshot: "",
+                afterTransactions: ChangeSet.empty(0),
+            },
+        ];
         state.currentContent = "";
         state.lastEmittedDirty = false;
         this.emitDirtyState(fileName, false);
@@ -634,12 +742,19 @@ export class TinymistEditorUI {
         window.$tmEventBus.emit(tmEvents.SyncOpenFile, { fileName });
     }
 
-    private getSnapshotContext(docVersion: number, fileName: string): { snapshot: string; changeSet: ChangeSet } {
+    private getSnapshotContext(
+        docVersion: number,
+        fileName: string,
+    ): { snapshot: string; changeSet: ChangeSet } {
         const state = this.getOrCreateFileState(fileName);
-        const index = state.snapshots.findIndex((s) => s.docVersion === docVersion);
+        const index = state.snapshots.findIndex(
+            (s) => s.docVersion === docVersion,
+        );
         if (index === -1) {
-            console.error('[Editor] Snapshot not found', state);
-            throw new Error(`No snapshot found for docVersion ${docVersion} in file ${fileName}`);
+            console.error("[Editor] Snapshot not found", state);
+            throw new Error(
+                `No snapshot found for docVersion ${docVersion} in file ${fileName}`,
+            );
         }
         let pending = state.snapshots[index].afterTransactions;
         for (let i = index + 1; i < state.snapshots.length; i++) {
@@ -653,19 +768,31 @@ export class TinymistEditorUI {
         };
     }
 
-    private pruneSnapshots(payload: { fileName: string; docVersion: number }): void {
+    private pruneSnapshots(payload: {
+        fileName: string;
+        docVersion: number;
+    }): void {
         const state = this.getOrCreateFileState(payload.fileName);
 
-        if (!Number.isFinite(payload.docVersion) || state.snapshots.length === 0) {
+        if (
+            !Number.isFinite(payload.docVersion) ||
+            state.snapshots.length === 0
+        ) {
             return;
         }
         if (payload.docVersion > state.docVersion) {
-            console.warn(`[Editor] DocVersion out of sync for ${payload.fileName} current: ${state.docVersion}, requested prune: ${payload.docVersion}`);
+            console.warn(
+                `[Editor] DocVersion out of sync for ${payload.fileName} current: ${state.docVersion}, requested prune: ${payload.docVersion}`,
+            );
             return;
         }
 
         // Leave at least one snapshot
-        const pruned = state.snapshots.filter((s) => s.docVersion >= Math.min(payload.docVersion, state.docVersion-1));
+        const pruned = state.snapshots.filter(
+            (s) =>
+                s.docVersion >=
+                Math.min(payload.docVersion, state.docVersion - 1),
+        );
         state.snapshots = pruned;
     }
 
@@ -684,13 +811,25 @@ export class TinymistEditorUI {
         });
     }
 
-    private insertFromEditorEvent(eventContent: { typst?: string; markdown?: string; html?: string }): void {
-        const insertText = (eventContent?.typst || eventContent?.markdown || eventContent?.html || "").toString();
+    private insertFromEditorEvent(eventContent: {
+        typst?: string;
+        markdown?: string;
+        html?: string;
+    }): void {
+        const insertText = (
+            eventContent?.typst ||
+            eventContent?.markdown ||
+            eventContent?.html ||
+            ""
+        ).toString();
         if (!insertText) {
             return;
         }
         if (this.activeFileName !== this.entryFileName) {
-            console.warn("[Editor] Ignoring insert event for non-active file", { activeFile: this.activeFileName, eventFile: this.activeFileName });
+            console.warn("[Editor] Ignoring insert event for non-active file", {
+                activeFile: this.activeFileName,
+                eventFile: this.activeFileName,
+            });
             return;
         }
 
@@ -724,7 +863,10 @@ export class TinymistEditorUI {
         if (this.editorView) {
             const state = this.editorView.state;
             const selection = state.selection.main;
-            const selectedText = state.doc.sliceString(selection.from, selection.to);
+            const selectedText = state.doc.sliceString(
+                selection.from,
+                selection.to,
+            );
             const replacement = before + selectedText + after;
 
             this.editorView.dispatch({
@@ -799,9 +941,9 @@ export class TinymistEditorUI {
                 },
                 annotations: fromSync
                     ? [
-                        Transaction.userEvent.of("tinymist-sync"),
-                        Transaction.addToHistory.of(false),
-                    ]
+                          Transaction.userEvent.of("tinymist-sync"),
+                          Transaction.addToHistory.of(false),
+                      ]
                     : undefined,
             });
         } else {
@@ -857,7 +999,8 @@ export class TinymistEditorUI {
             return existing;
         }
 
-        const currentContent = fileName === this.entryFileName ? this.editor.value : "";
+        const currentContent =
+            fileName === this.entryFileName ? this.editor.value : "";
         const created: FileSyncState = {
             fileName: fileName,
             docVersion: 1,
@@ -867,11 +1010,13 @@ export class TinymistEditorUI {
             loaded: fileName === this.entryFileName,
             pendingSendTimer: null,
             pendingDirtyTimer: null,
-            snapshots: [{
-                docVersion: 1,
-                snapshot: currentContent,
-                afterTransactions: ChangeSet.empty(currentContent.length),
-            }],
+            snapshots: [
+                {
+                    docVersion: 1,
+                    snapshot: currentContent,
+                    afterTransactions: ChangeSet.empty(currentContent.length),
+                },
+            ],
         };
 
         this.fileStates.set(fileName, created);

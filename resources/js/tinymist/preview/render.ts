@@ -1,13 +1,8 @@
-// preview element initially gets filled from database
-// that saves ready to insert svg in html field if it's not empty
+// preview element initially gets filled with svg from database
 
 // receives 'new' or 'diff-v1' binary messages from preview_ws
 // or ready to insert svg from fallback compiler
-// WASM module renders binary  to svg
-
-// in any case preview element updates
-// cursor should be alerted upon update and try to reinsert itself
-// (if svg structure didn't change former cursor paths)
+// WASM module renders binary to svg
 
 import {
     rendererBuildInfo,
@@ -20,7 +15,7 @@ import {
 import renderModule from "@myriaddreamin/typst-ts-renderer/pkg/typst_ts_renderer_bg.wasm";
 import { PreviewCursor } from "./cursor";
 
-import { ENTRY_FILE_NAME, tmEvents } from "../constants";
+import { ENTRY_FILE_NAME, tmClassNames, tmEvents, tmSelectors } from "../constants";
 
 export class PreviewRenderer {
     private renderer: TypstRenderer | null = null;
@@ -28,7 +23,7 @@ export class PreviewRenderer {
     private sessionPromise: Promise<RenderSession> | null = null;
     private sessionResolve: (() => void) | null = null;
     private previewElement: HTMLElement;
-    private hasInitialDocument: boolean = false; // Track if we've received initial document to decide if "reset" instead of "merge" is needed
+    private hasInitialDocument: boolean = false; // Track to decide if "reset" instead of "merge" is needed
     private processingQueue: Promise<void> = Promise.resolve();
 
     private recovering: boolean = false;
@@ -106,22 +101,13 @@ export class PreviewRenderer {
         const method = adding ? "addEventListener" : "removeEventListener";
 
         this.previewElement
-            .closest(".tinymist-preview-pane")
+            .closest(tmSelectors.PreviewPane)
             ?.[method]("click", this.handlePreviewPaneClick);
 
-        this.previewElement[method](
-            "mousedown",
-            this.handlePanMouseDown
-        );
-        this.previewElement[method](
-            "mousemove",
-            this.handlePanMouseMove,
-        );
+        this.previewElement[method]("mousedown", this.handlePanMouseDown);
+        this.previewElement[method]("mousemove", this.handlePanMouseMove);
         this.previewElement[method]("mouseup", this.handlePanMouseUp);
-        this.previewElement[method](
-            "mouseleave",
-            this.handlePanMouseUp,
-        );
+        this.previewElement[method]("mouseleave", this.handlePanMouseUp);
     }
 
     private async handleSyncInit(): Promise<void> {
@@ -254,19 +240,8 @@ export class PreviewRenderer {
                 this.hasInitialDocument = true;
             }
 
-            // Always comes as an empty array?
-            // try {
-            //     const customData = await this.renderer!.getCustomV1({
-            //         renderSession: session,
-            //     });
-            //     console.log('[Preview WASM] Custom data:', customData);
-            // } catch (e) {
-            //     console.log('[Preview WASM] No custom data:', e);
-            // }
-
             console.log("[Preview WASM] Rendering to SVG...");
             // defaults are all true, right now have no use for inline helper script
-            // css needed to hide text overlays for copy/paste, now css included in page editor blade
             // could be simple session.renderSvg({});
             const svg = await session.renderSvg({
                 data_selection: {
@@ -277,39 +252,23 @@ export class PreviewRenderer {
                 },
             });
 
-            // It comes as SVG string with data-reuse-from="data-tid hash" attributes
-            // Probably it needs a morphing library
-            // const svgDiff = session.renderSvgDiff({data_selection: { body: true, defs: true, css: false, js: false }});
-            // console.log('[Preview WASM] SVG diff:', svgDiff);
-
             this.updateSVG(svg);
-
-            // const svgDoc = this.previewElement.querySelector('svg.typst-doc');
-            // const helperCode = document.querySelector('svg.typst-doc script')?.textContent;
-            // it contains handleTypstLocation function and adds location.hash #loc-page-x-y
-            // if (helperCode && svgDoc) {
-            //     const run = document.createElement("script");
-            //     run.textContent = helperCode;
-            //     // document.head.append(run);
-            //     svgDoc.append(run);
-            //     // window.typstProcessSvg(svgDoc as SVGElement);
-            // }
 
             console.log("[Preview WASM] Render complete");
             window.$tmEventBus.emit(tmEvents.DataCursorShow); // reinsert cursor if possible
         } catch (e: any) {
             console.error(`[Preview WASM] Rendering failed:`, e);
             this.previewElement.innerHTML = `
-                    <div style="padding: 20px; color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px;">
-                        <h4>Preview Rendering Failed</h4>
-                        <p><strong>Command:</strong> ${command}</p>
-                        <p><strong>Payload size:</strong> ${payload.length} bytes</p>
-                        <p><strong>Error:</strong> ${e.message || String(e)}</p>
-                        <p style="margin-top: 10px; font-size: 0.9em;">
-                            Check browser console for details
-                        </p>
-                    </div>
-                `;
+                <div style="padding: 20px; color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px;">
+                    <h4>Preview Rendering Failed</h4>
+                    <p><strong>Command:</strong> ${command}</p>
+                    <p><strong>Payload size:</strong> ${payload.length} bytes</p>
+                    <p><strong>Error:</strong> ${e.message || String(e)}</p>
+                    <p style="margin-top: 10px; font-size: 0.9em;">
+                        Check browser console for details
+                    </p>
+                </div>
+            `;
             await this.recoverRenderer(e);
         }
     }
@@ -317,14 +276,14 @@ export class PreviewRenderer {
     updateSVG(svg: string, docVersion?: number) {
         // Remove "Loading..." and error messages
         // TODO: optimize so those shouldn't run on each change
-        this.previewElement.querySelector(".text-muted.p-m")?.remove();
-        this.previewElement.querySelector(".tinymist-error")?.remove();
+        this.previewElement.querySelector(tmSelectors.PreviewMutedMessage)?.remove();
+        this.previewElement.querySelector(tmSelectors.PreviewError)?.remove();
         let svgHost = this.previewElement.querySelector(
-            ".tinymist-document",
+            tmSelectors.PreviewDocumentHost,
         ) as HTMLElement | null;
         if (!svgHost) {
             svgHost = document.createElement("div");
-            svgHost.className = "tinymist-document";
+            svgHost.className = tmClassNames.PreviewDocumentHost;
             this.previewElement.appendChild(svgHost);
         }
 
@@ -352,7 +311,7 @@ export class PreviewRenderer {
             this.stopPanning();
         }
         this.previewElement.classList.toggle(
-            "tinymist-preview-pan-enabled",
+            tmClassNames.PreviewPanEnabled,
             enabled,
         );
         this.applyPanButtonState();
@@ -360,7 +319,7 @@ export class PreviewRenderer {
 
     private handlePreviewPaneClick(event: Event): void {
         const button = (event.target as Element | null)?.closest(
-            "button[data-action]",
+            tmSelectors.ActionButton,
         ) as HTMLButtonElement | null;
         if (!button) {
             return;
@@ -397,9 +356,9 @@ export class PreviewRenderer {
 
     private applyPanButtonState(): void {
         const button = this.previewElement
-            .closest(".tinymist-preview-pane")
+            .closest(tmSelectors.PreviewPane)
             ?.querySelector(
-                'button[data-action="previewPanToggle"]',
+                tmSelectors.PreviewPanToggleButton,
             ) as HTMLButtonElement | null;
         if (!button) {
             return;
@@ -417,9 +376,9 @@ export class PreviewRenderer {
             this.activeFileName === ENTRY_FILE_NAME;
 
         const button = this.previewElement
-            .closest(".tinymist-preview-pane")
+            .closest(tmSelectors.PreviewPane)
             ?.querySelector(
-                'button[data-action="previewCursorSpotlightToggle"]',
+                tmSelectors.PreviewCursorSpotlightToggleButton,
             ) as HTMLButtonElement | null;
         if (button) {
             button.setAttribute("aria-pressed", enabled.toString());
@@ -442,9 +401,9 @@ export class PreviewRenderer {
             this.activeFileName === ENTRY_FILE_NAME;
 
         const button = this.previewElement
-            .closest(".tinymist-preview-pane")
+            .closest(tmSelectors.PreviewPane)
             ?.querySelector(
-                'button[data-action="previewScrollIntoViewToggle"]',
+                tmSelectors.PreviewScrollIntoViewToggleButton,
             ) as HTMLButtonElement | null;
         if (button) {
             button.setAttribute("aria-pressed", enabled.toString());
@@ -594,7 +553,7 @@ export class PreviewRenderer {
         this.panStartY = mouseEvent.clientY;
         this.panStartScrollLeft = this.previewElement.scrollLeft;
         this.panStartScrollTop = this.previewElement.scrollTop;
-        this.previewElement.classList.add("tinymist-preview-panning");
+        this.previewElement.classList.add(tmClassNames.PreviewPanning);
         event.preventDefault();
     }
 
@@ -621,7 +580,7 @@ export class PreviewRenderer {
 
     private stopPanning(): void {
         this.isPanning = false;
-        this.previewElement.classList.remove("tinymist-preview-panning");
+        this.previewElement.classList.remove(tmClassNames.PreviewPanning);
     }
 
     dispose() {

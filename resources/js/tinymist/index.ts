@@ -10,7 +10,7 @@ import { TinymistThemeSettings } from "./editor/theme-settings";
 import { TinymistConsole } from "./console";
 import { PreviewRenderer } from "./preview/render";
 import { EventBus } from "./event-bus";
-import { tmEvents } from "./constants";
+import { tmClassNames, tmEvents } from "./constants";
 import type { TinymistEventPayloads } from "./constants/custom-events";
 
 type TinymistRefs = Record<string, HTMLElement>;
@@ -76,7 +76,7 @@ export class TinymistApp {
             ?.addEventListener("submit", this.syncTextGetText);
 
         this.consoleToggleHandler = (collapsed?: boolean) => {
-            this.root.classList.toggle("tinymist-console-collapsed", collapsed);
+            this.root.classList.toggle(tmClassNames.ConsoleCollapsed, collapsed);
         };
         window.$tmEventBus.listen(tmEvents.ConsoleToggle, this.consoleToggleHandler);
 

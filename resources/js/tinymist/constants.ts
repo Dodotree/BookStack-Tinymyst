@@ -15,6 +15,8 @@ export {
 	LOCAL_WS_HOSTNAMES,
 } from "./constants/ws-constants";
 
+export { tmSelectors, tmClassNames } from "./constants/ui-selectors";
+
 export {
     TOKEN_TYPES,
     TOKEN_MODIFIERS,

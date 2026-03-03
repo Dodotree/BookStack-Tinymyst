@@ -17,7 +17,7 @@ export class PreviewDataPlane {
                 this.cursorSpotlightEnabled = Boolean(enabled);
             },
         );
-        window.$tmEventBus.listen(tmEvents.Destroy,() => {
+        window.$tmEventBus.listen(tmEvents.Destroy, () => {
             this.textDecoder = null as any;
             this.processingQueue = Promise.resolve();
         });
@@ -94,7 +94,10 @@ export class PreviewDataPlane {
                     try {
                         const parsed = JSON.parse(decoded);
                         // console.info('[Preview Data] Cursor paths parsed:', parsed);
-                        window.$tmEventBus.emit(tmEvents.DataCursorPaths, parsed);
+                        window.$tmEventBus.emit(
+                            tmEvents.DataCursorPaths,
+                            parsed,
+                        );
                     } catch (err) {
                         console.error(
                             "[Preview Data] Cursor paths not valid JSON:",
@@ -105,8 +108,7 @@ export class PreviewDataPlane {
                 }
 
                 case "partial-rendering":
-                    const enabled =
-                        this.textDecoder.decode(payload) === "true";
+                    const enabled = this.textDecoder.decode(payload) === "true";
                     console.log(`[Preview Data] Partial rendering: ${enabled}`);
                     break;
 
@@ -135,9 +137,8 @@ export class PreviewDataPlane {
                     break;
 
                 case "invert-colors":
-                    const invertColorsDecoded = this.textDecoder.decode(
-                        payload,
-                    );
+                    const invertColorsDecoded =
+                        this.textDecoder.decode(payload);
                     console.log(
                         `[Preview Data] Invert colors payload (${payload.length} bytes):`,
                         invertColorsDecoded,

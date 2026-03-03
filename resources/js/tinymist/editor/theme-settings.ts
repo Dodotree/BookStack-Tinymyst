@@ -8,42 +8,56 @@ import {
     THEME_FONT_TOKENS,
     THEME_SETTINGS_STORAGE_KEY,
     HIGHLIGHT_COLORS,
+    tmClassNames,
     tmEvents,
+    tmSelectors,
 } from "../constants";
 
 type ThemeSettingValues = Record<string, string>;
 
-const toThemeToken = (type: string, isDark = false): string => `tm-hlt-${type}${isDark ? "-dark" : ""}`;
-const toReadableLabel = (value: string): string => value
-    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
-    .replace(/[-_]+/g, " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
+const toThemeToken = (type: string, isDark = false): string =>
+    `${tmClassNames.TokenTypePrefix}${type}${isDark ? "-dark" : ""}`;
+const toReadableLabel = (value: string): string =>
+    value
+        .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+        .replace(/[-_]+/g, " ")
+        .replace(/\b\w/g, (character) => character.toUpperCase());
 
-const HIGHLIGHT_COLOR_TYPES = HIGHLIGHT_COLORS.filter((type) => type !== "text");
+const HIGHLIGHT_COLOR_TYPES = HIGHLIGHT_COLORS.filter(
+    (type) => type !== "text",
+);
 const SEMANTIC_HIGHLIGHT_TYPES = new Set<string>(HIGHLIGHT_COLORS);
-const HIGHLIGHT_COLOR_TOKENS = HIGHLIGHT_COLOR_TYPES.flatMap((type) => [toThemeToken(type, false), toThemeToken(type, true)]);
+const HIGHLIGHT_COLOR_TOKENS = HIGHLIGHT_COLOR_TYPES.flatMap((type) => [
+    toThemeToken(type, false),
+    toThemeToken(type, true),
+]);
 const THEME_TOKENS = [...THEME_FONT_TOKENS, ...HIGHLIGHT_COLOR_TOKENS];
 const COLOR_TOKENS = new Set(
     THEME_TOKENS.filter((token) => {
-        if (!token.startsWith("tm-hlt-")) {
+        if (!token.startsWith(tmClassNames.TokenTypePrefix)) {
             return false;
         }
-        const semanticType = token.replace(/^tm-hlt-/, "").replace(/-dark$/, "");
+        const semanticType = token
+            .replace(tmClassNames.TokenTypePrefix, "")
+            .replace(/-dark$/, "");
         return SEMANTIC_HIGHLIGHT_TYPES.has(semanticType);
-    })
+    }),
 );
 
 export class TinymistThemeSettings {
     private static readonly FONT_TOKENS = new Set<string>(THEME_FONT_TOKENS);
-    private root: HTMLElement|null;
+    private root: HTMLElement | null;
     private overlay: HTMLElement | null;
     private currentSettings: ThemeSettingValues = {};
-    private stylesheetDefaults: ThemeSettingValues = { ...THEME_FALLBACK_SETTINGS };
+    private stylesheetDefaults: ThemeSettingValues = {
+        ...THEME_FALLBACK_SETTINGS,
+    };
     private listenersBound = false;
 
     constructor(root: HTMLElement) {
         this.root = root;
-        this.overlay = this.root?.querySelector(".tinymist-theme-settings-overlay");
+        this.overlay = this.root?.querySelector(
+            tmSelectors.ThemeSettingsOverlay);
         if (!this.root || !this.overlay) {
             return;
         }
@@ -57,7 +71,10 @@ export class TinymistThemeSettings {
         this.handleWindowKeyUp = this.handleWindowKeyUp.bind(this);
 
         // One way to open
-        window.$tmEventBus.listen(tmEvents.ThemeSettingsOpen, this.handleThemeSettingsOpen);
+        window.$tmEventBus.listen(
+            tmEvents.ThemeSettingsOpen,
+            this.handleThemeSettingsOpen,
+        );
         window.$tmEventBus.listen(tmEvents.Destroy, this.destroy);
     }
 
@@ -75,8 +92,10 @@ export class TinymistThemeSettings {
         this.renderHighlightColorNodes();
         this.syncStateToInputs();
 
-        const isDarkMode = document.documentElement.classList.contains("dark-mode");
-        const splitControls = this.overlay?.querySelectorAll<HTMLElement>(".color-split") ?? [];
+        const isDarkMode =
+            document.documentElement.classList.contains("dark-mode");
+        const splitControls =
+            this.overlay?.querySelectorAll<HTMLElement>(tmSelectors.ThemeColorSplit) ?? [];
         splitControls.forEach((control) => {
             control.dataset.activeTheme = isDarkMode ? "dark" : "light";
         });
@@ -87,14 +106,16 @@ export class TinymistThemeSettings {
         this.addRemoveListeners(true);
     }
 
-    addRemoveListeners(adding=true): void {
-        if(!this.overlay) {
+    addRemoveListeners(adding = true): void {
+        if (!this.overlay) {
             return;
         }
         const method = adding ? "addEventListener" : "removeEventListener";
 
         // Many ways to close
-        const closeButtons = this.overlay.querySelectorAll<HTMLButtonElement>('button[data-action="closeThemeSettings"]');
+        const closeButtons = this.overlay.querySelectorAll<HTMLButtonElement>(
+            tmSelectors.ThemeCloseButton,
+        );
         closeButtons.forEach((button) => {
             button[method]("click", this.closeOverlay);
         });
@@ -102,15 +123,25 @@ export class TinymistThemeSettings {
         window[method]("keyup", this.handleWindowKeyUp);
 
         // add listeners to inputs
-        const inputs = this.overlay?.querySelectorAll<HTMLInputElement>("[data-tm-token]") ?? [];
+        const inputs =
+            this.overlay?.querySelectorAll<HTMLInputElement>(
+                "[data-tm-token]",
+            ) ?? [];
         inputs.forEach((input) => {
             const token = input.dataset.tmToken;
             if (!token) return;
-            const eventName = input.type === "color" || TinymistThemeSettings.FONT_TOKENS.has(token) ? "input" : "change";
+            const eventName =
+                input.type === "color" ||
+                TinymistThemeSettings.FONT_TOKENS.has(token)
+                    ? "input"
+                    : "change";
             input[method](eventName, this.updateInput);
         });
 
-        const resetButton = this.overlay?.querySelector<HTMLButtonElement>('button[data-action="resetThemeSettings"]') ?? null;
+        const resetButton =
+            this.overlay?.querySelector<HTMLButtonElement>(
+                'button[data-action="resetThemeSettings"]',
+            ) ?? null;
         resetButton?.[method]("click", this.reset);
 
         this.listenersBound = adding;
@@ -144,7 +175,10 @@ export class TinymistThemeSettings {
 
         const rawValue = input.value.trim();
         const nextValue = COLOR_TOKENS.has(token)
-            ? (this.normalizeColorValue(rawValue) ?? this.currentSettings[token] ?? this.stylesheetDefaults[token] ?? "")
+            ? (this.normalizeColorValue(rawValue) ??
+              this.currentSettings[token] ??
+              this.stylesheetDefaults[token] ??
+              "")
             : rawValue;
 
         this.currentSettings[token] = nextValue;
@@ -157,14 +191,14 @@ export class TinymistThemeSettings {
 
     private readonly closeOverlay = (): void => {
         if (!this.overlay) return;
-        this.overlay.classList.remove("is-visible");
+        this.overlay.classList.remove(tmClassNames.ThemeVisible);
         this.overlay.hidden = true;
     };
 
     private readonly handleThemeSettingsOpen = (): void => {
         if (!this.overlay) return;
         this.overlay.hidden = false;
-        this.overlay.classList.add("is-visible");
+        this.overlay.classList.add(tmClassNames.ThemeVisible);
         this.ensureSettingsLoaded();
     };
 
@@ -175,7 +209,11 @@ export class TinymistThemeSettings {
     };
 
     private readonly handleWindowKeyUp = (event: Event): void => {
-        if ((event as KeyboardEvent).key === "Escape" && !!this.overlay && !this.overlay.hidden) {
+        if (
+            (event as KeyboardEvent).key === "Escape" &&
+            !!this.overlay &&
+            !this.overlay.hidden
+        ) {
             this.closeOverlay();
         }
     };
@@ -197,7 +235,7 @@ export class TinymistThemeSettings {
 
         HIGHLIGHT_COLOR_TYPES.forEach((type) => {
             const row = document.createElement("label");
-            row.className = "setting-row";
+            row.className = tmClassNames.ThemeSettingRow;
 
             const title = document.createElement("span");
             title.className = "text-muted text-small";
@@ -205,7 +243,7 @@ export class TinymistThemeSettings {
             row.appendChild(title);
 
             const split = document.createElement("div");
-            split.className = "color-split";
+            split.className = tmClassNames.ThemeColorSplit;
             split.title = THEME_COLOR_SPLIT_TITLE;
             split.appendChild(this.createColorHalfWrap(type, false));
             split.appendChild(this.createColorHalfWrap(type, true));
@@ -219,33 +257,42 @@ export class TinymistThemeSettings {
         const variant = isDark ? "dark" : "light";
 
         const wrap = document.createElement("label");
-        wrap.className = "color-half-wrap";
+        wrap.className = tmClassNames.ColorHalfWrap;
         wrap.dataset.themeVariant = variant;
 
         const badge = document.createElement("span");
-        badge.className = "color-badge";
+        badge.className = tmClassNames.ColorBadge;
         badge.textContent = isDark ? "D" : "L";
         wrap.appendChild(badge);
 
         const input = document.createElement("input");
-        input.className = "color-half";
+        input.className = tmClassNames.ColorHalf;
         input.type = "color";
         input.dataset.themeVariant = variant;
         input.dataset.tmToken = toThemeToken(type, isDark);
-        input.setAttribute("aria-label", `${toReadableLabel(type)} ${variant} color`);
+        input.setAttribute(
+            "aria-label",
+            `${toReadableLabel(type)} ${variant} color`,
+        );
         wrap.appendChild(input);
 
         return wrap;
     }
 
     private syncStateToInputs(): void {
-        const inputs = this.overlay?.querySelectorAll<HTMLInputElement>("[data-tm-token]") ?? [];
+        const inputs =
+            this.overlay?.querySelectorAll<HTMLInputElement>(
+                "[data-tm-token]",
+            ) ?? [];
         inputs.forEach((input) => {
             const token = input.dataset.tmToken;
             if (!token) return;
             const value = this.currentSettings[token] ?? "";
             if (input.type === "color") {
-                input.value = this.normalizeColorValue(value) ?? this.normalizeColorValue(this.stylesheetDefaults[token]) ?? THEME_COLOR_INPUT_DEFAULT;
+                input.value =
+                    this.normalizeColorValue(value) ??
+                    this.normalizeColorValue(this.stylesheetDefaults[token]) ??
+                    THEME_COLOR_INPUT_DEFAULT;
                 return;
             }
             input.value = value;
@@ -255,7 +302,10 @@ export class TinymistThemeSettings {
     }
 
     private refreshAllFontFeedback(): void {
-        const inputs = this.overlay?.querySelectorAll<HTMLInputElement>('input[type="text"][data-tm-token]') ?? [];
+        const inputs =
+            this.overlay?.querySelectorAll<HTMLInputElement>(
+                tmSelectors.ThemeFontTextInputs,
+            ) ?? [];
         inputs.forEach((input) => this.updateFontInputFeedback(input));
     }
 
@@ -265,30 +315,41 @@ export class TinymistThemeSettings {
             return;
         }
 
-        const wrapper = input.closest(".setting-row");
+        const wrapper = input.closest(tmSelectors.ThemeSettingRow);
         if (!wrapper) {
             return;
         }
 
-        const statusElement = wrapper.querySelector<HTMLElement>(".font-status");
-        const previewElement = wrapper.querySelector<HTMLElement>(".font-preview");
-        const probesElement = wrapper.querySelector<HTMLElement>(".font-probes");
+        const statusElement =
+            wrapper.querySelector<HTMLElement>(tmSelectors.ThemeFontStatus);
+        const previewElement =
+            wrapper.querySelector<HTMLElement>(tmSelectors.ThemeFontPreview);
+        const probesElement =
+            wrapper.querySelector<HTMLElement>(tmSelectors.ThemeFontProbes);
 
         const rawFontStack = input.value.trim();
         const candidates = FontProbe.splitFontFamilyList(rawFontStack);
         const firstRequested = candidates[0] ?? "";
 
         if (previewElement) {
-            previewElement.style.fontFamily = rawFontStack || this.currentSettings[token] || this.stylesheetDefaults[token] || THEME_FALLBACK_SETTINGS[token] || "";
-            previewElement.textContent = token === "tm-font-mono"
-                ? THEME_FONT_PREVIEW_TEXT.mono
-                : THEME_FONT_PREVIEW_TEXT.ui;
+            previewElement.style.fontFamily =
+                rawFontStack ||
+                this.currentSettings[token] ||
+                this.stylesheetDefaults[token] ||
+                THEME_FALLBACK_SETTINGS[token] ||
+                "";
+            previewElement.textContent =
+                token === "tm-font-mono"
+                    ? THEME_FONT_PREVIEW_TEXT.mono
+                    : THEME_FONT_PREVIEW_TEXT.ui;
         }
 
         const computedPreviewFontFamily = previewElement
             ? getComputedStyle(previewElement).fontFamily
             : "";
-        const computedCandidates = FontProbe.splitFontFamilyList(computedPreviewFontFamily);
+        const computedCandidates = FontProbe.splitFontFamilyList(
+            computedPreviewFontFamily,
+        );
 
         const firstExistingFontName = this.renderFontProbes(
             probesElement,
@@ -298,12 +359,13 @@ export class TinymistThemeSettings {
 
         if (statusElement) {
             if (!firstRequested) {
-                statusElement.className = "font-status text-small text-muted";
+                statusElement.className = `${tmClassNames.ThemeFontStatus} text-small text-muted`;
                 statusElement.textContent = THEME_FONT_STATUS_EMPTY_HINT;
             } else {
-                statusElement.className = firstExistingFontName !== ""
-                    ? "font-status text-small text-pos"
-                    : "font-status text-small text-warn";
+                statusElement.className =
+                    firstExistingFontName !== ""
+                        ? `${tmClassNames.ThemeFontStatus} text-small text-pos`
+                        : `${tmClassNames.ThemeFontStatus} text-small text-warn`;
                 statusElement.textContent = `First available font from stack: ${firstExistingFontName || "generic (available not detected)"}.`;
             }
         }
@@ -314,7 +376,7 @@ export class TinymistThemeSettings {
         fontCandidates: string[],
         fallbackFamily: string,
     ): string {
-        let firstExistingFontName = '';
+        let firstExistingFontName = "";
 
         if (!probesElement) {
             return firstExistingFontName;
@@ -324,7 +386,10 @@ export class TinymistThemeSettings {
         }
 
         probesElement.innerHTML = "";
-        const grouped = new Map<string, Array<{ fontName: string; className: string; sampleFamily: string }>>();
+        const grouped = new Map<
+            string,
+            Array<{ fontName: string; className: string; sampleFamily: string }>
+        >();
 
         fontCandidates.forEach((fontName) => {
             const signal = FontProbe.getFontDistinctSignal(fontName);
@@ -344,11 +409,16 @@ export class TinymistThemeSettings {
             grouped.set(signal.label, available);
         });
 
-        const sampleText = fallbackFamily === "monospace"
-            ? "AaBb 0O1l {}[] () => +-*/ #_"
-            : "The quick brown fox jumps over the lazy dog 1234567890.";
+        const sampleText =
+            fallbackFamily === "monospace"
+                ? "AaBb 0O1l {}[] () => +-*/ #_"
+                : "The quick brown fox jumps over the lazy dog 1234567890.";
         grouped.forEach((items, groupLabel) => {
-            const group = this.generateProbeGroup(groupLabel, sampleText, items);
+            const group = this.generateProbeGroup(
+                groupLabel,
+                sampleText,
+                items,
+            );
             probesElement.appendChild(group);
         });
 
@@ -358,18 +428,18 @@ export class TinymistThemeSettings {
     private generateProbeGroup(
         label: string,
         sampleText: string,
-        items: { fontName: string; className: string; sampleFamily: string }[]
+        items: { fontName: string; className: string; sampleFamily: string }[],
     ): HTMLElement {
         const group = document.createElement("div");
-        group.className = "probe-group";
+        group.className = tmClassNames.ProbeGroup;
 
         const title = document.createElement("div");
-        title.className = "probe-title text-small";
+        title.className = `${tmClassNames.ProbeTitle} text-small`;
         title.textContent = label;
         group.appendChild(title);
 
         const list = document.createElement("div");
-        list.className = "probe-list";
+        list.className = tmClassNames.ProbeList;
 
         items.forEach((item) => {
             const row = this.generateProbeRow(item, sampleText);
@@ -381,18 +451,18 @@ export class TinymistThemeSettings {
 
     private generateProbeRow(
         item: { fontName: string; className: string; sampleFamily: string },
-        text: string
+        text: string,
     ): HTMLElement {
         const row = document.createElement("div");
-        row.className = `probe-row ${item.className}`;
+        row.className = `${tmClassNames.ProbeRow} ${item.className}`;
 
         const name = document.createElement("span");
-        name.className = "probe-name";
+        name.className = tmClassNames.ProbeName;
         name.textContent = `${item.fontName}: `;
         row.appendChild(name);
 
         const sample = document.createElement("span");
-        sample.className = "probe-sample";
+        sample.className = tmClassNames.ProbeSample;
         sample.style.fontFamily = item.sampleFamily;
         sample.textContent = text;
         row.appendChild(sample);
@@ -401,9 +471,15 @@ export class TinymistThemeSettings {
 
     private persistSettings(): void {
         try {
-            localStorage.setItem(THEME_SETTINGS_STORAGE_KEY, JSON.stringify(this.currentSettings));
+            localStorage.setItem(
+                THEME_SETTINGS_STORAGE_KEY,
+                JSON.stringify(this.currentSettings),
+            );
         } catch (error) {
-            console.warn("[Tinymist Theme] Failed to store theme settings", error);
+            console.warn(
+                "[Tinymist Theme] Failed to store theme settings",
+                error,
+            );
         }
     }
 
@@ -419,7 +495,10 @@ export class TinymistThemeSettings {
                 return parsed as ThemeSettingValues;
             }
         } catch (error) {
-            console.warn("[Tinymist Theme] Failed to read stored theme settings", error);
+            console.warn(
+                "[Tinymist Theme] Failed to read stored theme settings",
+                error,
+            );
         }
 
         return {};
@@ -447,10 +526,11 @@ export class TinymistThemeSettings {
             }
 
             if (COLOR_TOKENS.has(token)) {
-                value = this.normalizeColorValue(value)
-                    ?? this.readComputedHighlightColor(token)
-                    ?? THEME_FALLBACK_SETTINGS[token]
-                    ?? "";
+                value =
+                    this.normalizeColorValue(value) ??
+                    this.readComputedHighlightColor(token) ??
+                    THEME_FALLBACK_SETTINGS[token] ??
+                    "";
             }
 
             defaults[token] = value || THEME_FALLBACK_SETTINGS[token] || "";
@@ -460,9 +540,11 @@ export class TinymistThemeSettings {
     }
 
     private readComputedHighlightColor(token: string): string | null {
-        const type = token.replace(/^tm-hlt-/, "").replace(/-dark$/, "");
+        const type = token
+            .replace(tmClassNames.TokenTypePrefix, "")
+            .replace(/-dark$/, "");
         const probe = document.createElement("span");
-        probe.className = `tm-hlt tm-hlt-${type}`;
+        probe.className = `${tmClassNames.TokenHighlight} ${tmClassNames.TokenTypePrefix}${type}`;
         probe.textContent = "x";
         probe.style.position = "absolute";
         probe.style.visibility = "hidden";
@@ -476,15 +558,21 @@ export class TinymistThemeSettings {
     }
 
     private readComputedCodeFont(): string {
-        const editorLine = this.root?.querySelector<HTMLElement>(".cm-editor .cm-line, .cm-editor .cm-gutter");
+        const editorLine = this.root?.querySelector<HTMLElement>(
+            ".cm-editor .cm-line, .cm-editor .cm-gutter",
+        );
         if (editorLine) {
             return getComputedStyle(editorLine).fontFamily.trim();
         }
-        return getComputedStyle(this.root!).getPropertyValue("--font-code").trim();
+        return getComputedStyle(this.root!)
+            .getPropertyValue("--font-code")
+            .trim();
     }
 
     private readComputedUiFont(): string {
-        const previewPane = this.root?.querySelector<HTMLElement>(".tinymist-preview-pane");
+        const previewPane = this.root?.querySelector<HTMLElement>(
+            ".tinymist-preview-pane",
+        );
         if (!previewPane) {
             return "";
         }
@@ -501,7 +589,10 @@ export class TinymistThemeSettings {
         if (hex) {
             const normalized = hex[1].toLowerCase();
             if (normalized.length === 3) {
-                return `#${normalized.split("").map((char) => `${char}${char}`).join("")}`;
+                return `#${normalized
+                    .split("")
+                    .map((char) => `${char}${char}`)
+                    .join("")}`;
             }
             if (normalized.length === 8) {
                 return `#${normalized.slice(0, 6)}`;
@@ -514,12 +605,20 @@ export class TinymistThemeSettings {
             return null;
         }
 
-        const channels = rgb[1].split(",").slice(0, 3).map((part) => Number.parseFloat(part.trim()));
-        if (channels.length !== 3 || channels.some((value) => Number.isNaN(value))) {
+        const channels = rgb[1]
+            .split(",")
+            .slice(0, 3)
+            .map((part) => Number.parseFloat(part.trim()));
+        if (
+            channels.length !== 3 ||
+            channels.some((value) => Number.isNaN(value))
+        ) {
             return null;
         }
 
-        const [red, green, blue] = channels.map((channel) => Math.max(0, Math.min(255, Math.round(channel))));
+        const [red, green, blue] = channels.map((channel) =>
+            Math.max(0, Math.min(255, Math.round(channel))),
+        );
         return `#${[red, green, blue].map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
     }
 }

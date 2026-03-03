@@ -390,6 +390,46 @@ WASM provides high-performance operations:
   }
 ```
 
+```ts
+    // So far only came as an empty array
+    try {
+        const customData = await this.renderer!.getCustomV1({
+            renderSession: session,
+        });
+        console.log('[Preview WASM] Custom data:', customData);
+    } catch (e) {
+        console.log('[Preview WASM] No custom data:', e);
+    }
+
+  // Works but needs a morphing library to be useful
+  // comes as SVG string with data-reuse-from="data-tid hash" attributes as replacement/morphing hooks
+  const svgDiff = session.renderSvgDiff({data_selection: { body: true, defs: true, css: false, js: false }});
+
+  // Default render appends css and js on every render. It's always the same. CSS will work if appended.
+  // CSS is needed to hide text overlays for copy/paste, now I include it with the rest of the page css.
+  // JS will need a special script to initiate. In any case it's better to include it as static on a page.
+  const svg = await session.renderSvg({
+      data_selection: {
+          body: true,
+          defs: true,
+          css: false,
+          js: false,
+      },
+  });
+
+  // How to append the script
+  const svgDoc = this.previewElement.querySelector('svg.typst-doc');
+  const helperCode = document.querySelector('svg.typst-doc script')?.textContent;
+  // it contains handleTypstLocation function and adds location.hash #loc-page-x-y
+  if (helperCode && svgDoc) {
+      const run = document.createElement("script");
+      run.textContent = helperCode;
+      // document.head.append(run);
+      svgDoc.append(run);
+      // window.typstProcessSvg(svgDoc as SVGElement);
+  }
+```
+
 ## WASM MODULE REFERENCES
 
 The implementation uses these WASM modules (imported as needed):

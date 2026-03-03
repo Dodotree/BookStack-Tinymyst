@@ -1,5 +1,5 @@
 // Visible editor console for displaying compilation messages and diagnostics
-import { tmEvents } from "./constants";
+import { tmClassNames, tmEvents } from "./constants";
 
 export class TinymistConsole {
     console: HTMLElement;
@@ -69,7 +69,7 @@ export class TinymistConsole {
     }) {
         const timestamp = new Date().toLocaleTimeString();
         const messageDiv = document.createElement("div");
-        messageDiv.className = `console-message ${type}`;
+        messageDiv.className = `${tmClassNames.ConsoleMessage} ${type}`;
         messageDiv.innerHTML =
             `<span class="text-muted">[${timestamp}]</span> ` +
             this.escapeHtml(message) +

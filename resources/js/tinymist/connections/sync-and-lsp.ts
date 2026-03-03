@@ -14,7 +14,7 @@
 // sent: request for semanticTokens delta -> server -> LSP -> server -> tokens delta (not tried yet)
 
 // receive: pong
-// receive: 'ack' acknowledged token on update
+// receive: "ack" acknowledged token on update
 // receive: server {full sync to version N} (if server version > client version) -> here -> editor applies full content
 // receive: LSP pushes diagnostics when file updates -> server -> here -> diagnostics.ts
 // if LSP is down, "LSPdown" message sent from server upon file update (and following diagnostics push expected)

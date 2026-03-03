@@ -8,7 +8,7 @@
 // appends cursor circles to those elements
 // keeps the state so that svg re-renders can re-apply the cursor positions
 
-import { tmEvents } from "../constants";
+import { tmClassNames, tmEvents } from "../constants";
 
 type CursorParams = {
     textSelector: string;
@@ -20,56 +20,69 @@ export class PreviewCursor {
     private overlayElement: HTMLDivElement | null = null;
     private overlaySvg: SVGSVGElement | null = null;
     private cursorCircle: SVGCircleElement | null = null;
-    private cursorParams: CursorParams = { textSelector: 'svg.typst-doc>g.typst-group', charIndex: 0 };
+    private cursorParams: CursorParams = {
+        textSelector: "svg.typst-doc>g.typst-group",
+        charIndex: 0,
+    };
     private onViewportChange: () => void;
     private spotlightEnabled = true;
 
-
-    constructor(
-        previewElement: HTMLElement,
-    ) {
+    constructor(previewElement: HTMLElement) {
         this.previewElement = previewElement;
 
         this.destroy = this.destroy.bind(this);
         this.pathToSelector = this.pathToSelector.bind(this);
         this.showCursor = this.showCursor.bind(this);
         this.onViewportChange = this.showCursor.bind(this);
-        window.$tmEventBus.listen(tmEvents.DataCursorPaths, this.pathToSelector);
+        window.$tmEventBus.listen(
+            tmEvents.DataCursorPaths,
+            this.pathToSelector,
+        );
         window.$tmEventBus.listen(tmEvents.DataCursorShow, this.showCursor);
-        window.$tmEventBus.listen(tmEvents.CursorSpotlightToggle, ({ enabled }: { enabled?: boolean }) => {
-            this.spotlightEnabled = Boolean(enabled);
-            if (!this.spotlightEnabled) {
-                this.hideCursor();
-            } else {
-                this.showCursor();
-            }
-        });
+        window.$tmEventBus.listen(
+            tmEvents.CursorSpotlightToggle,
+            ({ enabled }: { enabled?: boolean }) => {
+                this.spotlightEnabled = Boolean(enabled);
+                if (!this.spotlightEnabled) {
+                    this.hideCursor();
+                } else {
+                    this.showCursor();
+                }
+            },
+        );
         window.$tmEventBus.listen(tmEvents.Destroy, this.destroy);
 
-        this.previewElement.addEventListener('scroll', this.onViewportChange, { passive: true });
-        window.addEventListener('resize', this.onViewportChange, { passive: true });
+        this.previewElement.addEventListener("scroll", this.onViewportChange, {
+            passive: true,
+        });
+        window.addEventListener("resize", this.onViewportChange, {
+            passive: true,
+        });
     }
 
     private ensureOverlay(): void {
         if (this.overlayElement && this.overlaySvg) return;
 
-        if (getComputedStyle(this.previewElement).position === 'static') {
-            this.previewElement.style.position = 'relative';
+        if (getComputedStyle(this.previewElement).position === "static") {
+            this.previewElement.style.position = "relative";
         }
 
-        this.overlayElement = document.createElement('div');
-        this.overlayElement.className = 'tinymist-cursor-overlay';
+        this.overlayElement = document.createElement("div");
+        this.overlayElement.className = tmClassNames.PreviewCursorOverlay;
         Object.assign(this.overlayElement.style, {
-            position: 'absolute',
-            inset: '0',
-            pointerEvents: 'none',
-            zIndex: '10'
+            position: "absolute",
+            inset: "0",
+            pointerEvents: "none",
+            zIndex: "10",
         });
 
-        this.overlaySvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-        this.overlaySvg.setAttribute('width', '100%');
-        this.overlaySvg.setAttribute('height', '100%');
-        this.overlaySvg.style.overflow = 'visible';
+        this.overlaySvg = document.createElementNS(
+            "http://www.w3.org/2000/svg",
+            "svg",
+        );
+        this.overlaySvg.setAttribute("width", "100%");
+        this.overlaySvg.setAttribute("height", "100%");
+        this.overlaySvg.style.overflow = "visible";
 
         this.overlayElement.appendChild(this.overlaySvg);
         this.previewElement.appendChild(this.overlayElement);
@@ -147,64 +160,77 @@ export class PreviewCursor {
             return;
         }
         const kindMap: Record<number, string> = {
-            0: '.typst-text',  // g
-            1: '.typst-group', // g
-            2: '.typst-image', // ?
-            3: '.typst-shape', // path
-            4: '.typst-page',  // g
-            5: 'use' // theoretically .tsel, but actually "use" tag
+            0: ".typst-text", // g
+            1: ".typst-group", // g
+            2: ".typst-image", // ?
+            3: ".typst-shape", // path
+            4: ".typst-page", // g
+            5: "use", // theoretically .tsel, but actually "use" tag
         };
         // const validChildren = `>g.typst-group,>g.typst-text,>.typst-image,>.typst-shape,>g.typst-wrap`;
 
-        this.cursorParams = paths.reduce((cursorMax: CursorParams, steps: any[]) => {
+        this.cursorParams = paths.reduce(
+            (cursorMax: CursorParams, steps: any[]) => {
+                const pairs: [string, number][] = steps.map((step: any) => [
+                    kindMap[Number(step.kind)] ?? "???",
+                    step.index + 1, // Convert to 1-based index for CSS
+                ]);
+                // console.debug('[Preview WASM] pathToSelector pairs:', pairs);
 
-            const pairs: [string, number][] = steps.map((step: any) => [
-                kindMap[Number(step.kind)] ?? '???',
-                step.index + 1 // Convert to 1-based index for CSS
-            ]);
-            // console.debug('[Preview WASM] pathToSelector pairs:', pairs);
+                const pageStep = pairs.shift();
+                const topGroupStep = pairs.shift();
 
-            const pageStep = pairs.shift();
-            const topGroupStep = pairs.shift();
+                if (!pageStep || !topGroupStep) {
+                    console.warn(
+                        "[Preview WASM] Invalid cursor path: insufficient steps",
+                    );
+                    return cursorMax;
+                }
 
-            if (!pageStep || !topGroupStep) {
-                console.warn('[Preview WASM] Invalid cursor path: insufficient steps');
-                return cursorMax;
-            }
-
-            const topGroup = `svg.typst-doc > :nth-child(${pageStep[1]} of .typst-page)`
-                + ` > :nth-child(${topGroupStep[1]} of [data-tid])`;
+                const topGroup =
+                    `svg.typst-doc > :nth-child(${pageStep[1]} of .typst-page)` +
+                    ` > :nth-child(${topGroupStep[1]} of [data-tid])`;
                 // + ` > :nth-child(${topGroupStep[1]} of :is(.typst-group,.typst-text,.typst-image,.typst-shape))`;
 
-            let charStep = pairs.pop();
-            if (!charStep || charStep[0] !== 'use') {
-                if (charStep) {
-                    pairs.push(charStep);
+                let charStep = pairs.pop();
+                if (!charStep || charStep[0] !== "use") {
+                    if (charStep) {
+                        pairs.push(charStep);
+                    }
+                    charStep = ["use", 1];
                 }
-                charStep = ['use', 1];
-            }
 
-            const textSelector = pairs.reduce((selector: string, [tag, child]: [string, number]) =>
-                selector + `> :nth-child(${child} of :has(>g>:not(g:empty)))>g`,
-                topGroup);
+                const textSelector = pairs.reduce(
+                    (selector: string, [tag, child]: [string, number]) =>
+                        selector +
+                        `> :nth-child(${child} of :has(>g>:not(g:empty)))>g`,
+                    topGroup,
+                );
 
-            // For double data-tid wrappers not to get ignored / throw off indexing
-            // Happens with rare shape paths
-            // document.querySelectorAll(`g[data-tid]:not([class])>[data-tid]:not([class]):has(${validChildren})`)
-            //     .forEach(element => {
-            //         element.classList.add('typst-wrap');
-            //     });
-            // console.debug('[Preview WASM] selector of the text node:', textSelector);
-            const textNode = document.querySelector(textSelector);
-            // console.debug('[Preview WASM] works?', textNode);
+                // For double data-tid wrappers not to get ignored / throw off indexing
+                // Happens with rare shape paths
+                // document.querySelectorAll(`g[data-tid]:not([class])>[data-tid]:not([class]):has(${validChildren})`)
+                //     .forEach(element => {
+                //         element.classList.add('typst-wrap');
+                //     });
+                // console.debug('[Preview WASM] selector of the text node:', textSelector);
+                const textNode = document.querySelector(textSelector);
+                // console.debug('[Preview WASM] works?', textNode);
 
-            if (!textNode) {
-                console.warn('[Preview WASM] Text node not found for selector:', textSelector);
-                return cursorMax;
-            }
-            return { textSelector, charIndex: charStep[1] };
-
-        }, { textSelector: this.cursorParams.textSelector, charIndex: 0 } as CursorParams);
+                if (!textNode) {
+                    console.warn(
+                        "[Preview WASM] Text node not found for selector:",
+                        textSelector,
+                    );
+                    return cursorMax;
+                }
+                return { textSelector, charIndex: charStep[1] };
+            },
+            {
+                textSelector: this.cursorParams.textSelector,
+                charIndex: 0,
+            } as CursorParams,
+        );
 
         this.showCursor();
     }
@@ -224,7 +250,9 @@ export class PreviewCursor {
 
         // console.debug(`[Preview WASM] text char ${this.cursorParams.charIndex}`, textNode);
 
-        const glyphNode = textNode.querySelector(`:nth-child(${this.cursorParams.charIndex} of use,path)`) as SVGGraphicsElement | null;
+        const glyphNode = textNode.querySelector(
+            `:nth-child(${this.cursorParams.charIndex} of use,path)`,
+        ) as SVGGraphicsElement | null;
         if (!glyphNode) return;
 
         // console.debug('[Preview WASM] glyph node for cursor:', glyphNode);
@@ -234,15 +262,19 @@ export class PreviewCursor {
         if (!this.overlaySvg) return;
 
         if (!this.cursorCircle) {
-            this.cursorCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-            this.cursorCircle.setAttribute('fill', '#66bab7');
-            this.cursorCircle.setAttribute('fill-opacity', '0.25');
-            this.cursorCircle.setAttribute('stroke', '#66bab7');
-            this.cursorCircle.setAttribute('stroke-opacity', '0.65');
-            this.cursorCircle.setAttribute('stroke-width', '1.5');
-            this.cursorCircle.dataset.cursorIndicator = 'true';
-            this.cursorCircle.style.pointerEvents = 'none';
-            this.cursorCircle.style.transition = 'cx 0.1s ease, cy 0.1s ease, r 0.1s ease';
+            this.cursorCircle = document.createElementNS(
+                "http://www.w3.org/2000/svg",
+                "circle",
+            );
+            this.cursorCircle.setAttribute("fill", "#66bab7");
+            this.cursorCircle.setAttribute("fill-opacity", "0.25");
+            this.cursorCircle.setAttribute("stroke", "#66bab7");
+            this.cursorCircle.setAttribute("stroke-opacity", "0.65");
+            this.cursorCircle.setAttribute("stroke-width", "1.5");
+            this.cursorCircle.dataset.cursorIndicator = "true";
+            this.cursorCircle.style.pointerEvents = "none";
+            this.cursorCircle.style.transition =
+                "cx 0.1s ease, cy 0.1s ease, r 0.1s ease";
             this.overlaySvg.appendChild(this.cursorCircle);
         }
 
@@ -252,16 +284,27 @@ export class PreviewCursor {
 
         const cx = glyphRect.left - overlayRect.left + glyphRect.width / 2;
         const cy = glyphRect.top - overlayRect.top + glyphRect.height / 2;
-        const r = Math.min(30, Math.max(15, Math.max(glyphRect.width, glyphRect.height) / 2));
+        const r = Math.min(
+            30,
+            Math.max(15, Math.max(glyphRect.width, glyphRect.height) / 2),
+        );
         // console.debug(`[Preview WASM] glyphRect:`, glyphRect, `overlayRect:`, overlayRect, `calculated cx: ${cx}, cy: ${cy}, r: ${r}`);
 
         // Update circle position
-        this.cursorCircle.setAttribute('cx', cx.toFixed(2));
-        this.cursorCircle.setAttribute('cy', cy.toFixed(2));
-        this.cursorCircle.setAttribute('r', r.toFixed(2));
+        this.cursorCircle.setAttribute("cx", cx.toFixed(2));
+        this.cursorCircle.setAttribute("cy", cy.toFixed(2));
+        this.cursorCircle.setAttribute("r", r.toFixed(2));
 
-        const contentX = glyphRect.left - previewRect.left + this.previewElement.scrollLeft + glyphRect.width / 2;
-        const contentY = glyphRect.top - previewRect.top + this.previewElement.scrollTop + glyphRect.height / 2;
+        const contentX =
+            glyphRect.left -
+            previewRect.left +
+            this.previewElement.scrollLeft +
+            glyphRect.width / 2;
+        const contentY =
+            glyphRect.top -
+            previewRect.top +
+            this.previewElement.scrollTop +
+            glyphRect.height / 2;
         window.$tmEventBus.emit(tmEvents.PreviewCursorPosition, {
             contentX,
             contentY,
@@ -285,9 +328,11 @@ export class PreviewCursor {
         this.overlayElement = null;
         this.overlaySvg = null;
 
-        this.previewElement.removeEventListener('scroll', this.onViewportChange);
-        window.removeEventListener('resize', this.onViewportChange);
+        this.previewElement.removeEventListener(
+            "scroll",
+            this.onViewportChange,
+        );
+        window.removeEventListener("resize", this.onViewportChange);
         this.previewElement = null as any;
     }
-
 }
