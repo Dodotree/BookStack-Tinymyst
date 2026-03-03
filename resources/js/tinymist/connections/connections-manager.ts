@@ -3,6 +3,7 @@ import { TinymistFileSyncClient } from "./sync-and-lsp";
 import { PreviewBridgeClient } from "./preview-ws";
 import { PreviewControlPlane } from "../preview/control-plane";
 import { PreviewDataPlane } from "../preview/data-plane";
+import { tmEvents } from "../constants";
 
 export type TinymistConnectionsManagerOptions = {
     pageId: number;
@@ -33,16 +34,16 @@ export class TinymistConnectionsManager {
         this.updateStatus = this.updateStatus.bind(this);
         this.updateToken = this.updateToken.bind(this);
         this.destroy = this.destroy.bind(this);
-        window.$tmEventBus.listen("status", this.updateStatus);
-        window.$tmEventBus.listen("token-renewed", this.updateToken);
-        window.$tmEventBus.listen("destroy", this.destroy);
+        window.$tmEventBus.listen(tmEvents.Status, this.updateStatus);
+        window.$tmEventBus.listen(tmEvents.TokenRenewed, this.updateToken);
+        window.$tmEventBus.listen(tmEvents.Destroy, this.destroy);
 
         this.tokenManager = new TinymistTokenManager(this.pageId, this.wsToken);
     }
 
     start(): void {
         if (!this.wsToken) {
-            window.$tmEventBus.emit("invalid-token");
+            window.$tmEventBus.emit(tmEvents.InvalidToken);
             return;
         }
         void this.setupPreviewSockets();
@@ -72,9 +73,9 @@ export class TinymistConnectionsManager {
                 new PreviewDataPlane();
             }
 
-            window.$tmEventBus.emit("preview-connect");
+            window.$tmEventBus.emit(tmEvents.PreviewConnect);
         } catch (error) {
-            window.$tmEventBus.emit("console-log", {
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                 type: "error",
                 message: "Failed to initialize preview sockets",
                 details: error,
@@ -91,9 +92,9 @@ export class TinymistConnectionsManager {
                     this.uniqueTabId,
                 );
             }
-            window.$tmEventBus.emit("sync-connect");
+            window.$tmEventBus.emit(tmEvents.SyncConnect);
         } catch (error) {
-            window.$tmEventBus.emit("console-log", {
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                 type: "error",
                 message: "Failed to initialize file sync LSP",
                 details: error,
@@ -109,7 +110,7 @@ export class TinymistConnectionsManager {
             case "preview-ws":
                 this.bridgeConnected = status.connected;
                 if (status.connected) {
-                    window.$tmEventBus.emit("preview-send-data", "current");
+                    window.$tmEventBus.emit(tmEvents.PreviewSendData, "current");
                 }
                 break;
         }
@@ -122,17 +123,17 @@ export class TinymistConnectionsManager {
                 return;
             }
             this.fallbackMode = true;
-            window.$tmEventBus.emit("console-log", {
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                 type: "warning",
                 message: this.restartAllowed
                     ? "⚠ Entering fallback mode"
                     : "⚠ Disconnected and restart disabled",
             });
-            window.$tmEventBus.emit("fallback-enable", this.restartAllowed);
+            window.$tmEventBus.emit(tmEvents.FallbackEnable, this.restartAllowed);
         } else {
             this.fallbackMode = false;
-            window.$tmEventBus.emit("fallback-enable", false);
-            window.$tmEventBus.emit("console-log", {
+            window.$tmEventBus.emit(tmEvents.FallbackEnable, false);
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                 type: "success",
                 message: "[WS manager] connections active, fallback off",
             });

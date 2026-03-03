@@ -1,14 +1,15 @@
 import { Component } from "./component";
 import { TinymistApp } from "../tinymist/index";
+import type { TinymistEventPayloads } from "../tinymist/constants/custom-events";
 
-const externalToInternalEvents = {
+const externalToInternalEvents: Record<string, keyof TinymistEventPayloads> = {
     "editor::insert":"insert", // used by attachment panel to insert image markdown
     "attachments-page-updated":"files-updated", // used by attachment panel to notify about changes in attachments list
     "tinymist-attachments-dirty-map-updated":"files-dirty-updated", // used by attachment panel to notify of file dirty state changes
     "tinymist-attachment-reset-file":"reset-file", // used by attachment panel to reset a file
 };
 
-const internalToExternalEvents = {
+const internalToExternalEvents: Partial<Record<keyof TinymistEventPayloads, string>> = {
     "text-change": "editor-tinymist-change", // used for letting know page-editor.js that something changed, so it can trigger auto-saving
     "file-dirty-state": "tinymist-attachment-dirty-state",
 };
@@ -21,14 +22,17 @@ export class TinymistEditor extends Component {
         const externalBus = window.$events;
         const tinymistBus = window.$tmEventBus;
         const externalListeners = Object.entries(externalToInternalEvents).map(([externalEvent, internalEvent]) => {
-            const handler = (payload: unknown) => tinymistBus.emit(internalEvent, payload as {});
+            const handler = (payload: unknown) => tinymistBus.emit(internalEvent, payload as TinymistEventPayloads[typeof internalEvent]);
             externalBus.listen(externalEvent, handler);
             return { eventName: externalEvent, handler };
         });
 
-        const internalListeners = Object.entries(internalToExternalEvents).map(([internalEvent, externalEvent]) => {
+        const internalListeners = Object.entries(internalToExternalEvents)
+            .filter(([, externalEvent]) => externalEvent)
+            .map(([internalEvent, externalEvent]) => {
+            const typedInternalEvent = internalEvent as keyof TinymistEventPayloads;
             const handler = (payload: unknown) => externalBus.emit(externalEvent, payload as {});
-            tinymistBus.listen(internalEvent, handler);
+            tinymistBus.listen(typedInternalEvent, handler as any);
             return { eventName: internalEvent, handler };
         });
 
@@ -37,7 +41,7 @@ export class TinymistEditor extends Component {
                 externalBus.remove(eventName, handler);
             }
             for (const { eventName, handler } of internalListeners) {
-                tinymistBus.remove(eventName, handler);
+                tinymistBus.remove(eventName as keyof TinymistEventPayloads, handler as any);
             }
         };
     }

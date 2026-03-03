@@ -2,6 +2,7 @@
 // On the backend preview_server bridges both planes
 
 import {TinymistWebSocketClient} from './ws-base';
+import { tmEvents } from "../constants";
 
 export class PreviewBridgeClient extends TinymistWebSocketClient {
 
@@ -13,8 +14,8 @@ export class PreviewBridgeClient extends TinymistWebSocketClient {
         super(pageId, token, uniqueTabId, {
             name: 'Preview WS',
             statusKey: 'preview-ws',
-            connectEvent: 'preview-connect',
-            disconnectEvent: 'preview-disconnect',
+            connectEvent: tmEvents.PreviewConnect,
+            disconnectEvent: tmEvents.PreviewDisconnect,
             localPort: 4020,
             remotePath: '/ws/tinymist/preview/',
             binaryType: 'arraybuffer',
@@ -22,8 +23,8 @@ export class PreviewBridgeClient extends TinymistWebSocketClient {
 
         this.handleOutgoingControl = this.handleOutgoingControl.bind(this);
         this.handleOutgoingData = this.handleOutgoingData.bind(this);
-        window.$tmEventBus.listen("preview-send-control", this.handleOutgoingControl);
-        window.$tmEventBus.listen("preview-send-data", this.handleOutgoingData);
+        window.$tmEventBus.listen(tmEvents.PreviewSendControl, this.handleOutgoingControl);
+        window.$tmEventBus.listen(tmEvents.PreviewSendData, this.handleOutgoingData);
     }
 
     protected handleMessage(data: any): void {
@@ -33,12 +34,12 @@ export class PreviewBridgeClient extends TinymistWebSocketClient {
                 console.log(`[Preview WS] Received pong`);
                 return;
             }
-            window.$tmEventBus.emit("preview-control-message", payload);
+            window.$tmEventBus.emit(tmEvents.PreviewControlMessage, payload);
         };
 
         const forwardData = (buffer: ArrayBuffer) => {
             // console.log(`[Preview WS] Forwarding data buffer length: ${buffer.byteLength}`);
-            window.$tmEventBus.emit("preview-data-message", new Uint8Array(buffer));
+            window.$tmEventBus.emit(tmEvents.PreviewDataMessage, new Uint8Array(buffer));
         };
 
         // Check data type

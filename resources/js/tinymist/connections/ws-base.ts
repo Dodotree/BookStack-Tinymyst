@@ -1,8 +1,11 @@
+import { DEFAULT_WS_TIMINGS, LOCAL_WS_HOSTNAMES, tmEvents } from "../constants";
+import type { TinymistEventPayloads } from "../constants/custom-events";
+
 export interface TinymistWebSocketClientConfig {
     name: string;
     statusKey: string;
-    connectEvent: string;
-    disconnectEvent: string;
+    connectEvent: keyof TinymistEventPayloads;
+    disconnectEvent: keyof TinymistEventPayloads;
     localPort: number;
     remotePath: string;
     binaryType?: BinaryType;
@@ -14,20 +17,12 @@ export interface TinymistWebSocketClientConfig {
     reconnectFactor?: number;
 }
 
-const defaultTimings = {
-    heartbeatMs: 20000,
-    connectionTimeoutMs: 1000,
-    reconnectBaseMs: 5000,
-    reconnectMaxMs: 30000,
-    reconnectFactor: 1.5,
-};
-
 export abstract class TinymistWebSocketClient {
     protected socket: WebSocket | null = null;
     protected token: string = "";
     protected uniqueTabId: string = "";
     protected pageId: number;
-    protected config: TinymistWebSocketClientConfig & typeof defaultTimings;
+    protected config: TinymistWebSocketClientConfig & typeof DEFAULT_WS_TIMINGS;
 
     private pingInterval: ReturnType<typeof setInterval> | null = null;
     private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -46,7 +41,7 @@ export abstract class TinymistWebSocketClient {
         this.token = token;
         this.uniqueTabId = uniqueTabId || "";
         this.config = {
-            ...defaultTimings,
+            ...DEFAULT_WS_TIMINGS,
             ...config,
         };
 
@@ -59,9 +54,9 @@ export abstract class TinymistWebSocketClient {
             this.handleSyncConnect,
         );
         window.$tmEventBus.listen(this.config.disconnectEvent, this.disconnect);
-        window.$tmEventBus.listen("all-disconnect", this.disconnect);
-        window.$tmEventBus.listen("token-renewed", this.updateTokenOnNode);
-        window.$tmEventBus.listen("destroy", this.disconnect);
+        window.$tmEventBus.listen(tmEvents.AllDisconnect, this.disconnect);
+        window.$tmEventBus.listen(tmEvents.TokenRenewed, this.updateTokenOnNode);
+        window.$tmEventBus.listen(tmEvents.Destroy, this.disconnect);
     }
 
     protected async handleSyncConnect(): Promise<void> {
@@ -69,7 +64,7 @@ export abstract class TinymistWebSocketClient {
             await this.connect();
         } catch (err) {
             console.error(`[${this.config.name}] Failed to connect:`, err);
-            window.$tmEventBus.emit("console-log", {
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                 type: "error",
                 message: `[${this.config.name}] connection failed`,
                 details: err,
@@ -119,11 +114,11 @@ export abstract class TinymistWebSocketClient {
                     this.startHeartbeat();
 
                     console.log(`[${this.config.name}] WebSocket connected`);
-                    window.$tmEventBus.emit("status", {
+                    window.$tmEventBus.emit(tmEvents.Status, {
                         what: this.config.statusKey,
                         connected: true,
                     });
-                    window.$tmEventBus.emit("console-log", {
+                    window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                         type: "success",
                         message: `[${this.config.name}] connected`,
                     });
@@ -141,7 +136,7 @@ export abstract class TinymistWebSocketClient {
                         `[${this.config.name}] WebSocket error:`,
                         error,
                     );
-                    window.$tmEventBus.emit("status", {
+                    window.$tmEventBus.emit(tmEvents.Status, {
                         what: this.config.statusKey,
                         connected: false,
                     });
@@ -162,7 +157,7 @@ export abstract class TinymistWebSocketClient {
                         reason: event.reason,
                     });
                     this.stopHeartbeat();
-                    window.$tmEventBus.emit("status", {
+                    window.$tmEventBus.emit(tmEvents.Status, {
                         what: this.config.statusKey,
                         connected: false,
                     });
@@ -178,7 +173,7 @@ export abstract class TinymistWebSocketClient {
                         console.warn(
                             `[${this.config.name}] Invalid token, requesting renewal`,
                         );
-                        window.$tmEventBus.emit("invalid-token");
+                        window.$tmEventBus.emit(tmEvents.InvalidToken);
                     }
 
                     if (event.code !== 1000) {
@@ -196,7 +191,7 @@ export abstract class TinymistWebSocketClient {
                     }
                 };
             } catch (error) {
-                window.$tmEventBus.emit("status", {
+                window.$tmEventBus.emit(tmEvents.Status, {
                     what: this.config.statusKey,
                     connected: false,
                 });
@@ -208,7 +203,7 @@ export abstract class TinymistWebSocketClient {
     protected buildUrl(): string {
         const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
         const hostname = window.location.hostname;
-        const isLocal = hostname === "localhost" || hostname === "127.0.0.1";
+        const isLocal = LOCAL_WS_HOSTNAMES.has(hostname);
         const hostWithPort = window.location.host;
         const baseUrl = isLocal
             ? `${protocol}//${hostname}:${this.config.localPort}`
@@ -290,7 +285,7 @@ export abstract class TinymistWebSocketClient {
                 console.warn(
                     `[${this.config.name}] WebSocket connection timeout`,
                 );
-                window.$tmEventBus.emit("status", {
+                window.$tmEventBus.emit(tmEvents.Status, {
                     what: this.config.statusKey,
                     connected: false,
                 });
@@ -350,7 +345,7 @@ export abstract class TinymistWebSocketClient {
             this.socket.close(1000, "Client disconnected");
             this.socket = null;
             console.log(`[${this.config.name}] Intentionally disconnected`);
-            window.$tmEventBus.emit("status", {
+            window.$tmEventBus.emit(tmEvents.Status, {
                 what: this.config.statusKey,
                 connected: false,
             });

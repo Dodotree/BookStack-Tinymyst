@@ -1,3 +1,5 @@
+import { tmEvents } from "../constants";
+
 type OutlineItem = {
     title: string;
     level: number;
@@ -14,12 +16,12 @@ export class PreviewControlPlane {
         this.sendControlMessage = this.sendControlMessage.bind(this);
         this.handleControlMessage = this.handleControlMessage.bind(this);
         window.$tmEventBus.listen(
-            "preview-control-message",
+            tmEvents.PreviewControlMessage,
             this.handleControlMessage,
         );
-        window.$tmEventBus.listen("control", this.sendControlMessage);
+        window.$tmEventBus.listen(tmEvents.Control, this.sendControlMessage);
         window.$tmEventBus.listen(
-            "cursor-spotlight-toggle",
+            tmEvents.CursorSpotlightToggle,
             ({ enabled }: { enabled?: boolean }) => {
                 this.cursorSpotlightEnabled = Boolean(enabled);
             },
@@ -48,13 +50,13 @@ export class PreviewControlPlane {
                 this.onSyncChanges(msg);
             } else if (msg.status) {
                 // Generic status message
-                window.$tmEventBus.emit("console-log", {
+                window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                     type: "info",
                     message: `[Preview Bridge (via Control)] Status: ${msg.status}`,
                 });
             } else {
                 console.warn(`[Preview Control] Unknown message: ${raw}`);
-                window.$tmEventBus.emit("console-log", {
+                window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                     type: "warning",
                     message: `[Preview Bridge (via Control)] Unknown message: ${raw}`,
                 });
@@ -66,17 +68,17 @@ export class PreviewControlPlane {
 
     private onCompileStatus(kind: string, msg?: any) {
         if (kind === "Compiling") {
-            window.$tmEventBus.emit("console-log", {
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                 type: "info",
                 message: "[Preview Control] Compiling...",
             });
         } else if (kind === "CompileSuccess") {
-            window.$tmEventBus.emit("console-log", {
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                 type: "success",
                 message: "[Preview Control] Compilation successful",
             });
         } else if (kind === "CompileError") {
-            window.$tmEventBus.emit("console-log", {
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                 type: "error",
                 message: "[Preview Control] Compilation failed",
             });
@@ -155,6 +157,6 @@ export class PreviewControlPlane {
             `[Preview Control] Sending Control Plane ${message.event}:`,
             msg,
         );
-        window.$tmEventBus.emit("preview-send-control", JSON.stringify(msg));
+        window.$tmEventBus.emit(tmEvents.PreviewSendControl, JSON.stringify(msg));
     }
 }

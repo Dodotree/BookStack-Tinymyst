@@ -4,6 +4,8 @@
  * Emits events on renewal success or failure
  * */
 
+import { AUTH_TOKEN_RENEWAL_URL, tmEvents } from "../constants";
+
 export class TinymistTokenManager {
     private token: string | null = null;
     private tokenExpiry: number = 0; // Unix timestamp in ms
@@ -20,9 +22,9 @@ export class TinymistTokenManager {
 
         this.disconnect = this.disconnect.bind(this);
         this.renewToken = this.renewToken.bind(this);
-        window.$tmEventBus.listen("all-disconnect", this.disconnect);
-        window.$tmEventBus.listen("invalid-token", this.renewToken);
-        window.$tmEventBus.listen("destroy", this.disconnect);
+        window.$tmEventBus.listen(tmEvents.AllDisconnect, this.disconnect);
+        window.$tmEventBus.listen(tmEvents.InvalidToken, this.renewToken);
+        window.$tmEventBus.listen(tmEvents.Destroy, this.disconnect);
 
         if (token) {
             this.scheduleTokenRenewal();
@@ -36,7 +38,7 @@ export class TinymistTokenManager {
         this.token = token;
         this.decodeAndStoreTokenExpiry(token);
         this.scheduleTokenRenewal();
-        window.$tmEventBus.emit("token-renewed", this.token as string);
+        window.$tmEventBus.emit(tmEvents.TokenRenewed, this.token as string);
     }
 
     private decodeAndStoreTokenExpiry(token: string): void {
@@ -94,7 +96,7 @@ export class TinymistTokenManager {
 
         try {
             console.log('[Auth Token] Renewing WebSocket token...');
-            const response = await window.$http.post('/ajax/tinymist/renew-ws-token', {
+            const response = await window.$http.post(AUTH_TOKEN_RENEWAL_URL, {
                 page_id: this.pageId
             }) as any;
 
@@ -107,17 +109,17 @@ export class TinymistTokenManager {
                 this.token = data.token;
                 this.tokenExpiry = data.expires_at;
 
-                window.$tmEventBus.emit("token-renewed", this.token as string);
+                window.$tmEventBus.emit(tmEvents.TokenRenewed, this.token as string);
 
                 // Schedule next renewal
                 this.scheduleTokenRenewal();
             } else {
                 console.error('[Auth Token] Token renewal failed:', data.error || 'Unknown error');
-                window.$tmEventBus.emit("console-log",{ type: "error", message: "[Auth Token] token renewal failed", details: data });
+                window.$tmEventBus.emit(tmEvents.ConsoleLog,{ type: "error", message: "[Auth Token] token renewal failed", details: data });
             }
         } catch (error) {
             console.error('[Auth Token] Token renewal request failed:', error);
-            window.$tmEventBus.emit("console-log",{ type: "error", message: "[Auth Token] token renewal failed", details: error });
+            window.$tmEventBus.emit(tmEvents.ConsoleLog,{ type: "error", message: "[Auth Token] token renewal failed", details: error });
         }
     }
 

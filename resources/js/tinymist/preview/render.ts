@@ -20,6 +20,8 @@ import {
 import renderModule from "@myriaddreamin/typst-ts-renderer/pkg/typst_ts_renderer_bg.wasm";
 import { PreviewCursor } from "./cursor";
 
+import { ENTRY_FILE_NAME, tmEvents } from "../constants";
+
 export class PreviewRenderer {
     private renderer: TypstRenderer | null = null;
     private session: RenderSession | null = null;
@@ -44,7 +46,7 @@ export class PreviewRenderer {
     private panStartScrollLeft = 0;
     private panStartScrollTop = 0;
 
-    private activeFileName = "entry.typ";
+    private activeFileName = ENTRY_FILE_NAME;
     private cursorSpotlightUserEnabled = true;
     private scrollIntoViewUserEnabled = true;
 
@@ -71,24 +73,24 @@ export class PreviewRenderer {
         this.handlePanMouseUp = this.handlePanMouseUp.bind(this);
         this.handleCursorPosition = this.handleCursorPosition.bind(this);
 
-        window.$tmEventBus.listen("wasm-init", this.handleSyncInit);
-        window.$tmEventBus.listen("wasm-dispose", this.dispose);
+        window.$tmEventBus.listen(tmEvents.WasmInit, this.handleSyncInit);
+        window.$tmEventBus.listen(tmEvents.WasmDispose, this.dispose);
 
-        window.$tmEventBus.listen<{ svg: string; docVersion: string }>(
-            "fallback-compiled-svg",
+        window.$tmEventBus.listen(
+            tmEvents.FallbackCompiledSvg,
             ({ svg, docVersion }) => this.updateSVG(svg),
         );
 
-        window.$tmEventBus.listen("data-binary", this.handleSyncMessage);
+        window.$tmEventBus.listen(tmEvents.DataBinary, this.handleSyncMessage);
         window.$tmEventBus.listen(
-            "preview-cursor-position",
+            tmEvents.PreviewCursorPosition,
             this.handleCursorPosition,
         );
 
         window.$tmEventBus.listen(
-            "active-file-change",
+            tmEvents.ActiveFileChange,
             (payload: { fileName: string; url: string }) => {
-                this.activeFileName = payload.fileName;
+                this.activeFileName = payload.fileName || ENTRY_FILE_NAME;
                 this.applyCursorSpotlightState();
                 this.applyScrollIntoViewState();
             },
@@ -127,7 +129,7 @@ export class PreviewRenderer {
             await this.initialize();
         } catch (err) {
             console.error("[Preview WASM] Failed to initialize:", err);
-            window.$tmEventBus.emit("console-log", {
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                 type: "error",
                 message: "[Preview WASM] init failed",
                 details: err,
@@ -294,7 +296,7 @@ export class PreviewRenderer {
             // }
 
             console.log("[Preview WASM] Render complete");
-            window.$tmEventBus.emit("data-cursor-show"); // reinsert cursor if possible
+            window.$tmEventBus.emit(tmEvents.DataCursorShow); // reinsert cursor if possible
         } catch (e: any) {
             console.error(`[Preview WASM] Rendering failed:`, e);
             this.previewElement.innerHTML = `
@@ -412,7 +414,7 @@ export class PreviewRenderer {
     private applyCursorSpotlightState(): void {
         const enabled =
             this.cursorSpotlightUserEnabled &&
-            this.activeFileName === "entry.typ";
+            this.activeFileName === ENTRY_FILE_NAME;
 
         const button = this.previewElement
             .closest(".tinymist-preview-pane")
@@ -427,7 +429,7 @@ export class PreviewRenderer {
             );
         }
 
-        window.$tmEventBus.emit("cursor-spotlight-toggle", {
+        window.$tmEventBus.emit(tmEvents.CursorSpotlightToggle, {
             enabled,
             activeFile: this.activeFileName,
             userEnabled: this.cursorSpotlightUserEnabled,
@@ -437,7 +439,7 @@ export class PreviewRenderer {
     private applyScrollIntoViewState(): void {
         const enabled =
             this.scrollIntoViewUserEnabled &&
-            this.activeFileName === "entry.typ";
+            this.activeFileName === ENTRY_FILE_NAME;
 
         const button = this.previewElement
             .closest(".tinymist-preview-pane")
@@ -454,7 +456,7 @@ export class PreviewRenderer {
             );
         }
 
-        window.$tmEventBus.emit("cursor-scroll-into-view-toggle", {
+        window.$tmEventBus.emit(tmEvents.CursorScrollIntoViewToggle, {
             enabled,
             activeFile: this.activeFileName,
             userEnabled: this.scrollIntoViewUserEnabled,
@@ -469,7 +471,7 @@ export class PreviewRenderer {
     }): void {
         const enabled =
             this.scrollIntoViewUserEnabled &&
-            this.activeFileName === "entry.typ";
+            this.activeFileName === ENTRY_FILE_NAME;
         if (!enabled) {
             return;
         }
@@ -653,7 +655,7 @@ export class PreviewRenderer {
         this.recovering = true;
         this.recoveryAttempts += 1;
 
-        window.$tmEventBus.emit("console-log", {
+        window.$tmEventBus.emit(tmEvents.ConsoleLog, {
             type: "warning",
             message: `[Preview WASM] Renderer failed (${error.message ?? error}). Restarting session...`,
         });
@@ -661,13 +663,13 @@ export class PreviewRenderer {
         try {
             this.dispose();
             await this.initialize();
-            window.$tmEventBus.emit("console-log", {
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                 type: "success",
                 message: "[Preview WASM] Renderer session restarted",
             });
         } catch (restartError) {
             console.error("[Preview WASM] Recovery failed:", restartError);
-            window.$tmEventBus.emit("console-log", {
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                 type: "error",
                 message: "[Preview WASM] Renderer recovery failed",
                 details: restartError,

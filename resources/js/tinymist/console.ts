@@ -1,4 +1,6 @@
 // Visible editor console for displaying compilation messages and diagnostics
+import { tmEvents } from "./constants";
+
 export class TinymistConsole {
     console: HTMLElement;
     collapsed: boolean = false;
@@ -12,7 +14,7 @@ export class TinymistConsole {
         this.handlePanelClick = this.handlePanelClick.bind(this);
         this.toggleConsole = this.toggleConsole.bind(this);
 
-        window.$tmEventBus.listen("console-log", this.logMessage);
+        window.$tmEventBus.listen(tmEvents.ConsoleLog, this.logMessage);
         this.console
             .closest("#tinymist-console-panel")
             ?.addEventListener("click", this.handlePanelClick);
@@ -41,7 +43,7 @@ export class TinymistConsole {
 
     toggleConsole(button?: HTMLButtonElement): void {
         this.collapsed = !this.collapsed;
-        window.$tmEventBus.emit("console-toggle", this.collapsed);
+        window.$tmEventBus.emit(tmEvents.ConsoleToggle, this.collapsed);
         if (button) {
             button.setAttribute("aria-expanded", (!this.collapsed).toString());
             button.setAttribute(
@@ -61,7 +63,7 @@ export class TinymistConsole {
         message,
         details,
     }: {
-        type: "error" | "warning" | "info" | "success";
+        type: "error" | "warning" | "info" | "success" | "hint";
         message: string;
         details?: any;
     }) {

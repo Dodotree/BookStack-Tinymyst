@@ -10,13 +10,15 @@ import { TinymistThemeSettings } from "./editor/theme-settings";
 import { TinymistConsole } from "./console";
 import { PreviewRenderer } from "./preview/render";
 import { EventBus } from "./event-bus";
+import { tmEvents } from "./constants";
+import type { TinymistEventPayloads } from "./constants/custom-events";
 
 type TinymistRefs = Record<string, HTMLElement>;
 type TinymistOpts = Record<string, string>;
 
 declare global {
     interface Window {
-        $tmEventBus: EventBus;
+        $tmEventBus: EventBus<TinymistEventPayloads>;
     }
 }
 
@@ -38,11 +40,12 @@ export class TinymistApp {
         this.opts = opts;
         this.uniqueTabId = this.createUniqueTabId();
         this.pageId = Number(this.opts.pageId);
+        this.destroy = this.destroy.bind(this);
     }
 
     setup(): void {
         if (!window.$tmEventBus) {
-            window.$tmEventBus = new EventBus();
+            window.$tmEventBus = new EventBus<TinymistEventPayloads>();
         }
 
         const editorUI = new TinymistEditorUI(
@@ -75,7 +78,7 @@ export class TinymistApp {
         this.consoleToggleHandler = (collapsed?: boolean) => {
             this.root.classList.toggle("tinymist-console-collapsed", collapsed);
         };
-        window.$tmEventBus.listen("console-toggle", this.consoleToggleHandler);
+        window.$tmEventBus.listen(tmEvents.ConsoleToggle, this.consoleToggleHandler);
 
         // Clean up connections on page navigation
         window.addEventListener("beforeunload", this.destroy);
@@ -92,10 +95,10 @@ export class TinymistApp {
     private setupWasm(): void {
         try {
             new PreviewRenderer(this.refs.preview as HTMLElement);
-            window.$tmEventBus.emit("wasm-init");
+            window.$tmEventBus.emit(tmEvents.WasmInit);
         } catch (error) {
             console.error("[Tinymist App] renderer setup failed:", error);
-            window.$tmEventBus.emit("console-log", {
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                 type: "error",
                 message: "⚠ [App] renderer initialization failed: ",
                 details: error,
@@ -114,7 +117,7 @@ export class TinymistApp {
     }
 
     destroy(): void {
-        window.$tmEventBus.emit("destroy");
+        window.$tmEventBus.emit(tmEvents.Destroy);
         window.removeEventListener("beforeunload", this.destroy);
         window.removeEventListener("pagehide", this.destroy);
 

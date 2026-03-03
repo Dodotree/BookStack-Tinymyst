@@ -1,9 +1,11 @@
+import { ENTRY_FILE_NAME, tmEvents } from "../constants";
+
 export class TinymistFileDropdown {
     fileSelect!: HTMLSelectElement;
     private fileSyncWSConnected = false;
-    private activeFileName = "entry.typ";
+    private activeFileName = ENTRY_FILE_NAME;
     private loadedFileStateByName: Map<string, boolean> = new Map([
-        ["entry.typ", true],
+        [ENTRY_FILE_NAME, true],
     ]);
     private dirtyAttachmentByName: Map<string, boolean> = new Map();
 
@@ -16,7 +18,7 @@ export class TinymistFileDropdown {
         this.fileSelect.addEventListener("change", this.onSelectChange);
 
         window.$tmEventBus.listen(
-            "status",
+            tmEvents.Status,
             (status: { what?: string; connected?: boolean }) => {
                 if (status?.what !== "file-lsp-ws") {
                     return;
@@ -26,7 +28,7 @@ export class TinymistFileDropdown {
         );
 
         window.$tmEventBus.listen(
-            "sync-full-state",
+            tmEvents.SyncFullState,
             (payload: { fileName?: string }) => {
                 const fileName = String(payload?.fileName || "").trim();
                 if (!fileName) {
@@ -37,20 +39,20 @@ export class TinymistFileDropdown {
         );
 
         window.$tmEventBus.listen(
-            "files-updated",this.refreshFileDropdown
+            tmEvents.FilesUpdated,this.refreshFileDropdown
         );
 
         window.$tmEventBus.listen(
-            "files-dirty-updated",
+            tmEvents.FilesDirtyUpdated,
             this.dirtyMapUpdateHandler,
         );
-        window.$tmEventBus.listen("destroy", () => {
+        window.$tmEventBus.listen(tmEvents.Destroy, () => {
             this.fileSelect.removeEventListener("change", this.onSelectChange);
         });
     }
 
     private onSelectChange(): void {
-        const selectedFile = (this.fileSelect?.value || "entry.typ").trim();
+        const selectedFile = (this.fileSelect?.value || ENTRY_FILE_NAME).trim();
         if (!selectedFile) {
             this.fileSelect.value = this.activeFileName;
             return;
@@ -65,7 +67,7 @@ export class TinymistFileDropdown {
             this.fileSelect.value = this.activeFileName;
             const warning = `[Editor] Cannot open ${selectedFile} while file sync socket is offline: file state is not loaded yet.`;
             console.warn(warning);
-            window.$tmEventBus.emit("console-log", {
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                 type: "warning",
                 message: warning,
             });
@@ -73,7 +75,7 @@ export class TinymistFileDropdown {
         }
 
         this.activeFileName = selectedFile;
-        window.$tmEventBus.emit("active-file-change", {
+        window.$tmEventBus.emit(tmEvents.ActiveFileChange, {
             fileName: selectedFile,
             url: this.fileSelect.selectedOptions[0]?.dataset.fileUrl || "",
         });
@@ -118,7 +120,7 @@ export class TinymistFileDropdown {
         const linkByName = new Map<string, string>();
         Array.from(doc.querySelectorAll("a")).forEach((link) => {
             const name = (link.textContent || "").trim();
-            if (!name || name === "entry.typ") {
+            if (!name || name === ENTRY_FILE_NAME) {
                 return;
             }
             const href = String(link.getAttribute("href") || "").trim();
@@ -130,10 +132,10 @@ export class TinymistFileDropdown {
         });
 
         const attachmentNames = Array.from(linkByName.keys());
-        const selectedValue = this.fileSelect.value || "entry.typ";
+        const selectedValue = this.fileSelect.value || ENTRY_FILE_NAME;
 
         this.fileSelect.innerHTML = "";
-        this.fileSelect.add(new Option("entry.typ", "entry.typ"));
+        this.fileSelect.add(new Option(ENTRY_FILE_NAME, ENTRY_FILE_NAME));
         attachmentNames.forEach((name) => {
             const option = new Option(name, name);
             option.dataset.fileUrl = linkByName.get(name) || "";
@@ -143,7 +145,7 @@ export class TinymistFileDropdown {
         const hasPrevious = Array.from(this.fileSelect.options).some(
             (option) => option.value === selectedValue,
         );
-        this.fileSelect.value = hasPrevious ? selectedValue : "entry.typ";
+        this.fileSelect.value = hasPrevious ? selectedValue : ENTRY_FILE_NAME;
         this.applyDirtyCueToDropdown();
     }
 
@@ -153,7 +155,7 @@ export class TinymistFileDropdown {
         }
         Array.from(this.fileSelect.options).forEach((option) => {
             const fileName = (option.value || "").trim();
-            if (!fileName || fileName === "entry.typ") {
+            if (!fileName || fileName === ENTRY_FILE_NAME) {
                 option.text = fileName || option.text;
                 return;
             }

@@ -7,6 +7,13 @@
 
 import { EditorView, Decoration, DecorationSet } from "@codemirror/view";
 import { ChangeSet, StateEffect, StateField, RangeSetBuilder } from "@codemirror/state";
+import {
+    ENTRY_FILE_NAME,
+    TOKEN_TYPES,
+    TOKEN_MODIFIERS,
+    HIGHLIGHT_COLORS,
+    tmEvents,
+} from "../constants";
 
 // Highlight region interface
 interface HighlightRegion {
@@ -17,60 +24,6 @@ interface HighlightRegion {
     modifiers?: string[]; // Optional modifiers (strong, emph, etc.)
 }
 
-// Arrays needed to decode semantic tokens coming from LSP server init response
-// Get token legend from server capabilities
-// const tokenLegend = initResult.capabilities.semanticTokensProvider?.legend;
-// const tokenTypes = tokenLegend?.tokenTypes || [];
-// const tokenModifiers = tokenLegend?.tokenModifiers || [];
-const tokenTypes = [
-    "comment", "string", "keyword", "operator", "number",
-    "function", "decorator", "type", "namespace", "bool",
-    "punct", "escape", "link", "raw", "label", "ref",
-    "heading", "marker", "term", "delim", "pol", "error", "text"
-];
-const tokenModifiers = [
-    "strong", "emph", "math", "readonly", "static", "defaultLibrary"
-];
-
-// Styling is provided via CSS classes (tm-hlt-* and tm-mod-*)
-// Keep token keys to validate CSS coverage.
-export const highlightColors = [
-    "math",
-    "string",
-    "comment",
-    "keyword",
-    "operator",
-    "number",
-    "function",
-    "method",
-    "macro",
-    "decorator",
-    "type",
-    "class",
-    "enum",
-    "interface",
-    "struct",
-    "typeParameter",
-    "namespace",
-    "variable",
-    "property",
-    "enumMember",
-    "parameter",
-    "punct",
-    "bool",
-    "escape",
-    "link",
-    "raw",
-    "label",
-    "ref",
-    "heading",
-    "marker",
-    "term",
-    "delim",
-    "pol",
-    "error",
-    "text",
-];
 
 // StateEffect to add highlights
 const addHighlightsEffect = StateEffect.define<HighlightRegion[]>();
@@ -178,24 +131,24 @@ export class SemanticTokenProcessor {
         // placeholders until attachEditorView is called
         this.editorView = editorView;
         this.getSnapshotContext = () => ({ snapshot: "", changeSet: ChangeSet.empty(0) });
-        this.activeFileName = "entry.typ";
+        this.activeFileName = ENTRY_FILE_NAME;
 
         this.processSemanticTokens = this.processSemanticTokens.bind(this);
         this.processSemanticTokensDelta = this.processSemanticTokensDelta.bind(this);
-        window.$tmEventBus.listen("lsp-semantic-tokens", this.processSemanticTokens);
-        window.$tmEventBus.listen("lsp-semantic-tokens-delta", this.processSemanticTokensDelta);
-        window.$tmEventBus.listen("active-file-change", (payload: { fileName: string; url: string }) => {
+        window.$tmEventBus.listen(tmEvents.LspSemanticTokens, this.processSemanticTokens);
+        window.$tmEventBus.listen(tmEvents.LspSemanticTokensDelta, this.processSemanticTokensDelta);
+        window.$tmEventBus.listen(tmEvents.ActiveFileChange, (payload: { fileName: string; url: string }) => {
             this.activeFileName = payload.fileName;
             this.editorView?.dispatch({
                 effects: clearHighlightsEffect.of(null),
             });
         });
-        window.$tmEventBus.listen("reset-file", (payload: { fileName: string }) => {
+        window.$tmEventBus.listen(tmEvents.ResetFile, (_payload: { fileName?: string }) => {
             this.editorView?.dispatch({
                 effects: clearHighlightsEffect.of(null),
             });
         });
-        window.$tmEventBus.listen("destroy", () => {
+        window.$tmEventBus.listen(tmEvents.Destroy, () => {
             this.editorView = null;
             this.getSnapshotContext = () => ({ snapshot: "Destroyed", changeSet: ChangeSet.empty(0) });
             this.encodedTokens = null;
@@ -443,7 +396,7 @@ export class SemanticTokenProcessor {
             acc.line += deltaLine;
             acc.startChar = deltaLine === 0 ? acc.startChar + deltaStartChar : deltaStartChar;
 
-            const modifiers = tokenModifiers.flatMap((modifier, j) =>
+            const modifiers = TOKEN_MODIFIERS.flatMap((modifier, j) =>
                 (tokenModifierBits & (1 << j)) ? [modifier] : []
             );
             const normalizedModifiers = modifiers.length
@@ -459,7 +412,7 @@ export class SemanticTokenProcessor {
                 line: acc.line,
                 start: acc.startChar,
                 len: length,
-                type: tokenTypes[tokenType] || `unknown(${tokenType})`,
+                type: TOKEN_TYPES[tokenType] || `unknown(${tokenType})`,
                 modifiers: normalizedModifiers,
             });
 
@@ -495,7 +448,7 @@ export class SemanticTokenProcessor {
             if (!type || type === "text") {
                 return highlights;
             }
-            if (type !== "identifier" && !highlightColors.includes(type)) {
+            if (type !== "identifier" && !HIGHLIGHT_COLORS.includes(type)) {
                 console.warn("[Semantic Tokens] Unknown token type:", type);
                 return highlights;
             }

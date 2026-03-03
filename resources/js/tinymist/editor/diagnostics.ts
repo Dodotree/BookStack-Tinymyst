@@ -7,6 +7,7 @@
 import { EditorView } from "@codemirror/view";
 import { Diagnostic, setDiagnostics } from "@codemirror/lint";
 import { ChangeSet } from "@codemirror/state";
+import { ENTRY_FILE_NAME, tmEvents } from "../constants";
 
 
 export class DiagnosticsProcessor {
@@ -17,18 +18,18 @@ export class DiagnosticsProcessor {
     constructor(editorView: EditorView | null = null) {
         this.editorView = editorView;
         this.getSnapshotContext = () => ({ snapshot: "should be overridden", changeSet: ChangeSet.empty(0) });
-        this.activeFileName = "entry.typ";
+        this.activeFileName = ENTRY_FILE_NAME;
 
         this.mapDiagnosticsToCurrent = this.mapDiagnosticsToCurrent.bind(this);
-        window.$tmEventBus.listen("diagnostics", this.mapDiagnosticsToCurrent);
-        window.$tmEventBus.listen("active-file-change", (payload: { fileName: string; url: string }) => {
+        window.$tmEventBus.listen(tmEvents.Diagnostics, this.mapDiagnosticsToCurrent);
+        window.$tmEventBus.listen(tmEvents.ActiveFileChange, (payload: { fileName: string; url: string }) => {
             this.activeFileName = payload.fileName;
             this.triggerLinting([]);
         });
-        window.$tmEventBus.listen("reset-file", (payload: { fileName: string }) => {
+        window.$tmEventBus.listen(tmEvents.ResetFile, (_payload: { fileName?: string }) => {
             this.triggerLinting([]);
         });
-        window.$tmEventBus.listen("destroy", () => {
+        window.$tmEventBus.listen(tmEvents.Destroy, () => {
             this.editorView = null;
             this.getSnapshotContext = () => ({ snapshot: "Destroyed", changeSet: ChangeSet.empty(0) });
         });
@@ -56,16 +57,17 @@ export class DiagnosticsProcessor {
         }
     }
 
-    private mapDiagnosticsToCurrent = (payload: { diagnostics: any[]; docVersion?: number; fileName: string }) => {
+    private mapDiagnosticsToCurrent = (payload: { diagnostics: any[]; docVersion?: number; fileName?: string }) => {
         if (!payload || !Array.isArray(payload.diagnostics) ||!this.editorView || typeof payload.docVersion !== "number") {
             return;
         }
 
-        if (payload.fileName !== this.activeFileName) {
+        if (payload.fileName && payload.fileName !== this.activeFileName) {
             return;
         }
 
-        const context = this.getSnapshotContext(payload.docVersion, payload.fileName);
+        const fileName = payload.fileName ?? this.activeFileName;
+        const context = this.getSnapshotContext(payload.docVersion, fileName);
         const snapshotLineLen = context.snapshot.split('\n').map(line => line.length + 1); // +1 for newline
         const snapshotOffsets = snapshotLineLen
             .reduce((acc, len, idx) => {
@@ -120,7 +122,7 @@ export class DiagnosticsProcessor {
     logToConsole(diagnostics: Diagnostic[]): void {
         diagnostics.forEach(diag => {
             const logMessage = `[Diagnostic] ${diag.message} ${diag.severity} (from ${diag.from}, to ${diag.to})`;
-            window.$tmEventBus.emit("console-log", { type: diag.severity, message: logMessage });
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, { type: diag.severity, message: logMessage });
         });
     }
 

@@ -8,6 +8,8 @@
 // appends cursor circles to those elements
 // keeps the state so that svg re-renders can re-apply the cursor positions
 
+import { tmEvents } from "../constants";
+
 type CursorParams = {
     textSelector: string;
     charIndex: number;
@@ -32,9 +34,9 @@ export class PreviewCursor {
         this.pathToSelector = this.pathToSelector.bind(this);
         this.showCursor = this.showCursor.bind(this);
         this.onViewportChange = this.showCursor.bind(this);
-        window.$tmEventBus.listen("data-cursor-paths", this.pathToSelector);
-        window.$tmEventBus.listen("data-cursor-show", this.showCursor);
-        window.$tmEventBus.listen("cursor-spotlight-toggle", ({ enabled }: { enabled?: boolean }) => {
+        window.$tmEventBus.listen(tmEvents.DataCursorPaths, this.pathToSelector);
+        window.$tmEventBus.listen(tmEvents.DataCursorShow, this.showCursor);
+        window.$tmEventBus.listen(tmEvents.CursorSpotlightToggle, ({ enabled }: { enabled?: boolean }) => {
             this.spotlightEnabled = Boolean(enabled);
             if (!this.spotlightEnabled) {
                 this.hideCursor();
@@ -42,7 +44,7 @@ export class PreviewCursor {
                 this.showCursor();
             }
         });
-        window.$tmEventBus.listen("destroy", this.destroy);
+        window.$tmEventBus.listen(tmEvents.Destroy, this.destroy);
 
         this.previewElement.addEventListener('scroll', this.onViewportChange, { passive: true });
         window.addEventListener('resize', this.onViewportChange, { passive: true });
@@ -260,7 +262,7 @@ export class PreviewCursor {
 
         const contentX = glyphRect.left - previewRect.left + this.previewElement.scrollLeft + glyphRect.width / 2;
         const contentY = glyphRect.top - previewRect.top + this.previewElement.scrollTop + glyphRect.height / 2;
-        window.$tmEventBus.emit("preview-cursor-position", {
+        window.$tmEventBus.emit(tmEvents.PreviewCursorPosition, {
             contentX,
             contentY,
             width: glyphRect.width,

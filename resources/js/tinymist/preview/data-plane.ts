@@ -1,3 +1,5 @@
+import { tmEvents } from "../constants";
+
 export class PreviewDataPlane {
     private processingQueue: Promise<void> = Promise.resolve();
     private textDecoder = new TextDecoder();
@@ -6,16 +8,16 @@ export class PreviewDataPlane {
     constructor() {
         this.handleBridgeDataMessage = this.handleBridgeDataMessage.bind(this);
         window.$tmEventBus.listen(
-            "preview-data-message",
+            tmEvents.PreviewDataMessage,
             this.handleBridgeDataMessage,
         );
         window.$tmEventBus.listen(
-            "cursor-spotlight-toggle",
+            tmEvents.CursorSpotlightToggle,
             ({ enabled }: { enabled?: boolean }) => {
                 this.cursorSpotlightEnabled = Boolean(enabled);
             },
         );
-        window.$tmEventBus.listen("destroy",() => {
+        window.$tmEventBus.listen(tmEvents.Destroy,() => {
             this.textDecoder = null as any;
             this.processingQueue = Promise.resolve();
         });
@@ -69,7 +71,7 @@ export class PreviewDataPlane {
                     //     console.log('[Preview Data] Could not decode diff sample');
                     // }
 
-                    window.$tmEventBus.emit("data-binary", {
+                    window.$tmEventBus.emit(tmEvents.DataBinary, {
                         command,
                         payload,
                     });
@@ -77,7 +79,7 @@ export class PreviewDataPlane {
 
                 case "new":
                     // console.log(`[Preview Data] Received new document (${payload.length} bytes)`);
-                    window.$tmEventBus.emit("data-binary", {
+                    window.$tmEventBus.emit(tmEvents.DataBinary, {
                         command,
                         payload,
                     });
@@ -92,7 +94,7 @@ export class PreviewDataPlane {
                     try {
                         const parsed = JSON.parse(decoded);
                         // console.info('[Preview Data] Cursor paths parsed:', parsed);
-                        window.$tmEventBus.emit("data-cursor-paths", parsed);
+                        window.$tmEventBus.emit(tmEvents.DataCursorPaths, parsed);
                     } catch (err) {
                         console.error(
                             "[Preview Data] Cursor paths not valid JSON:",

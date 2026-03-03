@@ -8,17 +8,20 @@
  * Fallback compiler for Typst when WebSocket sync is unavailable
  * Handles compilation via AJAX endpoint and diagnostic processing
  */
+
+import { FALLBACK_COMPILE_URL, tmEvents } from "../constants";
+
 export class TinymistFallbackCompiler {
     private enabled: boolean = false;
     private pageId: number = 0;
 
     constructor(pageId: number) {
         this.pageId = pageId;
-        window.$tmEventBus.listen("fallback-enable", (enabled: boolean) => this.enabled = enabled);
-        window.$tmEventBus.listen("fallback-compile", async ({ docVersion, content }: { docVersion: number; content: string }) => {
+        window.$tmEventBus.listen(tmEvents.FallbackEnable, (enabled: boolean) => this.enabled = enabled);
+        window.$tmEventBus.listen(tmEvents.FallbackCompile, async ({ docVersion, content }: { docVersion: number; content: string }) => {
             await this.compile(docVersion, content, this.pageId);
         });
-        window.$tmEventBus.listen("destroy", this.destroy);
+        window.$tmEventBus.listen(tmEvents.Destroy, this.destroy);
     }
 
     /**
@@ -30,10 +33,10 @@ export class TinymistFallbackCompiler {
         }
 
         console.log(`[Typst] Starting Typst compilation #${docVersion} (fallback mode)`);
-        window.$tmEventBus.emit("console-log",{ type: "info", message: "[Typst] Compiling..." });
+        window.$tmEventBus.emit(tmEvents.ConsoleLog,{ type: "info", message: "[Typst] Compiling..." });
 
         try {
-            const response = await window.$http.post('/ajax/tinymist/compile', { content, docVersion, pageId });
+            const response = await window.$http.post(FALLBACK_COMPILE_URL, { content, docVersion, pageId });
 
             console.log(`[Typst] Compilation #${docVersion} completed (processing...)`);
 
@@ -45,36 +48,36 @@ export class TinymistFallbackCompiler {
 
                 if (data.success) {
                     // Store and show SVG
-                    window.$tmEventBus.emit("fallback-compiled-svg", { svg: data.svg || "", docVersion: data.docVersion });
-                    window.$tmEventBus.emit("console-log",{ type: "success", message: `[Typst] Compiled successfully (${content.length} chars)` });
+                    window.$tmEventBus.emit(tmEvents.FallbackCompiledSvg, { svg: data.svg || "", docVersion: data.docVersion });
+                    window.$tmEventBus.emit(tmEvents.ConsoleLog,{ type: "success", message: `[Typst] Compiled successfully (${content.length} chars)` });
 
                     // Update cached diagnostics
                     if (data.diagnostics && data.diagnostics.length > 0) {
-                        window.$tmEventBus.emit("diagnostics", { diagnostics: data.diagnostics, docVersion: data.docVersion });
+                        window.$tmEventBus.emit(tmEvents.Diagnostics, { diagnostics: data.diagnostics, docVersion: data.docVersion });
                     } else {
                         // Clear diagnostics on successful compilation with no errors
                         console.log('[Typst] Clearing diagnostics (success with no errors)');
-                        window.$tmEventBus.emit("diagnostics", { diagnostics: [], docVersion: data.docVersion });
+                        window.$tmEventBus.emit(tmEvents.Diagnostics, { diagnostics: [], docVersion: data.docVersion });
                     }
                 } else {
                     if (data.diagnostics && Array.isArray(data.diagnostics) && data.diagnostics.length > 0) {
-                        window.$tmEventBus.emit("diagnostics", { diagnostics: data.diagnostics, docVersion: data.docVersion });
+                        window.$tmEventBus.emit(tmEvents.Diagnostics, { diagnostics: data.diagnostics, docVersion: data.docVersion });
                     } else {
                         // No diagnostics parsed - log raw errors as fallback
-                        data.errors?.forEach((error) =>  window.$tmEventBus.emit("console-log",{ type: "error", message: "[Typst] Compile Error", details: error }));
+                        data.errors?.forEach((error) =>  window.$tmEventBus.emit(tmEvents.ConsoleLog,{ type: "error", message: "[Typst] Compile Error", details: error }));
                     }
                 }
             } else if (typeof respData === 'string') {
                 // Server returned a plain string error/message
-                window.$tmEventBus.emit("console-log",{ type: "error", message: "[Typst] Server response", details: respData });
+                window.$tmEventBus.emit(tmEvents.ConsoleLog,{ type: "error", message: "[Typst] Server response", details: respData });
             } else {
                 // Unexpected response shape
                 console.error('[Typst] Unexpected compile response:', response);
-                window.$tmEventBus.emit("console-log",{ type: "error", message: "[Typst] Unexpected server response.", details: response });
+                window.$tmEventBus.emit(tmEvents.ConsoleLog,{ type: "error", message: "[Typst] Unexpected server response.", details: response });
             }
         } catch (error) {
             console.error('[Typst] Compilation failed:', error);
-            window.$tmEventBus.emit("console-log",{ type: "error", message: "[Typst] Compilation failed. Check console for details.", details: error });
+            window.$tmEventBus.emit(tmEvents.ConsoleLog,{ type: "error", message: "[Typst] Compilation failed. Check console for details.", details: error });
         }
     }
 

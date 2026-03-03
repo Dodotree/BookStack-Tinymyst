@@ -1,36 +1,28 @@
-import { highlightColors } from "./semantic-tokens";
 import { FontProbe } from "./font-probe";
+import {
+    THEME_COLOR_INPUT_DEFAULT,
+    THEME_COLOR_SPLIT_TITLE,
+    THEME_FALLBACK_SETTINGS,
+    THEME_FONT_PREVIEW_TEXT,
+    THEME_FONT_STATUS_EMPTY_HINT,
+    THEME_FONT_TOKENS,
+    THEME_SETTINGS_STORAGE_KEY,
+    HIGHLIGHT_COLORS,
+    tmEvents,
+} from "../constants";
 
 type ThemeSettingValues = Record<string, string>;
 
-const STORAGE_KEY = "tinymist-theme-settings-v1";
-
-const FONT_TOKENS = ["tm-font-mono", "tm-font-ui"] as const;
-const HIGHLIGHT_COLOR_TYPES = highlightColors.filter((type) => type !== "text");
 const toThemeToken = (type: string, isDark = false): string => `tm-hlt-${type}${isDark ? "-dark" : ""}`;
 const toReadableLabel = (value: string): string => value
     .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
     .replace(/[-_]+/g, " ")
     .replace(/\b\w/g, (character) => character.toUpperCase());
 
-const FALLBACK_THEME_SETTINGS: ThemeSettingValues = {
-    "tm-font-mono": '"Monaco", "Menlo", "Ubuntu Mono", "Consolas", monospace',
-    "tm-font-ui": '"-apple-system", BlinkMacSystemFont, "Segoe UI", "Oxygen", "Ubuntu", "Roboto", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif',
-    "tm-hlt-keyword": "#8250df",
-    "tm-hlt-keyword-dark": "#bb8fce",
-    "tm-hlt-string": "#0a7f3f",
-    "tm-hlt-string-dark": "#52be80",
-    "tm-hlt-comment": "#57606a",
-    "tm-hlt-comment-dark": "#808080",
-    "tm-hlt-number": "#9a6700",
-    "tm-hlt-number-dark": "#d6863e",
-    "tm-hlt-error": "#cf222e",
-    "tm-hlt-error-dark": "#e74c3c",
-};
-
-const SEMANTIC_HIGHLIGHT_TYPES = new Set<string>(highlightColors);
+const HIGHLIGHT_COLOR_TYPES = HIGHLIGHT_COLORS.filter((type) => type !== "text");
+const SEMANTIC_HIGHLIGHT_TYPES = new Set<string>(HIGHLIGHT_COLORS);
 const HIGHLIGHT_COLOR_TOKENS = HIGHLIGHT_COLOR_TYPES.flatMap((type) => [toThemeToken(type, false), toThemeToken(type, true)]);
-const THEME_TOKENS = [...FONT_TOKENS, ...HIGHLIGHT_COLOR_TOKENS];
+const THEME_TOKENS = [...THEME_FONT_TOKENS, ...HIGHLIGHT_COLOR_TOKENS];
 const COLOR_TOKENS = new Set(
     THEME_TOKENS.filter((token) => {
         if (!token.startsWith("tm-hlt-")) {
@@ -42,11 +34,11 @@ const COLOR_TOKENS = new Set(
 );
 
 export class TinymistThemeSettings {
-    private static readonly FONT_TOKENS = new Set(["tm-font-mono", "tm-font-ui"]);
+    private static readonly FONT_TOKENS = new Set<string>(THEME_FONT_TOKENS);
     private root: HTMLElement|null;
     private overlay: HTMLElement | null;
     private currentSettings: ThemeSettingValues = {};
-    private stylesheetDefaults: ThemeSettingValues = { ...FALLBACK_THEME_SETTINGS };
+    private stylesheetDefaults: ThemeSettingValues = { ...THEME_FALLBACK_SETTINGS };
     private listenersBound = false;
 
     constructor(root: HTMLElement) {
@@ -65,8 +57,8 @@ export class TinymistThemeSettings {
         this.handleWindowKeyUp = this.handleWindowKeyUp.bind(this);
 
         // One way to open
-        window.$tmEventBus.listen("theme-settings-open", this.handleThemeSettingsOpen);
-        window.$tmEventBus.listen("destroy", this.destroy);
+        window.$tmEventBus.listen(tmEvents.ThemeSettingsOpen, this.handleThemeSettingsOpen);
+        window.$tmEventBus.listen(tmEvents.Destroy, this.destroy);
     }
 
     // fires only once if the user decides to use settings, so we can delay setup until then
@@ -214,7 +206,7 @@ export class TinymistThemeSettings {
 
             const split = document.createElement("div");
             split.className = "color-split";
-            split.title = "Left = Light, Right = Dark";
+            split.title = THEME_COLOR_SPLIT_TITLE;
             split.appendChild(this.createColorHalfWrap(type, false));
             split.appendChild(this.createColorHalfWrap(type, true));
             row.appendChild(split);
@@ -253,7 +245,7 @@ export class TinymistThemeSettings {
             if (!token) return;
             const value = this.currentSettings[token] ?? "";
             if (input.type === "color") {
-                input.value = this.normalizeColorValue(value) ?? this.normalizeColorValue(this.stylesheetDefaults[token]) ?? "#000000";
+                input.value = this.normalizeColorValue(value) ?? this.normalizeColorValue(this.stylesheetDefaults[token]) ?? THEME_COLOR_INPUT_DEFAULT;
                 return;
             }
             input.value = value;
@@ -287,10 +279,10 @@ export class TinymistThemeSettings {
         const firstRequested = candidates[0] ?? "";
 
         if (previewElement) {
-            previewElement.style.fontFamily = rawFontStack || this.currentSettings[token] || this.stylesheetDefaults[token] || FALLBACK_THEME_SETTINGS[token] || "";
+            previewElement.style.fontFamily = rawFontStack || this.currentSettings[token] || this.stylesheetDefaults[token] || THEME_FALLBACK_SETTINGS[token] || "";
             previewElement.textContent = token === "tm-font-mono"
-                ? "Monospace preview: AaBb 0O1l {}[] () => +-*/ #_"
-                : "UI preview: The quick brown fox jumps over 1234567890.";
+                ? THEME_FONT_PREVIEW_TEXT.mono
+                : THEME_FONT_PREVIEW_TEXT.ui;
         }
 
         const computedPreviewFontFamily = previewElement
@@ -307,7 +299,7 @@ export class TinymistThemeSettings {
         if (statusElement) {
             if (!firstRequested) {
                 statusElement.className = "font-status text-small text-muted";
-                statusElement.textContent = "Type a font name or stack (for example: Inter, Segoe UI, sans-serif).";
+                statusElement.textContent = THEME_FONT_STATUS_EMPTY_HINT;
             } else {
                 statusElement.className = firstExistingFontName !== ""
                     ? "font-status text-small text-pos"
@@ -409,7 +401,7 @@ export class TinymistThemeSettings {
 
     private persistSettings(): void {
         try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(this.currentSettings));
+            localStorage.setItem(THEME_SETTINGS_STORAGE_KEY, JSON.stringify(this.currentSettings));
         } catch (error) {
             console.warn("[Tinymist Theme] Failed to store theme settings", error);
         }
@@ -417,7 +409,7 @@ export class TinymistThemeSettings {
 
     private readStoredSettings(): ThemeSettingValues {
         try {
-            const raw = localStorage.getItem(STORAGE_KEY);
+            const raw = localStorage.getItem(THEME_SETTINGS_STORAGE_KEY);
             if (!raw) {
                 return {};
             }
@@ -457,11 +449,11 @@ export class TinymistThemeSettings {
             if (COLOR_TOKENS.has(token)) {
                 value = this.normalizeColorValue(value)
                     ?? this.readComputedHighlightColor(token)
-                    ?? FALLBACK_THEME_SETTINGS[token]
+                    ?? THEME_FALLBACK_SETTINGS[token]
                     ?? "";
             }
 
-            defaults[token] = value || FALLBACK_THEME_SETTINGS[token] || "";
+            defaults[token] = value || THEME_FALLBACK_SETTINGS[token] || "";
         });
 
         return defaults;

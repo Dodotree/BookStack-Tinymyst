@@ -1,31 +1,35 @@
-type Listener = (data: any) => void;
+type EventPayloadMap = Record<string, unknown>;
+type Listener<T> = (data: T) => void;
 
-export class EventBus {
-    protected listeners: Record<string, Set<Listener>> = {};
+export class EventBus<TEvents extends EventPayloadMap = Record<string, unknown>> {
+    protected listeners: Partial<{ [K in keyof TEvents]: Set<Listener<TEvents[K]>> }> = {};
 
     /**
      * Emit a custom event for any handlers to pick-up.
      */
-    emit(eventName: string, eventData: {} = {}): void {
+    emit<K extends keyof TEvents>(eventName: K, ...eventData: TEvents[K] extends undefined ? [] : [TEvents[K]]): void {
 
-        const listenersToRun = this.listeners[eventName] ?? new Set<Listener>();
+        const listenersToRun = this.listeners[eventName] ?? new Set<Listener<TEvents[K]>>();
+        const payload = eventData[0] as TEvents[K];
         for (const listener of listenersToRun) {
-            listener(eventData);
+            listener(payload);
         }
     }
 
     /**
      * Listen to a custom event and run the given callback when that event occurs.
      */
-    listen<T>(eventName: string, callback: (data: T) => void): void {
-        if (typeof this.listeners[eventName] === 'undefined') this.listeners[eventName] = new Set<Listener>();
-        this.listeners[eventName].add(callback as Listener);
+    listen<K extends keyof TEvents>(eventName: K, callback: Listener<TEvents[K]>): void {
+        if (!this.listeners[eventName]) {
+            this.listeners[eventName] = new Set<Listener<TEvents[K]>>();
+        }
+        this.listeners[eventName].add(callback);
     }
 
     /**
      * Remove an event listener which is using the given callback for the given event name.
      */
-    remove(eventName: string, callback: Listener): void {
+    remove<K extends keyof TEvents>(eventName: K, callback: Listener<TEvents[K]>): void {
         const listeners = this.listeners[eventName];
         if (!listeners) return;
         listeners.delete(callback);
@@ -36,7 +40,7 @@ export class EventBus {
      */
     destroy(): void {
         for (const eventName of Object.keys(this.listeners)) {
-            this.listeners[eventName].clear();
+            this.listeners[eventName as keyof TEvents]?.clear();
         }
         this.listeners = {};
     }
@@ -45,8 +49,8 @@ export class EventBus {
      * Emit an event for public use.
      * Sends the event via the native DOM event handling system.
      */
-    emitPublic(targetElement: Element, eventName: string, eventData: {}): void {
-        const event = new CustomEvent(eventName, {
+    emitPublic<K extends keyof TEvents>(targetElement: Element, eventName: K, eventData: TEvents[K]): void {
+        const event = new CustomEvent(String(eventName), {
             detail: eventData,
             bubbles: true,
         });
