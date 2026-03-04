@@ -100,8 +100,8 @@ flowchart TD
 ```mermaid
 sequenceDiagram
     autonumber
-    participant B as Browser (Tinymist)
     participant L as Laravel App
+    participant B as Browser (Tinymist)
     participant N as Node WS Server
 
     Note over B: Bootstrap with wsToken, pageId, uniqueTabId
