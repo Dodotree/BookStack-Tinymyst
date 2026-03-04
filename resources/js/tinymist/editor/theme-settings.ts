@@ -153,7 +153,7 @@ export class TinymistThemeSettings {
     }
 
     private applyTokenToEditor(token: string, value: string): void {
-        const root = document.getElementById(tmSelectors.Root);
+        const root = document.querySelector<HTMLElement>(tmSelectors.Root);
         root?.style.setProperty(`--${token}`, value);
         if (token === "tm-font-mono") {
             root?.style.setProperty("--font-code", value);
@@ -504,7 +504,9 @@ export class TinymistThemeSettings {
     }
 
     private readDefaultsFromStylesheet(): ThemeSettingValues {
-        const computedRootStyle = getComputedStyle(document.getElementById(tmSelectors.Root)!);
+        const root = document.querySelector<HTMLElement>(tmSelectors.Root);
+        console.log("root:", root);
+        const computedRootStyle = getComputedStyle(root!);
         const defaults: ThemeSettingValues = {};
 
         THEME_TOKENS.forEach((token) => {
@@ -549,7 +551,7 @@ export class TinymistThemeSettings {
         probe.style.visibility = "hidden";
         probe.style.pointerEvents = "none";
         probe.style.inset = "0";
-        document.getElementById(tmSelectors.Root)?.appendChild(probe);
+        document.querySelector<HTMLElement>(tmSelectors.Root)?.appendChild(probe);
 
         const color = getComputedStyle(probe).color;
         probe.remove();
@@ -557,7 +559,7 @@ export class TinymistThemeSettings {
     }
 
     private readComputedCodeFont(): string {
-        const root = document.getElementById(tmSelectors.Root);
+        const root = document.querySelector<HTMLElement>(tmSelectors.Root);
         const editorLine = root?.querySelector<HTMLElement>(
             ".cm-editor .cm-line, .cm-editor .cm-gutter",
         );

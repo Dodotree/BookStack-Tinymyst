@@ -71,7 +71,7 @@ export class TinymistApp {
             });
         }
 
-        const root = document.getElementById(tmSelectors.Root);
+        const root = document.querySelector<HTMLElement>(tmSelectors.Root);
         root
             ?.closest("form")
             ?.addEventListener("submit", this.syncTextGetText);
@@ -109,7 +109,7 @@ export class TinymistApp {
         window.removeEventListener("pagehide", this.destroy);
 
         if (this.syncTextGetText) {
-            document.getElementById(tmSelectors.Root)
+            document.querySelector<HTMLElement>(tmSelectors.Root)
                 ?.closest("form")
                 ?.removeEventListener("submit", this.syncTextGetText);
         }
