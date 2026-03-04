@@ -34,23 +34,29 @@
  * Handles connection, authentication, token renewal, and change streaming
  */
 import { TinymistWebSocketClient } from "./ws-base";
-import { tmEvents } from "../constants";
+import {
+    SYNC_AND_LSP_PORT,
+    SYNC_AND_LSP_URI,
+    SYNC_AND_LSP_STATUS_KEY,
+    tmEvents,
+} from "../constants";
 
 export class TinymistFileSyncClient extends TinymistWebSocketClient {
     constructor(pageId: number, token: string, uniqueTabId: string) {
         super(pageId, token, uniqueTabId, {
             name: "File Sync / LSP",
-            statusKey: "file-lsp-ws",
+            statusKey: SYNC_AND_LSP_STATUS_KEY,
             connectEvent: tmEvents.SyncConnect,
             disconnectEvent: tmEvents.SyncDisconnect,
-            localPort: 4000,
-            remotePath: "/ws/tinymist/file-sync/",
+            localPort: SYNC_AND_LSP_PORT,
+            remotePath: SYNC_AND_LSP_URI,
         });
 
         this.sendChanges = this.sendChanges.bind(this);
         this.openFile = this.openFile.bind(this);
         window.$tmEventBus.listen(tmEvents.TextDiff, this.sendChanges);
         window.$tmEventBus.listen(tmEvents.SyncOpenFile, this.openFile);
+        // connect/disconnect events handled by superclass, do not override here!
     }
 
     openFile(payload: { fileName: string }): void {
@@ -201,27 +207,6 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
                 "[FilesLSP WS] Failed to parse WebSocket message:",
                 error,
             );
-        }
-    }
-
-    // Token updates are handled by the shared base.
-
-    /**
-     * Disconnect from the WebSocket server
-     */
-    disconnect(): void {
-        this.stopHeartbeat();
-        this.clearReconnectTimeout();
-        this.clearConnectionTimeout();
-
-        if (this.socket) {
-            this.socket.close(1000, "Client disconnected");
-            this.socket = null;
-            console.log("[FilesLSP WS] Intentionally disconnected");
-            window.$tmEventBus.emit(tmEvents.Status, {
-                what: "file-lsp-ws",
-                connected: false,
-            });
         }
     }
 }

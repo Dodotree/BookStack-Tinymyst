@@ -46,7 +46,6 @@ const COLOR_TOKENS = new Set(
 
 export class TinymistThemeSettings {
     private static readonly FONT_TOKENS = new Set<string>(THEME_FONT_TOKENS);
-    private root: HTMLElement | null;
     private overlay: HTMLElement | null;
     private currentSettings: ThemeSettingValues = {};
     private stylesheetDefaults: ThemeSettingValues = {
@@ -54,11 +53,11 @@ export class TinymistThemeSettings {
     };
     private listenersBound = false;
 
-    constructor(root: HTMLElement) {
-        this.root = root;
-        this.overlay = this.root?.querySelector(
-            tmSelectors.ThemeSettingsOverlay);
-        if (!this.root || !this.overlay) {
+    constructor() {
+        this.overlay = document.querySelector(
+            `${tmSelectors.Root} ${tmSelectors.ThemeSettingsOverlay}`
+        );
+        if (!this.overlay) {
             return;
         }
 
@@ -154,9 +153,10 @@ export class TinymistThemeSettings {
     }
 
     private applyTokenToEditor(token: string, value: string): void {
-        this.root?.style.setProperty(`--${token}`, value);
+        const root = document.getElementById(tmSelectors.Root);
+        root?.style.setProperty(`--${token}`, value);
         if (token === "tm-font-mono") {
-            this.root?.style.setProperty("--font-code", value);
+            root?.style.setProperty("--font-code", value);
         }
     }
 
@@ -222,7 +222,6 @@ export class TinymistThemeSettings {
         this.addRemoveListeners(false);
         this.overlay = null;
         this.currentSettings = {};
-        this.root = null;
     }
 
     private renderHighlightColorNodes(): void {
@@ -505,7 +504,7 @@ export class TinymistThemeSettings {
     }
 
     private readDefaultsFromStylesheet(): ThemeSettingValues {
-        const computedRootStyle = getComputedStyle(this.root!);
+        const computedRootStyle = getComputedStyle(document.getElementById(tmSelectors.Root)!);
         const defaults: ThemeSettingValues = {};
 
         THEME_TOKENS.forEach((token) => {
@@ -550,7 +549,7 @@ export class TinymistThemeSettings {
         probe.style.visibility = "hidden";
         probe.style.pointerEvents = "none";
         probe.style.inset = "0";
-        this.root?.appendChild(probe);
+        document.getElementById(tmSelectors.Root)?.appendChild(probe);
 
         const color = getComputedStyle(probe).color;
         probe.remove();
@@ -558,20 +557,21 @@ export class TinymistThemeSettings {
     }
 
     private readComputedCodeFont(): string {
-        const editorLine = this.root?.querySelector<HTMLElement>(
+        const root = document.getElementById(tmSelectors.Root);
+        const editorLine = root?.querySelector<HTMLElement>(
             ".cm-editor .cm-line, .cm-editor .cm-gutter",
         );
         if (editorLine) {
             return getComputedStyle(editorLine).fontFamily.trim();
         }
-        return getComputedStyle(this.root!)
+        return getComputedStyle(root!)
             .getPropertyValue("--font-code")
             .trim();
     }
 
     private readComputedUiFont(): string {
-        const previewPane = this.root?.querySelector<HTMLElement>(
-            ".tinymist-preview-pane",
+        const previewPane = document.querySelector<HTMLElement>(
+            `${tmSelectors.Root} ${tmSelectors.PreviewPane}`,
         );
         if (!previewPane) {
             return "";

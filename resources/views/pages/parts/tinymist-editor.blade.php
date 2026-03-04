@@ -81,7 +81,7 @@
                           class="tinymist-source-editor"
                           placeholder="Enter Typst source code here...">@if(isset($model) || old('tinymist')){{ old('tinymist') ?? $model->markdown ?? '' }}@endif</textarea>
                 <div refs="tinymist-editor@image-preview" class="tinymist-editor-image-view flex flex-fill items-center justify-center" hidden>
-                    <div refs="tinymist-editor@image-preview-message" class="text-muted p-m text-small">Image preview unavailable.</div>
+                    <div refs="tinymist-editor@image-preview-message" class="tinymist-editor-image-message text-muted p-m text-small">Image preview unavailable.</div>
                     <img refs="tinymist-editor@image-preview-image" class="tinymist-editor-image" alt="Attachment preview" hidden>
                 </div>
             </div>

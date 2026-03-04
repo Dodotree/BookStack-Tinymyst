@@ -15,14 +15,21 @@ import {
 import renderModule from "@myriaddreamin/typst-ts-renderer/pkg/typst_ts_renderer_bg.wasm";
 import { PreviewCursor } from "./cursor";
 
-import { ENTRY_FILE_NAME, tmClassNames, tmEvents, tmSelectors } from "../constants";
+import {
+    ENTRY_FILE_NAME,
+    tmClassNames,
+    tmEvents,
+    tmSelectors,
+} from "../constants";
 
 export class PreviewRenderer {
+    private paneSelector: string;
+    private previewElement: HTMLElement;
+
     private renderer: TypstRenderer | null = null;
     private session: RenderSession | null = null;
     private sessionPromise: Promise<RenderSession> | null = null;
     private sessionResolve: (() => void) | null = null;
-    private previewElement: HTMLElement;
     private hasInitialDocument: boolean = false; // Track to decide if "reset" instead of "merge" is needed
     private processingQueue: Promise<void> = Promise.resolve();
 
@@ -45,14 +52,10 @@ export class PreviewRenderer {
     private cursorSpotlightUserEnabled = true;
     private scrollIntoViewUserEnabled = true;
 
-    constructor(previewElement: HTMLElement) {
-        this.previewElement = previewElement;
-        if (!previewElement) {
-            console.warn(
-                "[Preview Data] Preview element not found, skipping preview setup",
-            );
-            return;
-        }
+    constructor() {
+        this.paneSelector = `${tmSelectors.Root} ${tmSelectors.PreviewPane}`;
+        this.previewElement = document.querySelector(`${tmSelectors.Root} ${tmSelectors.PreviewContent}`) as HTMLElement;
+
         new PreviewCursor(this.previewElement);
 
         this.handleSyncInit = this.handleSyncInit.bind(this);
@@ -100,8 +103,7 @@ export class PreviewRenderer {
     private addRemoveListeners(adding: boolean = true): void {
         const method = adding ? "addEventListener" : "removeEventListener";
 
-        this.previewElement
-            .closest(tmSelectors.PreviewPane)
+        document.querySelector(this.paneSelector)
             ?.[method]("click", this.handlePreviewPaneClick);
 
         this.previewElement[method]("mousedown", this.handlePanMouseDown);
@@ -258,6 +260,7 @@ export class PreviewRenderer {
             window.$tmEventBus.emit(tmEvents.DataCursorShow); // reinsert cursor if possible
         } catch (e: any) {
             console.error(`[Preview WASM] Rendering failed:`, e);
+
             this.previewElement.innerHTML = `
                 <div style="padding: 20px; color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px;">
                     <h4>Preview Rendering Failed</h4>
@@ -269,18 +272,19 @@ export class PreviewRenderer {
                     </p>
                 </div>
             `;
+
             await this.recoverRenderer(e);
         }
     }
 
     updateSVG(svg: string, docVersion?: number) {
         // Remove "Loading..." and error messages
-        // TODO: optimize so those shouldn't run on each change
-        this.previewElement.querySelector(tmSelectors.PreviewMutedMessage)?.remove();
-        this.previewElement.querySelector(tmSelectors.PreviewError)?.remove();
-        let svgHost = this.previewElement.querySelector(
-            tmSelectors.PreviewDocumentHost,
-        ) as HTMLElement | null;
+        this.previewElement.querySelector(tmSelectors.PreviewMutedMessage)
+            ?.remove();
+        this.previewElement.querySelector(tmSelectors.PreviewError)
+            ?.remove();
+
+        let svgHost = this.previewElement.querySelector(tmSelectors.PreviewDocumentHost,) as HTMLElement | null;
         if (!svgHost) {
             svgHost = document.createElement("div");
             svgHost.className = tmClassNames.PreviewDocumentHost;
@@ -310,6 +314,7 @@ export class PreviewRenderer {
         if (!enabled) {
             this.stopPanning();
         }
+
         this.previewElement.classList.toggle(
             tmClassNames.PreviewPanEnabled,
             enabled,
@@ -355,11 +360,10 @@ export class PreviewRenderer {
     }
 
     private applyPanButtonState(): void {
-        const button = this.previewElement
-            .closest(tmSelectors.PreviewPane)
-            ?.querySelector(
-                tmSelectors.PreviewPanToggleButton,
-            ) as HTMLButtonElement | null;
+        const button = document.querySelector(
+            `${this.paneSelector} ${tmSelectors.PreviewPan}`,
+        ) as HTMLButtonElement | null;
+
         if (!button) {
             return;
         }
@@ -375,11 +379,9 @@ export class PreviewRenderer {
             this.cursorSpotlightUserEnabled &&
             this.activeFileName === ENTRY_FILE_NAME;
 
-        const button = this.previewElement
-            .closest(tmSelectors.PreviewPane)
-            ?.querySelector(
-                tmSelectors.PreviewCursorSpotlightToggleButton,
-            ) as HTMLButtonElement | null;
+        const button = document.querySelector(
+            `${this.paneSelector} ${tmSelectors.PreviewCursorSpotlight}`,
+        ) as HTMLButtonElement | null;
         if (button) {
             button.setAttribute("aria-pressed", enabled.toString());
             button.setAttribute(
@@ -400,11 +402,9 @@ export class PreviewRenderer {
             this.scrollIntoViewUserEnabled &&
             this.activeFileName === ENTRY_FILE_NAME;
 
-        const button = this.previewElement
-            .closest(tmSelectors.PreviewPane)
-            ?.querySelector(
-                tmSelectors.PreviewScrollIntoViewToggleButton,
-            ) as HTMLButtonElement | null;
+        const button = document.querySelector(
+            `${this.paneSelector} ${tmSelectors.PreviewScrollIntoView}`,
+        ) as HTMLButtonElement | null;
         if (button) {
             button.setAttribute("aria-pressed", enabled.toString());
             button.setAttribute(
@@ -457,6 +457,7 @@ export class PreviewRenderer {
         width: number,
         height: number,
     ): void {
+
         const viewportWidth = this.previewElement.clientWidth;
         const viewportHeight = this.previewElement.clientHeight;
         if (viewportWidth <= 0 || viewportHeight <= 0) {
@@ -467,11 +468,9 @@ export class PreviewRenderer {
         const marginY = Math.max(24, Math.min(120, viewportHeight * 0.1));
 
         const minVisibleX = this.previewElement.scrollLeft + marginX;
-        const maxVisibleX =
-            this.previewElement.scrollLeft + viewportWidth - marginX;
+        const maxVisibleX = this.previewElement.scrollLeft + viewportWidth - marginX;
         const minVisibleY = this.previewElement.scrollTop + marginY;
-        const maxVisibleY =
-            this.previewElement.scrollTop + viewportHeight - marginY;
+        const maxVisibleY = this.previewElement.scrollTop + viewportHeight - marginY;
 
         const cursorLeft = contentX - width / 2;
         const cursorRight = contentX + width / 2;
@@ -520,9 +519,7 @@ export class PreviewRenderer {
     }
 
     private applyZoomToSvg(): void {
-        const svg = this.previewElement.querySelector(
-            "svg",
-        ) as SVGElement | null;
+        const svg = this.previewElement.querySelector("svg") as SVGElement | null;
         if (!svg) {
             return;
         }
@@ -567,6 +564,7 @@ export class PreviewRenderer {
         const dy = mouseEvent.clientY - this.panStartY;
         this.previewElement.scrollLeft = this.panStartScrollLeft - dx;
         this.previewElement.scrollTop = this.panStartScrollTop - dy;
+
         event.preventDefault();
     }
 
@@ -601,6 +599,8 @@ export class PreviewRenderer {
     destroy() {
         this.dispose();
         this.addRemoveListeners(false);
+        this.previewElement.remove();
+        this.previewElement = null as any;
     }
 
     private async recoverRenderer(error: Error): Promise<void> {

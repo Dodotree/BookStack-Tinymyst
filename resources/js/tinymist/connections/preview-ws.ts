@@ -2,17 +2,22 @@
 // On the backend preview_server bridges both planes
 
 import { TinymistWebSocketClient } from "./ws-base";
-import { tmEvents } from "../constants";
+import {
+    PREVIEW_URI,
+    PREVIEW_PORT,
+    PREVIEW_STATUS_KEY,
+    tmEvents,
+} from "../constants";
 
 export class PreviewBridgeClient extends TinymistWebSocketClient {
     constructor(pageId: number, token: string, uniqueTabId?: string) {
         super(pageId, token, uniqueTabId, {
             name: "Preview WS",
-            statusKey: "preview-ws",
+            statusKey: PREVIEW_STATUS_KEY,
             connectEvent: tmEvents.PreviewConnect,
             disconnectEvent: tmEvents.PreviewDisconnect,
-            localPort: 4020,
-            remotePath: "/ws/tinymist/preview/",
+            localPort: PREVIEW_PORT,
+            remotePath: PREVIEW_URI,
             binaryType: "arraybuffer",
         });
 
@@ -26,6 +31,7 @@ export class PreviewBridgeClient extends TinymistWebSocketClient {
             tmEvents.PreviewSendData,
             this.handleOutgoingData,
         );
+        // connect/disconnect events handled by superclass, do not override here!
     }
 
     protected handleMessage(data: any): void {

@@ -2,11 +2,13 @@
 import { tmClassNames, tmEvents } from "./constants";
 
 export class TinymistConsole {
-    console: HTMLElement;
+    panelSelector: string;
+    consoleSelector: string;
     collapsed: boolean = false;
 
-    constructor(console: HTMLElement) {
-        this.console = console;
+    constructor(panelSelector: string, consoleSelector: string) {
+        this.panelSelector = panelSelector;
+        this.consoleSelector = consoleSelector;
 
         // Saving reference of the bound method to be able to remove listeners later if needed
         this.logMessage = this.logMessage.bind(this);
@@ -15,8 +17,7 @@ export class TinymistConsole {
         this.toggleConsole = this.toggleConsole.bind(this);
 
         window.$tmEventBus.listen(tmEvents.ConsoleLog, this.logMessage);
-        this.console
-            .closest("#tinymist-console-panel")
+        document.querySelector(this.panelSelector)
             ?.addEventListener("click", this.handlePanelClick);
     }
 
@@ -52,7 +53,7 @@ export class TinymistConsole {
             );
         }
 
-        this.console.setAttribute(
+        document.querySelector(`${this.panelSelector} ${this.consoleSelector}`)?.setAttribute(
             "aria-hidden",
             this.collapsed ? "true" : "false",
         );
@@ -76,9 +77,14 @@ export class TinymistConsole {
             "<br>" +
             this.getErrorDetails(details!);
 
-        this.console.appendChild(messageDiv);
+        const consoleEl = document.querySelector(`${this.panelSelector} ${this.consoleSelector}`);
+        if(!consoleEl) {
+            console.warn("Console element not found for logging message:", message);
+            return;
+        }
+        consoleEl.appendChild(messageDiv);
         // Auto-scroll to bottom
-        this.console.scrollTop = this.console.scrollHeight;
+        consoleEl.scrollTop = consoleEl.scrollHeight;
     }
 
     escapeHtml(text: string) {
@@ -110,13 +116,17 @@ export class TinymistConsole {
     }
 
     clearConsole() {
-        this.console.innerHTML =
-            '<div class="text-muted p-m text-small">Console cleared.</div>';
+        const consoleEl = document.querySelector(`${this.panelSelector} ${this.consoleSelector}`);
+        if (!consoleEl) {
+            console.warn("Console element not found for clearing.");
+            return;
+        }
+        consoleEl.innerHTML =
+                '<div class="text-muted p-m text-small">Console cleared.</div>';
     }
 
     destroy(): void {
-        this.console
-            .closest("#tinymist-console-panel")
+        document.querySelector(this.panelSelector)
             ?.removeEventListener("click", this.handlePanelClick);
     }
 }

@@ -17,6 +17,8 @@ export class TinymistFallbackCompiler {
 
     constructor(pageId: number) {
         this.pageId = pageId;
+        this.compile = this.compile.bind(this);
+        this.destroy = this.destroy.bind(this);
         window.$tmEventBus.listen(
             tmEvents.FallbackEnable,
             (enabled: boolean) => (this.enabled = enabled),
@@ -30,7 +32,7 @@ export class TinymistFallbackCompiler {
                 docVersion: number;
                 content: string;
             }) => {
-                await this.compile(docVersion, content, this.pageId);
+                await this.compile(docVersion, content);
             },
         );
         window.$tmEventBus.listen(tmEvents.Destroy, this.destroy);
@@ -42,7 +44,6 @@ export class TinymistFallbackCompiler {
     async compile(
         docVersion: number,
         content: string,
-        pageId: number,
     ): Promise<void> {
         if (!this.enabled) {
             return;
@@ -60,7 +61,7 @@ export class TinymistFallbackCompiler {
             const response = await window.$http.post(FALLBACK_COMPILE_URL, {
                 content,
                 docVersion,
-                pageId,
+                pageId: this.pageId,
             });
 
             console.log(
@@ -159,6 +160,7 @@ export class TinymistFallbackCompiler {
     }
 
     destroy(): void {
+        if(!this){return;}
         this.enabled = false;
     }
 }

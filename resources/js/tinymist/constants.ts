@@ -13,6 +13,12 @@ export {
 export {
 	DEFAULT_WS_TIMINGS,
 	LOCAL_WS_HOSTNAMES,
+    SYNC_AND_LSP_URI,
+    SYNC_AND_LSP_PORT,
+    SYNC_AND_LSP_STATUS_KEY,
+    PREVIEW_URI,
+    PREVIEW_PORT,
+    PREVIEW_STATUS_KEY,
 } from "./constants/ws-constants";
 
 export { tmSelectors, tmClassNames } from "./constants/ui-selectors";

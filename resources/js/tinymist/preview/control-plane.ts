@@ -31,7 +31,7 @@ export class PreviewControlPlane {
     private handleControlMessage(raw: string): void {
         console.log(
             `[Preview Control] Control message length: ${raw.length}`,
-            raw.length < 40 ? raw : "too long to display",
+            raw.length < 60 ? raw : "too long to display",
         );
         try {
             const msg = JSON.parse(raw);
@@ -49,7 +49,7 @@ export class PreviewControlPlane {
             } else if (msg.event === "syncEditorChanges") {
                 this.onSyncChanges(msg);
             } else if (msg.status) {
-                // Generic status message
+                // TODO: check if status "connected" means that the next diff is a reset instead of a merge
                 window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                     type: "info",
                     message: `[Preview Bridge (via Control)] Status: ${msg.status}`,

@@ -63,13 +63,10 @@ type FileSyncState = {
 export class TinymistEditorUI {
     editor: HTMLTextAreaElement;
     editorView: EditorView | null = null;
-    private imageViewContainer: HTMLDivElement;
-    private imageViewElement: HTMLImageElement;
-    private imageViewMessage: HTMLDivElement;
+    private imageViewSelector: string;
+    private imageSelector: string;
+    private imageMessageSelector: string;
 
-    private diagnosticsProcessor = new DiagnosticsProcessor();
-    private semanticTokens = new SemanticTokenProcessor();
-    private fallbackEnabled = false;
     private readonly languageCompartment = new Compartment();
     private readonly highlightCompartment = new Compartment();
     private readonly isDarkMode =
@@ -84,16 +81,13 @@ export class TinymistEditorUI {
     private readonly dirtyStateDebounceMs = 300;
     private readonly fallbackDebounceMs = 800;
 
-    constructor(
-        editor: HTMLTextAreaElement,
-        imageViewContainer: HTMLDivElement,
-        imageViewElement: HTMLImageElement,
-        imageViewMessage: HTMLDivElement,
-    ) {
-        this.editor = editor;
-        this.imageViewContainer = imageViewContainer;
-        this.imageViewElement = imageViewElement;
-        this.imageViewMessage = imageViewMessage;
+    private fallbackEnabled = false;
+
+    constructor() {
+        this.editor = document.querySelector(tmSelectors.TextArea) as HTMLTextAreaElement;
+        this.imageViewSelector = `${tmSelectors.Root} ${tmSelectors.ImageView}`;
+        this.imageSelector = `${tmSelectors.Root} ${tmSelectors.Image}`;
+        this.imageMessageSelector = `${tmSelectors.Root} ${tmSelectors.ImageMessage}`;
 
         // Hook for diagnostics and semantic tokens to get editor state context for mapping
         this.getSnapshotContext = this.getSnapshotContext.bind(this);
@@ -117,11 +111,13 @@ export class TinymistEditorUI {
         this.setupCodeMirror();
         this.setupListeners();
 
-        this.diagnosticsProcessor.attachEditorView(
+        const diagnosticsProcessor = new DiagnosticsProcessor();
+        diagnosticsProcessor.attachEditorView(
             this.editorView!,
             this.getSnapshotContext,
         );
-        this.semanticTokens.attachEditorView(
+        const semanticTokenProcessor = new SemanticTokenProcessor();
+        semanticTokenProcessor.attachEditorView(
             this.editorView!,
             this.getSnapshotContext,
         );
@@ -281,15 +277,18 @@ export class TinymistEditorUI {
     }
 
     private showImagePreview(fileName: string, url: string): void {
+        const imageViewContainer = document.querySelector(this.imageViewSelector) as HTMLDivElement | null;
+        const imageViewElement = document.querySelector(this.imageSelector) as HTMLImageElement | null;
+        const imageViewMessage = document.querySelector(this.imageMessageSelector) as HTMLDivElement | null;
         if (
-            !this.imageViewContainer ||
-            !this.imageViewElement ||
-            !this.imageViewMessage
+            !imageViewContainer ||
+            !imageViewElement ||
+            !imageViewMessage
         ) {
             return;
         }
 
-        this.imageViewContainer.hidden = false;
+        imageViewContainer.hidden = false;
         if (this.editorView) {
             this.editorView.dom.style.setProperty(
                 "display",
@@ -300,25 +299,31 @@ export class TinymistEditorUI {
         this.editor.style.display = "none";
 
         if (!url) {
-            this.imageViewElement.hidden = true;
-            this.imageViewElement.removeAttribute("src");
-            this.imageViewMessage.hidden = false;
-            this.imageViewMessage.textContent = `Image preview unavailable for ${fileName}.`;
+            imageViewElement.hidden = true;
+            imageViewElement.removeAttribute("src");
+            imageViewMessage.hidden = false;
+            imageViewMessage.textContent = `Image preview unavailable for ${fileName}.`;
             return;
         }
 
-        this.imageViewElement.src = url;
-        this.imageViewElement.hidden = false;
-        this.imageViewMessage.hidden = true;
+        imageViewElement.src = url;
+        imageViewElement.hidden = false;
+        imageViewMessage.hidden = true;
     }
 
     private showTextEditor(): void {
-        if (this.imageViewContainer) {
-            this.imageViewContainer.hidden = true;
+        const imageViewContainer = document.querySelector(this.imageViewSelector) as HTMLDivElement | null;
+        const imageViewElement = document.querySelector(this.imageSelector) as HTMLImageElement | null;
+        const imageViewMessage = document.querySelector(this.imageMessageSelector) as HTMLDivElement | null;
+        if (imageViewContainer) {
+            imageViewContainer.hidden = true;
         }
-        if (this.imageViewElement) {
-            this.imageViewElement.hidden = true;
-            this.imageViewElement.removeAttribute("src");
+        if (imageViewElement) {
+            imageViewElement.hidden = true;
+            imageViewElement.removeAttribute("src");
+        }
+        if (imageViewMessage) {
+            imageViewMessage.hidden = true;
         }
         if (this.editorView) {
             this.editorView.dom.style.display = "";
@@ -991,6 +996,8 @@ export class TinymistEditorUI {
             this.editorView.destroy();
             this.editorView = null;
         }
+        // dereference editor to release DOM reference, but don't remove
+        this.editor = null as any;
     }
 
     private getOrCreateFileState(fileName: string): FileSyncState {

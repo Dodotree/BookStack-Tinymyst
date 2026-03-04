@@ -280,6 +280,7 @@ export class PreviewCursor {
 
         const glyphRect = glyphNode.getBoundingClientRect();
         const overlayRect = this.overlaySvg.getBoundingClientRect();
+
         const previewRect = this.previewElement.getBoundingClientRect();
 
         const cx = glyphRect.left - overlayRect.left + glyphRect.width / 2;
@@ -324,15 +325,18 @@ export class PreviewCursor {
     destroy() {
         this.hideCursor();
 
+        this.cursorCircle?.remove();
+        this.overlaySvg?.remove();
         this.overlayElement?.remove();
         this.overlayElement = null;
         this.overlaySvg = null;
+        this.cursorCircle = null;
 
-        this.previewElement.removeEventListener(
+        this.previewElement?.removeEventListener(
             "scroll",
             this.onViewportChange,
         );
-        window.removeEventListener("resize", this.onViewportChange);
         this.previewElement = null as any;
+        window.removeEventListener("resize", this.onViewportChange);
     }
 }

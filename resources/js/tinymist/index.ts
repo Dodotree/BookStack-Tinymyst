@@ -10,10 +10,9 @@ import { TinymistThemeSettings } from "./editor/theme-settings";
 import { TinymistConsole } from "./console";
 import { PreviewRenderer } from "./preview/render";
 import { EventBus } from "./event-bus";
-import { tmClassNames, tmEvents } from "./constants";
+import { tmSelectors, tmClassNames, tmEvents } from "./constants";
 import type { TinymistEventPayloads } from "./constants/custom-events";
 
-type TinymistRefs = Record<string, HTMLElement>;
 type TinymistOpts = Record<string, string>;
 
 declare global {
@@ -23,8 +22,6 @@ declare global {
 }
 
 export class TinymistApp {
-    private root: HTMLElement;
-    private refs: TinymistRefs;
     private opts: TinymistOpts;
 
     private uniqueTabId: string;
@@ -34,9 +31,7 @@ export class TinymistApp {
         "supposed to be overridden in setup";
     private consoleToggleHandler: ((collapsed?: boolean) => void) | null = null;
 
-    constructor(root: HTMLElement, refs: TinymistRefs, opts: TinymistOpts) {
-        this.root = root;
-        this.refs = refs;
+    constructor(opts: TinymistOpts) {
         this.opts = opts;
         this.uniqueTabId = this.createUniqueTabId();
         this.pageId = Number(this.opts.pageId);
@@ -48,16 +43,13 @@ export class TinymistApp {
             window.$tmEventBus = new EventBus<TinymistEventPayloads>();
         }
 
-        const editorUI = new TinymistEditorUI(
-            this.refs.editor as HTMLTextAreaElement,
-            this.refs.imagePreview as HTMLDivElement,
-            this.refs.imagePreviewImage as HTMLImageElement,
-            this.refs.imagePreviewMessage as HTMLDivElement,
-        );
+        const editorUI = new TinymistEditorUI();
+        this.getText = editorUI.getEntryText;
+        this.syncTextGetText = editorUI.syncEntryContentToTextarea;
 
-        new TinymistThemeSettings(this.root);
-        new TinymistFileDropdown(this.refs.fileList as HTMLSelectElement);
-        new TinymistConsole(this.refs.console);
+        new TinymistThemeSettings();
+        new TinymistFileDropdown(`${tmSelectors.Root} ${tmSelectors.FileDropDown}`);
+        new TinymistConsole(tmSelectors.ConsolePanel, tmSelectors.ConsoleContent);
         new TinymistFallbackCompiler(this.pageId);
 
         const connectionsManager = new TinymistConnectionsManager({
@@ -67,16 +59,25 @@ export class TinymistApp {
         });
         connectionsManager.start();
 
-        this.setupWasm();
+        try {
+            new PreviewRenderer();
+            window.$tmEventBus.emit(tmEvents.WasmInit);
+        } catch (error) {
+            console.error("[Tinymist App] renderer setup failed:", error);
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
+                type: "error",
+                message: "⚠ [App] renderer initialization failed: ",
+                details: error,
+            });
+        }
 
-        this.getText = editorUI.getEntryText;
-        this.syncTextGetText = editorUI.syncEntryContentToTextarea;
-        this.root
-            .closest("form")
+        const root = document.getElementById(tmSelectors.Root);
+        root
+            ?.closest("form")
             ?.addEventListener("submit", this.syncTextGetText);
 
         this.consoleToggleHandler = (collapsed?: boolean) => {
-            this.root.classList.toggle(tmClassNames.ConsoleCollapsed, collapsed);
+            root?.classList.toggle(tmClassNames.ConsoleCollapsed, collapsed);
         };
         window.$tmEventBus.listen(tmEvents.ConsoleToggle, this.consoleToggleHandler);
 
@@ -90,20 +91,6 @@ export class TinymistApp {
         return {
             tinymist: this.syncTextGetText?.() || "",
         };
-    }
-
-    private setupWasm(): void {
-        try {
-            new PreviewRenderer(this.refs.preview as HTMLElement);
-            window.$tmEventBus.emit(tmEvents.WasmInit);
-        } catch (error) {
-            console.error("[Tinymist App] renderer setup failed:", error);
-            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
-                type: "error",
-                message: "⚠ [App] renderer initialization failed: ",
-                details: error,
-            });
-        }
     }
 
     private createUniqueTabId(): string {
@@ -122,8 +109,8 @@ export class TinymistApp {
         window.removeEventListener("pagehide", this.destroy);
 
         if (this.syncTextGetText) {
-            this.root
-                .closest("form")
+            document.getElementById(tmSelectors.Root)
+                ?.closest("form")
                 ?.removeEventListener("submit", this.syncTextGetText);
         }
 

@@ -1,7 +1,17 @@
-export const tmSelectors = {
+export const tmSelectors: Record<string, string> = {
+    Root: "#tinymist-editor",
+    FileDropDown: ".tinymist-file-select",
+
 	ActionButton: "button[data-action]",
 
 	EditorPane: ".tinymist-editor-pane",
+    TextArea: "#tinymist-editor-input",
+    ImageView: ".tinymist-editor-image-view",
+    Image: ".tinymist-editor-image",
+    ImageMessage: ".tinymist-editor-image-message",
+
+    ConsolePanel: "#tinymist-console-panel",
+    ConsoleContent: ".tinymist-console-content",
 
 	ThemeSettingsOverlay: ".tinymist-theme-settings-overlay",
 	ThemeColorSplit: ".color-split",
@@ -17,17 +27,18 @@ export const tmSelectors = {
 	ThemeEditorLineOrGutter: ".cm-editor .cm-line, .cm-editor .cm-gutter",
 
 	PreviewPane: ".tinymist-preview-pane",
+    PreviewContent: ".tinymist-preview-content",
 	PreviewMutedMessage: ".text-muted.p-m",
 	PreviewError: ".tinymist-error",
 	PreviewDocumentHost: ".tinymist-document",
-	PreviewPanToggleButton: 'button[data-action="previewPanToggle"]',
-	PreviewCursorSpotlightToggleButton:
+	PreviewPan: 'button[data-action="previewPanToggle"]',
+	PreviewCursorSpotlight:
 		'button[data-action="previewCursorSpotlightToggle"]',
-	PreviewScrollIntoViewToggleButton:
+	PreviewScrollIntoView:
 		'button[data-action="previewScrollIntoViewToggle"]',
 };
 
-export const tmClassNames = {
+export const tmClassNames: Record<string, string> = {
 	EditorPane: "tinymist-editor-pane",
 	ConsoleCollapsed: "tinymist-console-collapsed",
     TokenHighlight: "tm-hlt", // plus "tm-hlt-{type}" "tm-mod-{modifier}"
@@ -61,3 +72,5 @@ export const tmClassNames = {
     ProbeName: "probe-name",
     ProbeSample: "probe-sample",
 };
+
+// other classes: "text-muted", "p-m", "text-small", "aria-hidden", "aria-expanded"
