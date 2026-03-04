@@ -70,7 +70,7 @@ flowchart TD
     E --> F[TokenManager renewToken via POST /ajax/tinymist/renew-ws-token with page_id to backend Laravel]
     F --> G{Renewal success?}
     G -- No --> H[Log error + remain disconnected]
-    G -- Yes --> I[Emit token-renewed(newToken)]
+    G -- Yes --> I[Emit token-renewed newToken]
 
     D --> J[Each WS client builds URL with token and uniqueTabId]
     I --> J
