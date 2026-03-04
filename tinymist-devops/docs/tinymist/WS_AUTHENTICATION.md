@@ -61,7 +61,7 @@ Header/algorithm:
 
 ```mermaid
 flowchart TD
-    A[Page bootstraps TinymistApp with wsToken + pageId from backend(Laravel), creates uniqueTabId] --> B[ConnectionsManager creates TinymistTokenManager]
+    A[Page bootstraps app with wsToken and pageId, then creates uniqueTabId] --> B[ConnectionsManager creates TinymistTokenManager]
     B --> C{wsToken present?}
 
     C -- Yes --> D[Create websockets Preview + FileSyncLSP]
@@ -72,7 +72,7 @@ flowchart TD
     G -- No --> H[Log error + remain disconnected]
     G -- Yes --> I[Emit token-renewed(newToken)]
 
-    D --> J[Each WS client connect builds URL with token + uniqueTabId]
+    D --> J[Each WS client builds URL with token and uniqueTabId]
     I --> J
     J --> K[Open WebSocket]
     K --> L{onopen?}
@@ -91,7 +91,7 @@ flowchart TD
     S -- No --> U[Use new token on next connect]
 
     M --> V[TokenManager schedules proactive renewal]
-    V --> W[renewIn = max(0, expiresIn - min(60, floor(expiresIn/2)))]
+    V --> W[Compute renewIn from expiresIn using safety buffer]
     W --> F
 ```
 
