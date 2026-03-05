@@ -2,6 +2,7 @@
 
 use BookStack\Entities\Controllers as EntityControllers;
 use BookStack\Extensions\Tinymist\Attachments\TinymistAttachmentController;
+use BookStack\Extensions\Tinymist\Imports\TinymistImportController;
 use Illuminate\Support\Facades\Route;
 
 // Tinymist/Typst routes
@@ -14,3 +15,6 @@ Route::post('/ajax/tinymist/renew-ws-token', [EntityControllers\TinymistControll
 Route::get('/attachments/dirty/page/{pageId}', [TinymistAttachmentController::class, 'dirtyMapForPage']);
 Route::put('/attachments/{id}/save-from-preview', [TinymistAttachmentController::class, 'saveFromPreview']);
 Route::put('/attachments/{id}/undo-from-preview', [TinymistAttachmentController::class, 'undoFromPreview']);
+
+// Tinymist single-page import route
+Route::post('/import/single', [TinymistImportController::class, 'uploadSingle']);

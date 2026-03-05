@@ -48,6 +48,11 @@
                         @include('pages.parts.markdown-editor', ['model' => $model])
                     @endif
 
+                    {{--Tinymist Editor--}}
+                    @if($editor === \BookStack\Entities\Tools\PageEditorType::Tinymist)
+                        @include('pages.parts.tinymist-editor', ['model' => $model])
+                    @endif
+
                 </div>
 
             </div>

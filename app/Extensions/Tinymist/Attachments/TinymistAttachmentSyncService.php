@@ -7,12 +7,16 @@ use BookStack\Entities\Tools\Tinymist\TinymistPreviewManager;
 use BookStack\Exceptions\FileUploadException;
 use BookStack\Uploads\Attachment;
 use BookStack\Uploads\FileStorage;
+use BookStack\Util\FilePathNormalizer;
+use Exception;
+use Illuminate\Filesystem\FilesystemManager;
 
 class TinymistAttachmentSyncService
 {
     public function __construct(
         protected FileStorage $storage,
         protected TinymistPreviewManager $previewManager,
+        protected FilesystemManager $fileSystem,
     ) {
     }
 
@@ -66,7 +70,7 @@ class TinymistAttachmentSyncService
             throw new FileUploadException(trans('errors.path_not_writable', ['filePath' => $previewPath]));
         }
 
-        $this->storage->writeFromLocalPath($attachment->path, $previewPath);
+        $this->writeFromLocalPath($attachment->path, $previewPath);
         $attachment->updated_by = user()->id;
         $attachment->save();
 
@@ -128,5 +132,47 @@ class TinymistAttachmentSyncService
         }
 
         return $dirtyMap;
+    }
+
+    protected function writeFromLocalPath(string $targetPath, string $localSourcePath): void
+    {
+        $sourceStream = @fopen($localSourcePath, 'r');
+        if (!is_resource($sourceStream)) {
+            throw new FileUploadException(trans('errors.path_not_writable', ['filePath' => $localSourcePath]));
+        }
+
+        $diskName = $this->getAttachmentDiskName();
+        $adjustedPath = $this->adjustPathForStorageDisk($targetPath, $diskName);
+
+        try {
+            $this->fileSystem->disk($diskName)->writeStream($adjustedPath, $sourceStream);
+        } catch (Exception $e) {
+            throw new FileUploadException(trans('errors.path_not_writable', ['filePath' => $targetPath]));
+        } finally {
+            fclose($sourceStream);
+        }
+    }
+
+    protected function getAttachmentDiskName(): string
+    {
+        $storageType = trim(strtolower(config('filesystems.attachments')));
+
+        if ($storageType === 'local' || $storageType === 'local_secure' || $storageType === 'local_secure_restricted') {
+            $storageType = 'local_secure_attachments';
+        }
+
+        return $storageType;
+    }
+
+    protected function adjustPathForStorageDisk(string $path, string $diskName): string
+    {
+        $trimmed = str_replace('uploads/files/', '', $path);
+        $normalized = FilePathNormalizer::normalize($trimmed);
+
+        if ($diskName === 'local_secure_attachments') {
+            return $normalized;
+        }
+
+        return 'uploads/files/' . $normalized;
     }
 }

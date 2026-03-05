@@ -728,3 +728,39 @@
     }
   }
 }
+
+.card.drag-card {
+  .drag-card-action {
+    &.disabled,
+    &[disabled] {
+      opacity: .45;
+      filter: grayscale(1);
+      cursor: not-allowed;
+      @include mixins.lightDark(color, #777, #888);
+    }
+
+    &.disabled:hover,
+    &[disabled]:hover {
+      background-color: transparent;
+    }
+  }
+}
+
+.sticky-sidebar {
+  top: 0;
+  padding-left: 2px;
+  max-height: calc(100vh);
+
+  .sticky-sidebar-header {
+    position: sticky;
+    top: 0;
+    background: #F2F2F2;
+    background: linear-gradient(180deg, rgba(242, 242, 242, 1) 66%, rgba(242, 242, 242, 0) 100%);
+    z-index: 4;
+  }
+}
+
+.dark-mode .sticky-sidebar-header {
+  background: #111;
+  background: linear-gradient(180deg, rgba(17, 17, 17, 1) 66%, rgba(17, 17, 17, 0) 100%);
+}

@@ -1,3 +1,21 @@
+@once
+    <style>
+        .card.drag-card .drag-card-action.disabled,
+        .card.drag-card .drag-card-action[disabled],
+        .card.drag-card .drag-card-action[aria-disabled="true"] {
+            opacity: .45;
+            filter: grayscale(1);
+            cursor: not-allowed;
+        }
+
+        .card.drag-card .drag-card-action.disabled:hover,
+        .card.drag-card .drag-card-action[disabled]:hover,
+        .card.drag-card .drag-card-action[aria-disabled="true"]:hover {
+            background-color: transparent;
+        }
+    </style>
+@endonce
+
 <div component="sortable-list"
      option:sortable-list:handle-selector=".handle, a">
     @php

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace BookStack\Exports;
+namespace BookStack\Extensions\Tinymist\Imports;
 
 use BookStack\Entities\Models\Book;
 use BookStack\Entities\Models\Chapter;
@@ -10,7 +10,6 @@ use BookStack\Entities\Models\Page;
 use BookStack\Entities\Queries\EntityQueries;
 use BookStack\Entities\Repos\PageRepo;
 use BookStack\Entities\Tools\Markdown\HtmlToMarkdown;
-use BookStack\Extensions\Tinymist\Imports\TinymistImportBridge;
 use BookStack\Permissions\Permission;
 use BookStack\Uploads\AttachmentService;
 use Illuminate\Support\Facades\Log;
