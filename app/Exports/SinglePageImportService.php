@@ -10,7 +10,7 @@ use BookStack\Entities\Models\Page;
 use BookStack\Entities\Queries\EntityQueries;
 use BookStack\Entities\Repos\PageRepo;
 use BookStack\Entities\Tools\Markdown\HtmlToMarkdown;
-use BookStack\Entities\Tools\PageEditorType;
+use BookStack\Extensions\Tinymist\Imports\TinymistImportBridge;
 use BookStack\Permissions\Permission;
 use BookStack\Uploads\AttachmentService;
 use Illuminate\Support\Facades\Log;
@@ -27,6 +27,7 @@ class SinglePageImportService
         protected PageRepo $pageRepo,
         protected EntityQueries $entityQueries,
         protected AttachmentService $attachmentService,
+        protected TinymistImportBridge $tinymistImportBridge,
     ) {
     }
 
@@ -48,9 +49,18 @@ class SinglePageImportService
         $baseName = trim($baseName) !== '' ? $baseName : trans('entities.pages_initial_name');
         $extension = strtolower($file->getClientOriginalExtension());
 
+        if ($this->tinymistImportBridge->supportsExtension($extension)) {
+            return $this->tinymistImportBridge->importFromUpload(
+                $extension,
+                $file,
+                $draft,
+                $baseName,
+                fn (UploadedFile $zipFile, Page $draftPage, string $pageName): Page => $this->createTinymistFromZip($zipFile, $draftPage, $pageName),
+                fn (UploadedFile $uploadedFile): string => $this->readFileContents($uploadedFile),
+            ) ?? throw new RuntimeException(trans('entities.import_single_type_invalid'));
+        }
+
         return match ($extension) {
-            'zip' => $this->createTinymistFromZip($file, $draft, $baseName),
-            'typ' => $this->publishTinymist($draft, $baseName, $this->readFileContents($file)),
             'md', 'markdown', 'txt' => $this->publishMarkdown($draft, $baseName, $this->readFileContents($file)),
             'html', 'htm' => $this->publishHtmlAsMarkdown($draft, $baseName, $this->readFileContents($file)),
             default => throw new RuntimeException(trans('entities.import_single_type_invalid')),
@@ -59,10 +69,7 @@ class SinglePageImportService
 
     protected function publishTinymist(Page $draft, string $name, string $content): Page
     {
-        return $this->pageRepo->publishDraft($draft, [
-            'name' => $name,
-            'tinymist' => $content,
-        ]);
+        return $this->tinymistImportBridge->publishTinymist($draft, $name, $content);
     }
 
     protected function publishMarkdown(Page $draft, string $name, string $content): Page

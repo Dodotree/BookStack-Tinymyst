@@ -84,37 +84,9 @@ class Attachment extends Model implements OwnableInterface
     public function editorContent(): array
     {
         $videoExtensions = ['mp4', 'webm', 'mkv', 'ogg', 'avi'];
-        $imageExtensions = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'tif', 'tiff'];
         if (in_array(strtolower($this->extension), $videoExtensions)) {
             $html = '<video src="' . e($this->getUrl(true)) . '" controls width="480" height="270"></video>';
             return ['text/html' => $html, 'text/plain' => $html];
-        }
-
-        if (!$this->external && strtolower($this->extension) === 'typ') {
-            $fileName = basename($this->getFileName());
-            $escapedFileName = addcslashes($fileName, "\\\"");
-            $importLine = '#import "' . $escapedFileName . '": *';
-
-            return [
-                'text/html' => '<code>' . e($importLine) . '</code>',
-                'text/plain' => $importLine,
-                'text/typst' => $importLine,
-            ];
-        }
-
-        if (!$this->external && in_array(strtolower($this->extension), $imageExtensions)) {
-            $fileName = basename($this->getFileName());
-            $escapedFileName = addcslashes($fileName, "\\\"");
-            $figureBlock = "#figure(\n"
-                . "  image(\"{$escapedFileName}\", width: 100%),\n"
-                . "  caption: [ Image caption ],\n"
-                . ")";
-
-            return [
-                'text/html' => $this->htmlLink(),
-                'text/plain' => $this->markdownLink(),
-                'text/typst' => $figureBlock,
-            ];
         }
 
         return ['text/html' => $this->htmlLink(), 'text/plain' => $this->markdownLink()];

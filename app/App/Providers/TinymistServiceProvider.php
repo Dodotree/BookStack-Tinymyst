@@ -3,6 +3,7 @@
 namespace BookStack\App\Providers;
 
 use BookStack\Entities\Tools\Tinymist\TinymistPreviewManager;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 
 class TinymistServiceProvider extends ServiceProvider
@@ -14,6 +15,8 @@ class TinymistServiceProvider extends ServiceProvider
 
     public function boot()
     {
+        $this->registerRoutes();
+
         // Register cleanup on shutdown
         // $this->app->terminating(function () {
         //     $manager = app(TinymistPreviewManager::class);
@@ -26,5 +29,16 @@ class TinymistServiceProvider extends ServiceProvider
         // }
 
         $this->app->make(TinymistPreviewManager::class);
+    }
+
+    protected function registerRoutes(): void
+    {
+        /** @var object $app */
+        $app = app();
+        if (method_exists($app, 'routesAreCached') && $app->routesAreCached()) {
+            return;
+        }
+
+        Route::middleware(['web', 'auth'])->group(base_path('routes/tinymist.php'));
     }
 }

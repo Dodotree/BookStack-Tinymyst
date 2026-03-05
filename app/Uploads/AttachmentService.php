@@ -3,7 +3,7 @@
 namespace BookStack\Uploads;
 
 use BookStack\Entities\Models\Page;
-use BookStack\Entities\Tools\Tinymist\TinymistPreviewManager;
+use BookStack\Extensions\Tinymist\Attachments\TinymistAttachmentSyncService;
 use BookStack\Exceptions\FileUploadException;
 use Exception;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
@@ -12,6 +12,7 @@ class AttachmentService
 {
     public function __construct(
         protected FileStorage $storage,
+        protected TinymistAttachmentSyncService $tinymistAttachmentSyncService,
     ) {
     }
 
@@ -55,7 +56,7 @@ class AttachmentService
             'order'       => $largestExistingOrder + 1,
         ]);
 
-        $this->syncTinymistAttachmentIfNeeded($attachment, $pageId);
+        $this->tinymistAttachmentSyncService->syncAttachmentIfNeeded($attachment, $pageId);
 
         return $attachment;
     }
@@ -71,7 +72,7 @@ class AttachmentService
         $oldFileName = $attachment->external ? null : $attachment->getFileName();
 
         if (!$attachment->external) {
-            $this->removeTinymistAttachmentIfNeeded($attachment, $oldFileName);
+            $this->tinymistAttachmentSyncService->removeAttachmentIfNeeded($attachment, $oldFileName);
             $this->deleteFileInStorage($attachment);
         }
 
@@ -84,28 +85,9 @@ class AttachmentService
         $attachment->extension = $uploadedFile->getClientOriginalExtension();
         $attachment->save();
 
-        $this->syncTinymistAttachmentIfNeeded($attachment);
+        $this->tinymistAttachmentSyncService->syncAttachmentIfNeeded($attachment);
 
         return $attachment;
-    }
-
-    protected function syncTinymistAttachmentIfNeeded(Attachment $attachment, ?int $pageId = null): void
-    {
-        if ($attachment->external) {
-            return;
-        }
-
-        $page = $attachment->page;
-        if (!$page && $pageId) {
-            $page = Page::query()->find($pageId);
-        }
-
-        if (!$page || $page->editor !== 'tinymist') {
-            return;
-        }
-
-        $manager = app()->make(TinymistPreviewManager::class);
-        $manager->syncNewAttachmentToPreviewDir($page, $attachment);
     }
 
     /**
@@ -113,26 +95,7 @@ class AttachmentService
      */
     public function saveAttachmentFromTinymistPreview(Attachment $attachment): Attachment
     {
-        $page = $attachment->page;
-        if ($attachment->external || !$page || $page->editor !== 'tinymist') {
-            return $attachment;
-        }
-
-        $fileName = basename($attachment->getFileName());
-        if ($fileName === '' || $fileName === 'entry.typ') {
-            return $attachment;
-        }
-
-        $previewPath = storage_path("app/tinymist/page_{$page->id}/{$fileName}");
-        if (!is_file($previewPath)) {
-            throw new FileUploadException(trans('errors.path_not_writable', ['filePath' => $previewPath]));
-        }
-
-        $this->storage->writeFromLocalPath($attachment->path, $previewPath);
-        $attachment->updated_by = user()->id;
-        $attachment->save();
-
-        return $attachment->refresh();
+        return $this->tinymistAttachmentSyncService->saveFromPreview($attachment);
     }
 
     /**
@@ -140,15 +103,7 @@ class AttachmentService
      */
     public function undoTinymistPreviewAttachmentChanges(Attachment $attachment): Attachment
     {
-        $page = $attachment->page;
-        if ($attachment->external || !$page || $page->editor !== 'tinymist') {
-            return $attachment;
-        }
-
-        $manager = app()->make(TinymistPreviewManager::class);
-        $manager->restoreAttachmentToPreviewDir($page, $attachment);
-
-        return $attachment;
+        return $this->tinymistAttachmentSyncService->undoPreviewChanges($attachment);
     }
 
     /**
@@ -158,44 +113,7 @@ class AttachmentService
      */
     public function getTinymistAttachmentDirtyMap(Page $page): array
     {
-        $dirtyMap = [];
-        if ($page->editor !== 'tinymist') {
-            return $dirtyMap;
-        }
-
-        foreach ($page->attachments as $attachment) {
-            /** @var Attachment $attachment */
-            if ($attachment->external) {
-                continue;
-            }
-
-            $fileName = basename($attachment->getFileName());
-            if ($fileName === '' || $fileName === 'entry.typ') {
-                continue;
-            }
-
-            $storedPath = $this->storage->getSystemPath($attachment->path);
-            $previewPath = storage_path("app/tinymist/page_{$page->id}/{$fileName}");
-
-            $storedExists = $storedPath !== '' && is_file($storedPath);
-            $previewExists = is_file($previewPath);
-
-            if (!$storedExists && !$previewExists) {
-                $dirtyMap[$fileName] = false;
-                continue;
-            }
-
-            if ($storedExists !== $previewExists) {
-                $dirtyMap[$fileName] = true;
-                continue;
-            }
-
-            $storedHash = @hash_file('sha256', $storedPath) ?: null;
-            $previewHash = @hash_file('sha256', $previewPath) ?: null;
-            $dirtyMap[$fileName] = $storedHash !== $previewHash;
-        }
-
-        return $dirtyMap;
+        return $this->tinymistAttachmentSyncService->getDirtyMap($page);
     }
 
     /**
@@ -244,7 +162,7 @@ class AttachmentService
         $link = trim($requestData['link'] ?? '');
         if (!empty($link)) {
             if (!$attachment->external) {
-                $this->removeTinymistAttachmentIfNeeded($attachment, $oldFileName);
+                $this->tinymistAttachmentSyncService->removeAttachmentIfNeeded($attachment, $oldFileName);
                 $this->deleteFileInStorage($attachment);
                 $attachment->external = true;
                 $attachment->extension = '';
@@ -257,8 +175,8 @@ class AttachmentService
         if (!$attachment->external && !$oldExternal) {
             $newFileName = $attachment->getFileName();
             if ($oldFileName && $oldFileName !== $newFileName) {
-                $this->removeTinymistAttachmentIfNeeded($attachment, $oldFileName);
-                $this->syncTinymistAttachmentIfNeeded($attachment);
+                $this->tinymistAttachmentSyncService->removeAttachmentIfNeeded($attachment, $oldFileName);
+                $this->tinymistAttachmentSyncService->syncAttachmentIfNeeded($attachment);
             }
         }
 
@@ -275,27 +193,11 @@ class AttachmentService
         $fileName = $attachment->external ? null : $attachment->getFileName();
 
         if (!$attachment->external) {
-            $this->removeTinymistAttachmentIfNeeded($attachment, $fileName);
+            $this->tinymistAttachmentSyncService->removeAttachmentIfNeeded($attachment, $fileName);
             $this->deleteFileInStorage($attachment);
         }
 
         $attachment->delete();
-    }
-
-    protected function removeTinymistAttachmentIfNeeded(Attachment $attachment, ?string $attachmentFileName = null): void
-    {
-        $fileName = $attachmentFileName ?? ($attachment->external ? null : $attachment->getFileName());
-        if (!$fileName) {
-            return;
-        }
-
-        $page = $attachment->page;
-        if (!$page || $page->editor !== 'tinymist') {
-            return;
-        }
-
-        $manager = app()->make(TinymistPreviewManager::class);
-        $manager->removeAttachmentFromPreviewDir($page, $fileName);
     }
 
     /**

@@ -528,6 +528,44 @@
   }
 }
 
+/* Tinymist (Typst) document display on page show */
+.page-content .tinymist-document {
+  svg {
+    @media (prefers-color-scheme: dark) {
+      filter: invert(0.9) hue-rotate(180deg);
+    }
+  }
+
+  html.dark-mode & svg {
+    background-color: #222;
+    filter: invert(0.9) hue-rotate(180deg);
+
+    image {
+      filter: invert(1) hue-rotate(180deg);
+    }
+  }
+}
+
+.tinymist-error {
+  padding: vars.$m;
+  @include mixins.lightDark(background-color, #fcdbdb, #250505);
+  @include mixins.lightDark(border-color, vars.$negative, vars.$negative-dark);
+  @include mixins.lightDark(color, #4d0706, vars.$negative-dark);
+  border: 1px solid;
+  border-radius: 4px;
+  margin: vars.$m 0;
+
+  h3 {
+    margin-top: 0;
+    color: inherit;
+  }
+
+  p {
+    margin: vars.$xs 0;
+    font-family: monospace;
+  }
+}
+
 /* Semantic token highlighting (Tinymist) */
 .tm-hlt {
   --tm-hlt-current: inherit;

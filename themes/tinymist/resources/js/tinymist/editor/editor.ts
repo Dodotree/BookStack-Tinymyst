@@ -83,6 +83,14 @@ export class TinymistEditorUI {
 
     private fallbackEnabled = false;
 
+    private getCurrentEditorText(): string {
+        if (this.editorView) {
+            return this.editorView.state.doc.toString();
+        }
+
+        return this.editor.value;
+    }
+
     constructor() {
         this.editor = document.querySelector(tmSelectors.TextArea) as HTMLTextAreaElement;
         this.imageViewSelector = `${tmSelectors.Root} ${tmSelectors.ImageView}`;
@@ -125,7 +133,7 @@ export class TinymistEditorUI {
         this.resetSyncStateForFile({
             fileName: this.entryFileName,
             docVersion: 1,
-            content: this.editor.value,
+            content: this.getCurrentEditorText(),
         });
     }
 
@@ -517,7 +525,7 @@ export class TinymistEditorUI {
         this.resetSyncStateForFile(payload);
 
         if (payload.fileName === this.activeFileName) {
-            const currentText = this.editor.value;
+            const currentText = this.getCurrentEditorText();
             if (payload.content !== currentText) {
                 this.setText(payload.content, true);
             }
@@ -536,7 +544,7 @@ export class TinymistEditorUI {
     }
     public getEntryText(): string {
         if (this.activeFileName === this.entryFileName) {
-            return this.editor.value;
+            return this.getCurrentEditorText();
         }
         return this.getOrCreateFileState(this.entryFileName).currentContent;
     }
@@ -578,7 +586,7 @@ export class TinymistEditorUI {
             return;
         }
         const state = this.getOrCreateFileState(this.activeFileName);
-        state.currentContent = this.editor.value;
+        state.currentContent = this.getCurrentEditorText();
         this.queueDirtyStateEmit(this.activeFileName);
 
         // Eventually changes from transactions sent to WebSocket server
@@ -1007,7 +1015,7 @@ export class TinymistEditorUI {
         }
 
         const currentContent =
-            fileName === this.entryFileName ? this.editor.value : "";
+            fileName === this.entryFileName ? this.getCurrentEditorText() : "";
         const created: FileSyncState = {
             fileName: fileName,
             docVersion: 1,

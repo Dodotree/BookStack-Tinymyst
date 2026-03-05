@@ -9,7 +9,7 @@ const fs = require("fs");
 const isProd = process.argv[2] === "production";
 
 // Gather our input files
-const entryPoints = {
+const coreEntryPoints = {
     app: path.join(__dirname, "../../resources/js/app.ts"),
     code: path.join(__dirname, "../../resources/js/code/index.mjs"),
     "legacy-modes": path.join(
@@ -18,11 +18,18 @@ const entryPoints = {
     ),
     markdown: path.join(__dirname, "../../resources/js/markdown/index.mts"),
     wysiwyg: path.join(__dirname, "../../resources/js/wysiwyg/index.ts"),
-    tinymist: path.join(__dirname, "../../resources/js/tinymist-bookstack.ts"),
+};
+
+const tinymistEntryPoints = {
+    tinymist: path.join(
+        __dirname,
+        "../../themes/tinymist/resources/js/tinymist-bookstack.ts"
+    ),
 };
 
 // Locate our output directory
-const outdir = path.join(__dirname, "../../public/dist");
+const coreOutDir = path.join(__dirname, "../../public/dist");
+const tinymistOutDir = path.join(__dirname, "../../themes/tinymist/public");
 
 const wasmPlugin = {
     name: "wasm",
@@ -60,35 +67,50 @@ const wasmPlugin = {
     },
 };
 
-// Build via esbuild
-esbuild
-    .build({
-        bundle: true,
-        metafile: true,
-        entryPoints,
-        outdir,
-        sourcemap: true,
-        target: "es2021",
-        mainFields: ["module", "main"],
-        format: "esm",
-        minify: isProd,
-        logLevel: "info",
-        plugins: [wasmPlugin],
-        loader: {
-            ".svg": "text",
-        },
-        absWorkingDir: path.join(__dirname, "../.."),
-        alias: {
-            "@icons": "./resources/icons",
-            lexical: "./resources/js/wysiwyg/lexical/core",
-            "@lexical": "./resources/js/wysiwyg/lexical",
-        },
-        banner: {
-            js: '// See the "/licenses" URI for full package license details',
-            css: '/* See the "/licenses" URI for full package license details */',
-        },
-    })
-    .then(result => {
-        fs.writeFileSync("esbuild-meta.json", JSON.stringify(result.metafile));
+const buildOptions = {
+    bundle: true,
+    metafile: true,
+    sourcemap: true,
+    target: "es2021",
+    mainFields: ["module", "main"],
+    format: "esm",
+    minify: isProd,
+    logLevel: "info",
+    plugins: [wasmPlugin],
+    loader: {
+        ".svg": "text",
+    },
+    absWorkingDir: path.join(__dirname, "../.."),
+    alias: {
+        "@icons": "./resources/icons",
+        lexical: "./resources/js/wysiwyg/lexical/core",
+        "@lexical": "./resources/js/wysiwyg/lexical",
+    },
+    banner: {
+        js: '// See the "/licenses" URI for full package license details',
+        css: '/* See the "/licenses" URI for full package license details */',
+    },
+};
+
+Promise.all([
+    esbuild.build({
+        ...buildOptions,
+        entryPoints: coreEntryPoints,
+        outdir: coreOutDir,
+    }),
+    esbuild.build({
+        ...buildOptions,
+        entryPoints: tinymistEntryPoints,
+        outdir: tinymistOutDir,
+    }),
+])
+    .then(([coreResult, tinymistResult]) => {
+        fs.writeFileSync(
+            "esbuild-meta.json",
+            JSON.stringify({
+                core: coreResult.metafile,
+                tinymist: tinymistResult.metafile,
+            })
+        );
     })
     .catch(() => process.exit(1));

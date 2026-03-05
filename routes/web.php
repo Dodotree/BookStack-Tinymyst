@@ -164,22 +164,13 @@ Route::middleware('auth')->group(function () {
     Route::put('/attachments/{id}', [UploadControllers\AttachmentController::class, 'update']);
     Route::get('/attachments/edit/{id}', [UploadControllers\AttachmentController::class, 'getUpdateForm']);
     Route::get('/attachments/get/page/{pageId}', [UploadControllers\AttachmentController::class, 'listForPage']);
-    Route::get('/attachments/dirty/page/{pageId}', [UploadControllers\AttachmentController::class, 'dirtyMapForPage']);
     Route::put('/attachments/sort/page/{pageId}', [UploadControllers\AttachmentController::class, 'sortForPage']);
-    Route::put('/attachments/{id}/save-from-preview', [UploadControllers\AttachmentController::class, 'saveFromPreview']);
-    Route::put('/attachments/{id}/undo-from-preview', [UploadControllers\AttachmentController::class, 'undoFromPreview']);
     Route::delete('/attachments/{id}', [UploadControllers\AttachmentController::class, 'delete']);
 
     // AJAX routes
     Route::put('/ajax/page/{id}/save-draft', [EntityControllers\PageController::class, 'saveDraft']);
     Route::get('/ajax/page/{id}', [EntityControllers\PageController::class, 'getPageAjax']);
     Route::delete('/ajax/page/{id}', [EntityControllers\PageController::class, 'ajaxDestroy']);
-
-    // Tinymist/Typst routes
-    Route::post('/ajax/tinymist/compile', [EntityControllers\TinymistController::class, 'compile']);
-    Route::post('/ajax/tinymist/check', [EntityControllers\TinymistController::class, 'check']);
-    Route::get('/ajax/tinymist/status', [EntityControllers\TinymistController::class, 'status']);
-    Route::post('/ajax/tinymist/renew-ws-token', [EntityControllers\TinymistController::class, 'renewWsToken']);
 
     // Tag routes
     Route::get('/tags', [ActivityControllers\TagController::class, 'index']);

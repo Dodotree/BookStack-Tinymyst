@@ -1,14 +1,16 @@
 @push('head')
-<link rel="stylesheet" href="{{ versioned_asset('dist/tinymist.css') }}">
-<link rel="stylesheet" href="{{ versioned_asset('dist/tinymist-svg.css') }}">
+<link rel="stylesheet" href="{{ url('/theme/tinymist/tinymist.css') }}">
+<link rel="stylesheet" href="{{ url('/theme/tinymist/tinymist-svg.css') }}">
 @endpush
 
 @push('body-end')
-<script type="module" src="{{ versioned_asset('dist/tinymist.js') }}" nonce="{{ $cspNonce }}"></script>
+<script type="module" src="{{ url('/theme/tinymist/tinymist.js') }}" nonce="{{ $cspNonce }}"></script>
 @endpush
 
+<!-- Theme override marker: themes/tinymist/pages/parts/tinymist-editor.blade.php -->
 <div id="tinymist-editor"
     component="tinymist-editor"
+    data-theme-source="tinymist-theme-override"
     option:tinymist-editor:page-id="{{ $page->id }}"
     option:tinymist-editor:use-web-socket="true"
     @if(isset($tinymistPreview) && $tinymistPreview)

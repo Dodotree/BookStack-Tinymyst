@@ -51,6 +51,8 @@ class WebSafeMimeSniffer
     protected array $textTypesByExtension = [
         'css' => 'text/css',
         'js' => 'text/javascript',
+        'mjs' => 'text/javascript',
+        'map' => 'application/json',
         'json' => 'application/json',
         'csv' => 'text/csv',
     ];
@@ -66,8 +68,12 @@ class WebSafeMimeSniffer
         $fInfo = new finfo(FILEINFO_MIME_TYPE);
         $mime = $fInfo->buffer($content) ?: 'application/octet-stream';
 
-        if ($mime === 'text/plain' && $extension) {
-            $mime = $this->textTypesByExtension[$extension] ?? 'text/plain';
+        if ($extension) {
+            $extension = strtolower($extension);
+        }
+
+        if (($mime === 'text/plain' || $mime === 'application/octet-stream') && $extension) {
+            $mime = $this->textTypesByExtension[$extension] ?? $mime;
         }
 
         if (in_array($mime, $this->safeMimes)) {

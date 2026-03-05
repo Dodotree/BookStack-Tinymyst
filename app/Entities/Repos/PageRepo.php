@@ -13,6 +13,7 @@ use BookStack\Entities\Tools\BookContents;
 use BookStack\Entities\Tools\PageContent;
 use BookStack\Entities\Tools\PageEditorType;
 use BookStack\Entities\Tools\TrashCan;
+use BookStack\Extensions\Tinymist\Pages\TinymistPageRepoBridge;
 use BookStack\Exceptions\MoveOperationException;
 use BookStack\Exceptions\PermissionsException;
 use BookStack\Facades\Activity;
@@ -24,6 +25,8 @@ use Exception;
 
 class PageRepo
 {
+    protected TinymistPageRepoBridge $tinymistPageRepoBridge;
+
     public function __construct(
         protected BaseRepo $baseRepo,
         protected RevisionRepo $revisionRepo,
@@ -32,6 +35,7 @@ class PageRepo
         protected ReferenceUpdater $referenceUpdater,
         protected TrashCan $trashCan,
     ) {
+        $this->tinymistPageRepoBridge = app()->make(TinymistPageRepoBridge::class);
     }
 
     /**
@@ -158,9 +162,8 @@ class PageRepo
 
         if ($haveInput && $inputEmpty) {
             $pageContent->setNewHTML('', user());
-        } elseif (!empty($input['tinymist']) && is_string($input['tinymist'])) {
+        } elseif ($this->tinymistPageRepoBridge->applyTinymistContent($pageContent, $input)) {
             $newEditor = PageEditorType::Tinymist;
-            $pageContent->setNewTinymist($input['tinymist'], user());
         } elseif (!empty($input['markdown']) && is_string($input['markdown'])) {
             $newEditor = PageEditorType::Markdown;
             $pageContent->setNewMarkdown($input['markdown'], user());
@@ -194,9 +197,8 @@ class PageRepo
         $draft = $this->revisionRepo->getNewDraftForCurrentUser($page);
         $draft->fill($input);
 
-        if (!empty($input['tinymist'])) {
-            $draft->markdown = $input['tinymist'];
-            $draft->html = '';
+        if ($this->tinymistPageRepoBridge->applyTinymistDraft($draft, $input)) {
+            // handled by Tinymist bridge
         } elseif (!empty($input['markdown'])) {
             $draft->markdown = $input['markdown'];
             $draft->html = '';

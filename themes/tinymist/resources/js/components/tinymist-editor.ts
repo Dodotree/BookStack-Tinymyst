@@ -1,17 +1,17 @@
-import { Component } from "./component";
+import { Component } from "../../../../../resources/js/components/component";
 import { TinymistApp } from "../tinymist/index";
 import type { TinymistEventPayloads } from "../tinymist/constants/custom-events";
 
 const externalToInternalEvents: Record<string, keyof TinymistEventPayloads> = {
     "editor::insert":"insert", // used by attachment panel to insert image markdown
     "attachments-page-updated":"files-updated", // used by attachment panel to notify about changes in attachments list
-    "tinymist-attachments-dirty-map-updated":"files-dirty-updated", // used by attachment panel to notify of file dirty state changes
-    "tinymist-attachment-reset-file":"reset-file", // used by attachment panel to reset a file
+    "attachments-dirty-map-updated":"files-dirty-updated", // used by attachment panel to notify of file dirty state changes
+    "attachments-reset-file":"reset-file", // used by attachment panel to reset a file
 };
 
 const internalToExternalEvents: Partial<Record<keyof TinymistEventPayloads, string>> = {
     "text-change": "editor-tinymist-change", // used for letting know page-editor.js that something changed, so it can trigger auto-saving
-    "file-dirty-state": "tinymist-attachment-dirty-state",
+    "file-dirty-state": "attachments-file-dirty-state",
 };
 
 export class TinymistEditor extends Component {

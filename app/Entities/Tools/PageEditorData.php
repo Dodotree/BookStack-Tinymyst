@@ -7,6 +7,7 @@ use BookStack\Entities\Models\Page;
 use BookStack\Entities\Queries\EntityQueries;
 use BookStack\Entities\Tools\Markdown\HtmlToMarkdown;
 use BookStack\Entities\Tools\Markdown\MarkdownToHtml;
+use BookStack\Extensions\Tinymist\Pages\TinymistPageEditorBridge;
 use BookStack\Permissions\Permission;
 
 class PageEditorData
@@ -17,8 +18,10 @@ class PageEditorData
     public function __construct(
         protected Page $page,
         protected EntityQueries $queries,
-        protected string $requestedEditor
+        protected string $requestedEditor,
+        protected ?TinymistPageEditorBridge $tinymistPageEditorBridge = null,
     ) {
+        $this->tinymistPageEditorBridge ??= app()->make(TinymistPageEditorBridge::class);
         $this->viewData = $this->build();
     }
 
@@ -120,37 +123,6 @@ class PageEditorData
      */
     protected function startTinymistPreview(Page $page): ?array
     {
-        try {
-            $pageId = $page->id;
-            $manager = app(\BookStack\Entities\Tools\Tinymist\TinymistPreviewManager::class);
-            $token = $manager->generateTinymistWsToken($page);
-
-            // Save current content to file (prefer newer file content if present)
-            $content = $page->markdown ?? '== Empty document from PageEditorData';
-            $content = $manager->ensurePreviewFileContent($page, $content, $page->updated_at);
-            $page->markdown = $content;
-
-            // Debug logging
-            \Illuminate\Support\Facades\Log::info('Starting Tinymist preview', [
-                'page_id' => $pageId,
-                'content_length' => strlen($content),
-                'has_markdown' => !empty($page->markdown),
-                'content_preview' => substr($content, 0, 100),
-                'ws_token' => $token['ws_token'],
-            ]);
-
-            return [
-                'ws_token' => $token['ws_token'],
-                'status' => 'token_ready',
-            ];
-        } catch (\Exception $e) {
-            // Log error but don't fail page load
-            \Illuminate\Support\Facades\Log::error('Failed to start Tinymist preview', [
-                'page_id' => $page->id,
-                'error' => $e->getMessage(),
-            ]);
-
-            return null;
-        }
+        return $this->tinymistPageEditorBridge->startPreview($page);
     }
 }

@@ -150,10 +150,7 @@ class PageController extends Controller
         }
 
         $pageContent = (new PageContent($page));
-        // Skip render() for Tinymist pages - DOMDocument strips SVG namespaces
-        if ($page->editor !== 'tinymist') {
-            $page->html = $pageContent->render();
-        }
+        $page->html = $pageContent->renderForView();
         $pageNav = $pageContent->getNavigation($page->html);
 
         $sidebarTree = (new BookContents($page->book))->getTree();

@@ -5,6 +5,7 @@ namespace BookStack\Entities\Tools;
 use BookStack\Entities\Models\Page;
 use BookStack\Entities\Queries\PageQueries;
 use BookStack\Entities\Tools\Markdown\MarkdownToHtml;
+use BookStack\Extensions\Tinymist\Pages\TinymistPageContentHandler;
 use BookStack\Exceptions\ImageUploadException;
 use BookStack\Facades\Theme;
 use BookStack\Permissions\Permission;
@@ -24,11 +25,13 @@ use Illuminate\Support\Str;
 class PageContent
 {
     protected PageQueries $pageQueries;
+    protected TinymistPageContentHandler $tinymistPageContentHandler;
 
     public function __construct(
         protected Page $page
     ) {
         $this->pageQueries = app()->make(PageQueries::class);
+        $this->tinymistPageContentHandler = app()->make(TinymistPageContentHandler::class);
     }
 
     /**
@@ -58,93 +61,7 @@ class PageContent
      */
     public function setNewTinymist(string $source, User $updater): void
     {
-        $this->page->markdown = $source;  // Store Typst source in markdown column
-
-        // Compile to SVG using TinymistService
-        $tinymist = app(\BookStack\Entities\Tools\Tinymist\TinymistService::class);
-        $result = $tinymist->compileToSvg($source, ['pageId' => $this->page->id]);
-
-        if ($result['success']) {
-            // Wrap SVG in container div
-            $html = '<div class="tinymist-document">' . $result['svg'] . '</div>';
-            // $this->page->html = $this->formatHtml($html);
-            $this->page->html = $html;
-        } else {
-            // Show compilation errors
-            $errorHtml = '<div class="tinymist-error">';
-            $errorHtml .= '<h3>Typst Compilation Errors:</h3>';
-            foreach ($result['errors'] as $error) {
-                $errorHtml .= '<p>' . htmlspecialchars($error) . '</p>';
-            }
-            $errorHtml .= '</div>';
-            $this->page->html = $errorHtml;
-        }
-
-        // Extract plain text from Typst source for search indexing
-        $this->page->text = $this->toPlainTextFromTypst($source);
-    }
-
-    /**
-     * Extract plain text from Typst source for search indexing.
-     * Removes Typst markup/commands but preserves content.
-     */
-    protected function toPlainTextFromTypst(string $source): string
-    {
-        // Remove Typst commands (lines starting with #)
-        $text = preg_replace('/^#.*$/m', '', $source);
-
-        // Remove inline math formulas
-        $text = preg_replace('/\$.*?\$/', '', $text);
-
-        // Remove bold/italic markup
-        $text = preg_replace('/\*{1,2}(.*?)\*{1,2}/', '$1', $text);
-
-        // Remove links [text](url) - keep only text
-        $text = preg_replace('/\[(.*?)\]\(.*?\)/', '$1', $text);
-
-        // Clean up extra whitespace
-        $text = html_entity_decode(strip_tags($text));
-
-        // Remove all Typst syntax
-        $text = preg_replace('/#(set|show)\s+[^\n]+/', '', $text);
-        $text = preg_replace('/#\w+(?:\([^\]]*\))?\[([^\]]+)\]/', '$1', $text);
-        $text = preg_replace('/`[^`]+`/', '', $text);
-        $text = preg_replace('/\/\/.*$/m', '', $text);
-        $text = preg_replace('/\/\*.*?\*\//s', '', $text);
-        $text = preg_replace('/\s+/', ' ', $text);
-
-        return trim($text);
-    }
-
-    /**
-     * Convert Typst to Markdown for switching (? unused for now)
-     */
-    protected function typstToMarkdown(string $typst): string
-    {
-        // Basic conversion (see TINYMIST_SVG_WORKFLOW.md for details)
-        $markdown = $typst;
-
-        // Headings
-        $markdown = preg_replace('/^=\s+(.+)$/m', '# $1', $markdown);
-        $markdown = preg_replace('/^==\s+(.+)$/m', '## $1', $markdown);
-        $markdown = preg_replace('/^===\s+(.+)$/m', '### $1', $markdown);
-
-        // Strong/emphasis
-        $markdown = preg_replace('/#strong\[([^\]]+)\]/', '**$1**', $markdown);
-        $markdown = preg_replace('/#emph\[([^\]]+)\]/', '*$1*', $markdown);
-
-        // Links: #link("url")[text] → [text](url)
-        $markdown = preg_replace(
-            '/#link\("([^"]+)"\)\[([^\]]+)\]/',
-            '[$2]($1)',
-            $markdown
-        );
-
-        // Remove Typst functions
-        $markdown = preg_replace('/#\w+(?:\([^\]]*\))?\[([^\]]+)\]/', '$1', $markdown);
-        $markdown = preg_replace('/#(set|show)\s+[^\n]+/', '', $markdown);
-
-        return trim($markdown);
+        $this->tinymistPageContentHandler->apply($this->page, $source);
     }
 
     /**
@@ -415,6 +332,18 @@ class PageContent
         }
 
         return $doc->getBodyInnerHtml();
+    }
+
+    /**
+     * Render page content for public page view.
+     */
+    public function renderForView(): string
+    {
+        if ($this->tinymistPageContentHandler->shouldBypassDomRender($this->page)) {
+            return $this->page->html ?? '';
+        }
+
+        return $this->render();
     }
 
     /**
