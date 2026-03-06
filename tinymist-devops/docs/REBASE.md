@@ -62,12 +62,10 @@ a lot to be merged
 use BookStack\Extensions\Tinymist\Pages\TinymistPageContentHandler;
 
 28d28
-<     protected TinymistPageContentHandler $tinymistPageContentHandler;
+     protected TinymistPageContentHandler $tinymistPageContentHandler;
 34d33
-<         $this->tinymistPageContentHandler = app()->make(TinymistPageContentHandler::class);
-57,64c56
-        $this->page->html = $this->formatHtml($html);
-    }
+            $this->tinymistPageContentHandler = app()->make(TinymistPageContentHandler::class);
+        }
 
     /**
      * Save the content of the page with new provided Tinymist (Typst) source.
@@ -93,27 +91,16 @@ use BookStack\Extensions\Tinymist\Pages\TinymistPageContentHandler;
 - `app/Entities/Tools/PageEditorData.php`
 
 ```php
-28>    protected TinymistPageContentHandler $tinymistPageContentHandler;
-34> $this->tinymistPageContentHandler = app()->make(TinymistPageContentHandler::class);
+    use BookStack\Extensions\Tinymist\Pages\TinymistPageEditorBridge;
+    ...
+        $this->updateContentForEditor($page, $editorType);
 
-    /**
-     * Save the content of the page with new provided Tinymist (Typst) source.
-     */
-    public function setNewTinymist(string $source, User $updater): void
-    {
-        $this->tinymistPageContentHandler->apply($this->page, $source);
-    }
-
-    /**
-     * Render page content for public page view.
-     */
-    public function renderForView(): string
-    {
-        if ($this->tinymistPageContentHandler->shouldBypassDomRender($this->page)) {
-            return $this->page->html ?? '';
+        // Start Tinymist preview server if this is a Tinymist page
+        $tinymistPreview = null;
+        if ($editorType === PageEditorType::Tinymist && config('tinymist.enabled', false)) {
+            // Get ws_token and report status, mutates $page->markdown with content used for preview.
+            $tinymistPreview = $this->tinymistPageEditorBridge->startPreview($page);
         }
-        return $this->render();
-    }
 ```
 
 - `app/Entities/Tools/PageEditorType.php`
@@ -156,7 +143,7 @@ small inserts to recognize Tinymist editor type
 
 - `app/Uploads/AttachmentService.php`
 
-A lot
+A lot, it's because changes should be reflected both in Bookstack and in preview folder (when preview is active)
 
 ```php
 use BookStack\Entities\Models\Page;

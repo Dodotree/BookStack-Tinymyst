@@ -55,6 +55,29 @@ Platform support: Windows (x64/ARM64), Linux (x64/ARM64), macOS (x64/ARM64)
 
 ## 🔄 Workflow
 
+### Draft Save (Auto-save every 30s)
+
+1. User types in CodeMirror editor
+2. `onInput()` fires → emits `'editor-tinymist-change'` event
+3. Page editor's `onContentChange()` sets `pendingChange = true`
+4. Auto-save timer triggers `saveDraft()`
+5. Calls `getContent()` → syncs to textarea → returns `{tinymist: content}`
+6. POSTs to `/ajax/page/{id}/save-draft` with tinymist field
+7. PageRepo's `updatePageDraft()` stores in revision's markdown field
+
+### Full Page Save (User clicks Save)
+
+1. User clicks Save button
+2. Page editor calls `savePage()` → triggers form submit
+3. Form submit event fires → `syncContentToTextarea()` runs
+4. CodeMirror content copied to `<textarea name="tinymist">`
+5. Form submits with correct tinymist value and editor type
+6. PageRepo's `updateTemplateStatusAndContentFromInput()` processes:
+   - Checks `!empty($input['tinymist'])`
+   - Sets editor to `PageEditorType::Tinymist`
+   - Calls `$pageContent->setNewTinymist($input['tinymist'], user())`
+7. Content saved to database with correct editor type
+
 ### Creating a New Tinymist Page
 
 1. User navigates to "Create Page"

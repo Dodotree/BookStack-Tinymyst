@@ -69,7 +69,8 @@ class PageEditorData
         // Start Tinymist preview server if this is a Tinymist page
         $tinymistPreview = null;
         if ($editorType === PageEditorType::Tinymist && config('tinymist.enabled', false)) {
-            $tinymistPreview = $this->startTinymistPreview($page);
+            // Get ws_token and report status, mutates $page->markdown with content used for preview.
+            $tinymistPreview = $this->tinymistPageEditorBridge->startPreview($page);
         }
 
         return [
@@ -118,11 +119,4 @@ class PageEditorData
         return $editorType;
     }
 
-    /**
-     * Start Tinymist preview server for the page and return connection info.
-     */
-    protected function startTinymistPreview(Page $page): ?array
-    {
-        return $this->tinymistPageEditorBridge->startPreview($page);
-    }
 }
