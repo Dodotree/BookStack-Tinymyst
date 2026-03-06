@@ -677,6 +677,53 @@ html.dark-mode .console-message.success {
   border-left-color: #66bb6a;
 }
 
+/* Tinymist (Typst) document display on page show */
+@media (prefers-color-scheme: dark) {
+  .page-content .tinymist-document svg {
+    filter: invert(0.9) hue-rotate(180deg);
+  }
+}
+html.dark-mode .page-content .tinymist-document svg {
+  background-color: #222;
+  filter: invert(0.9) hue-rotate(180deg);
+}
+html.dark-mode .page-content .tinymist-document svg image {
+  filter: invert(1) hue-rotate(180deg);
+}
+
+.tinymist-error {
+  padding: 16px;
+  background-color: #fcdbdb;
+}
+html.dark-mode .tinymist-error {
+  background-color: #250505;
+}
+.tinymist-error {
+  border-color: #ab0f0e;
+}
+html.dark-mode .tinymist-error {
+  border-color: #e85c5b;
+}
+.tinymist-error {
+  color: #4d0706;
+}
+html.dark-mode .tinymist-error {
+  color: #e85c5b;
+}
+.tinymist-error {
+  border: 1px solid;
+  border-radius: 4px;
+  margin: 16px 0;
+}
+.tinymist-error h3 {
+  margin-top: 0;
+  color: inherit;
+}
+.tinymist-error p {
+  margin: 6px 0;
+  font-family: monospace;
+}
+
 /* Semantic token highlighting (Tinymist) */
 .tm-hlt {
   --tm-hlt-current: inherit;
@@ -846,6 +893,36 @@ html.dark-mode .tinymist-error-container {
   #tinymist-editor .tinymist-panel-divider-horizontal {
     height: 2px;
   }
+}
+.card.drag-card .drag-card-action.disabled, .card.drag-card .drag-card-action[disabled] {
+  opacity: 0.45;
+  filter: grayscale(1);
+  cursor: not-allowed;
+  color: #777;
+}
+html.dark-mode .card.drag-card .drag-card-action.disabled, html.dark-mode .card.drag-card .drag-card-action[disabled] {
+  color: #888;
+}
+.card.drag-card .drag-card-action.disabled:hover, .card.drag-card .drag-card-action[disabled]:hover {
+  background-color: transparent;
+}
+
+.sticky-sidebar {
+  top: 0;
+  padding-left: 2px;
+  max-height: 100vh;
+}
+.sticky-sidebar .sticky-sidebar-header {
+  position: sticky;
+  top: 0;
+  background: #F2F2F2;
+  background: linear-gradient(180deg, rgb(242, 242, 242) 66%, rgba(242, 242, 242, 0) 100%);
+  z-index: 4;
+}
+
+.dark-mode .sticky-sidebar-header {
+  background: #111;
+  background: linear-gradient(180deg, rgb(17, 17, 17) 66%, rgba(17, 17, 17, 0) 100%);
 }
 
 /*# sourceMappingURL=tinymist.css.map */

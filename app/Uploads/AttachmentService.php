@@ -91,32 +91,6 @@ class AttachmentService
     }
 
     /**
-     * Save updated attachment content from Tinymist preview storage back to BookStack attachment storage.
-     */
-    public function saveAttachmentFromTinymistPreview(Attachment $attachment): Attachment
-    {
-        return $this->tinymistAttachmentSyncService->saveFromPreview($attachment);
-    }
-
-    /**
-     * Undo Tinymist preview edits in storage/page_num/ folder, restoring the preview copy from saved attachment content.
-     */
-    public function undoTinymistPreviewAttachmentChanges(Attachment $attachment): Attachment
-    {
-        return $this->tinymistAttachmentSyncService->undoPreviewChanges($attachment);
-    }
-
-    /**
-     * Build a dirty-state map for page attachments by comparing Tinymist preview and stored attachment content.
-     *
-     * @return array<string, bool>
-     */
-    public function getTinymistAttachmentDirtyMap(Page $page): array
-    {
-        return $this->tinymistAttachmentSyncService->getDirtyMap($page);
-    }
-
-    /**
      * Save a new File attachment from a given link and name.
      */
     public function saveNewFromLink(string $name, string $link, int $page_id): Attachment
