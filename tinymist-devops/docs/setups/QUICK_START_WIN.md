@@ -55,10 +55,10 @@ Tip: generate a secret with Node:
 
 Open separate terminals for each:
 
-- Laravel app: php artisan serve
-- Asset watcher: npm run dev
-- File sync + LSP WebSocket: npm run ws:dev
-- Preview bridge WebSocket: npm run preview:dev
+- Laravel app: `php artisan serve`
+- Asset watcher: `npm run dev`
+- File sync + LSP WebSocket: `npm run ws:dev`
+- Preview bridge WebSocket: `npm run preview:dev`
 
 Default ports:
 

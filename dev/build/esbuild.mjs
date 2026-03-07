@@ -4,12 +4,14 @@ import * as esbuild from "esbuild";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import * as process from "node:process";
+import {createRequire} from "node:module";
 
 // Check if we're building for production
 // (Set via passing `production` as first argument)
 const mode = process.argv[2];
 const isProd = mode === "production";
 const __dirname = import.meta.dirname;
+const require = createRequire(import.meta.url);
 
 // Gather our input files
 const entryPoints = {
@@ -84,6 +86,8 @@ const wasmPlugin = {
 const options = {
     bundle: true,
     metafile: true,
+    entryPoints,
+    outdir,
     sourcemap: true,
     target: "es2021",
     mainFields: ["module", "main"],
