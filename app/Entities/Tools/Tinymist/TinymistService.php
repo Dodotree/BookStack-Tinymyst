@@ -55,6 +55,13 @@ class TinymistService
                 str_replace('"', '\"', $outputTemplate)
             );
 
+            // To prevent typst from loading packages on our server, we run it under
+            // a dedicated user tinymist which only can access localhost
+            // switching from www-data to tinymist user (Linux-specific) - requires sudo setup:
+            // visudo -f /etc/sudoers.d/bookstack-typst
+            // www-data ALL=(tinymist) NOPASSWD: /var/www/bookstack/vendor/bin/typst
+            $command = DIRECTORY_SEPARATOR === '\\' ?  $command : "sudo -n -u tinymist -- " . $command;
+
             exec($command, $output, $returnCode);
 
             $svgFiles = glob($outputGlob) ?: [];
