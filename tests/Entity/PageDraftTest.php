@@ -160,9 +160,11 @@ class PageDraftTest extends TestCase
     {
         $this->asAdmin();
         $page = $this->entities->page();
+        $page->html = '<p>test content<script>hellotherekitty</script></p>';
+        $page->save();
 
         $this->getJson('/ajax/page/' . $page->id)->assertJson([
-            'html' => $page->html,
+            'html' => '<p>test content</p>',
         ]);
     }
 
@@ -204,7 +206,7 @@ class PageDraftTest extends TestCase
         ]);
         $resp->assertOk();
 
-        $this->assertDatabaseHas('pages', [
+        $this->assertDatabaseHasEntityData('page', [
             'id'       => $draft->id,
             'draft'    => true,
             'name'     => 'My updated draft',
@@ -235,7 +237,7 @@ class PageDraftTest extends TestCase
             'markdown' => '# My markdown page',
         ]);
 
-        $this->assertDatabaseHas('pages', [
+        $this->assertDatabaseHasEntityData('page', [
             'id'    => $draft->id,
             'draft' => false,
             'slug'  => 'my-page',

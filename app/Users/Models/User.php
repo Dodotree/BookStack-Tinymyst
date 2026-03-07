@@ -11,7 +11,6 @@ use BookStack\Activity\Models\Watch;
 use BookStack\Api\ApiToken;
 use BookStack\App\Model;
 use BookStack\App\SluggableInterface;
-use BookStack\Entities\Tools\SlugGenerator;
 use BookStack\Permissions\Permission;
 use BookStack\Translation\LocaleDefinition;
 use BookStack\Translation\LocaleManager;
@@ -31,8 +30,6 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Collection;
 
 /**
- * Class User.
- *
  * @property int        $id
  * @property string     $name
  * @property string     $slug
@@ -359,15 +356,5 @@ class User extends Model implements AuthenticatableContract, CanResetPasswordCon
     public function logDescriptor(): string
     {
         return "({$this->id}) {$this->name}";
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function refreshSlug(): string
-    {
-        $this->slug = app()->make(SlugGenerator::class)->generate($this, $this->name);
-
-        return $this->slug;
     }
 }

@@ -20,7 +20,7 @@ We want BookStack to remain accessible to as many people as possible. We aim for
 The BookStack source is provided under the [MIT License](https://github.com/BookStackApp/BookStack/blob/development/LICENSE).
 
 The libraries used by, and included with, BookStack are provided under their own licenses and copyright.
-The licenses for many of our core dependencies can be found in the attribution list below but this is not an exhaustive list of all projects used within BookStack.
+The licenses for many of our core dependencies can be found in the attribution list below, but this is not an exhaustive list of all projects used within BookStack.
 
 ## 👪 Attribution
 
@@ -52,5 +52,6 @@ Note: This is not an exhaustive list of all libraries and projects that would be
 * [PHPStan](https://phpstan.org/) & [Larastan](https://github.com/nunomaduro/larastan) - _[MIT](https://github.com/phpstan/phpstan/blob/master/LICENSE) and [MIT](https://github.com/nunomaduro/larastan/blob/master/LICENSE.md)_
 * [PHP_CodeSniffer](https://github.com/squizlabs/PHP_CodeSniffer) - _[BSD 3-Clause](https://github.com/squizlabs/PHP_CodeSniffer/blob/master/licence.txt)_
 * [JakeArchibald/IDB-Keyval](https://github.com/jakearchibald/idb-keyval) - _[Apache-2.0](https://github.com/jakearchibald/idb-keyval/blob/main/LICENCE)_
+* [HTML Purifier](https://github.com/ezyang/htmlpurifier) and [htmlpurifier-html5](https://github.com/xemlock/htmlpurifier-html5) - _[LGPL-2.1](https://github.com/ezyang/htmlpurifier/blob/master/LICENSE) and [MIT](https://github.com/xemlock/htmlpurifier-html5/blob/master/LICENSE)_
 
-For a detailed breakdown of the JavaScript & PHP projects imported & used via NPM & composer package managers, along with their licenses, please see the [dev/licensing/js-library-licenses.txt](dev/licensing/js-library-licenses.txt) and [dev/licensing/php-library-licenses.txt](dev/licensing/php-library-licenses.txt) files.
+For a detailed breakdown of the JavaScript & PHP projects imported and used via NPM & composer package managers, along with their licenses, please see the [dev/licensing/js-library-licenses.txt](dev/licensing/js-library-licenses.txt) and [dev/licensing/php-library-licenses.txt](dev/licensing/php-library-licenses.txt) files.

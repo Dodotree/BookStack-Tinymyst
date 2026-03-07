@@ -2,6 +2,7 @@
 
 namespace BookStack\Entities\Tools;
 
+use BookStack\App\AppVersion;
 use BookStack\Entities\Models\Page;
 use BookStack\Entities\Queries\PageQueries;
 use BookStack\Entities\Tools\Markdown\MarkdownToHtml;
@@ -14,6 +15,7 @@ use BookStack\Uploads\ImageRepo;
 use BookStack\Uploads\ImageService;
 use BookStack\Users\Models\User;
 use BookStack\Util\HtmlContentFilter;
+use BookStack\Util\HtmlContentFilterConfig;
 use BookStack\Util\HtmlDocument;
 use BookStack\Util\WebSafeMimeSniffer;
 use Closure;
@@ -40,7 +42,14 @@ class PageContent
     public function setNewHTML(string $html, User $updater): void
     {
         $html = $this->extractBase64ImagesFromHtml($html, $updater);
-        $this->page->html = $this->formatHtml($html);
+        $html = $this->formatHtml($html);
+
+        $themeResult = Theme::dispatch(ThemeEvents::PAGE_CONTENT_PRE_STORE, $html, $this->page);
+        if (is_string($themeResult)) {
+            $html = $themeResult;
+        }
+
+        $this->page->html = $html;
         $this->page->text = $this->toPlainText();
         $this->page->markdown = '';
     }
@@ -53,7 +62,15 @@ class PageContent
         $markdown = $this->extractBase64ImagesFromMarkdown($markdown, $updater);
         $this->page->markdown = $markdown;
         $html = (new MarkdownToHtml($markdown))->convert();
-        $this->page->html = $this->formatHtml($html);
+        $html = $this->formatHtml($html);
+
+        $themeResult = Theme::dispatch(ThemeEvents::PAGE_CONTENT_PRE_STORE, $html, $this->page);
+        if (is_string($themeResult)) {
+            $html = $themeResult;
+        }
+
+        $this->page->html = $html;
+        $this->page->text = $this->toPlainText();
     }
 
     /**
@@ -89,7 +106,7 @@ class PageContent
 
     /**
      * Convert all inline base64 content to uploaded image files.
-     * Regex is used to locate the start of data-uri definitions then
+     * Regex is used to locate the start of data-uri definitions, then
      * manual looping over content is done to parse the whole data uri.
      * Attempting to capture the whole data uri using regex can cause PHP
      * PCRE limits to be hit with larger, multi-MB, files.
@@ -294,7 +311,7 @@ class PageContent
     /**
      * Get a plain-text visualisation of this page.
      */
-    protected function toPlainText(): string
+    public function toPlainText(): string
     {
         $html = $this->render(true);
 
@@ -309,7 +326,7 @@ class PageContent
         $html = $this->page->html ?? '';
 
         if (empty($html)) {
-            return $html;
+            return $this->handlePostRender('');
         }
 
         $doc = new HtmlDocument($html);
@@ -327,11 +344,36 @@ class PageContent
             $this->updateIdsRecursively($doc->getBody(), 0, $idMap, $changeMap);
         }
 
-        if (!config('app.allow_content_scripts')) {
-            HtmlContentFilter::removeScriptsFromDocument($doc);
+        $cacheKey = $this->getContentCacheKey($doc->getBodyInnerHtml());
+        $cached = cache()->get($cacheKey, null);
+        if ($cached !== null) {
+            return $this->handlePostRender($cached);
         }
 
-        return $doc->getBodyInnerHtml();
+        $filterConfig = HtmlContentFilterConfig::fromConfigString(config('app.content_filtering'));
+        $filter = new HtmlContentFilter($filterConfig);
+        $filtered = $filter->filterDocument($doc);
+
+        $cacheTime = 86400 * 7; // 1 week
+        cache()->put($cacheKey, $filtered, $cacheTime);
+
+        return $this->handlePostRender($filtered);
+    }
+
+    protected function handlePostRender(string $html): string
+    {
+        $themeResult = Theme::dispatch(ThemeEvents::PAGE_CONTENT_POST_RENDER, $html, $this->page);
+        return is_string($themeResult) ? $themeResult : $html;
+    }
+
+    protected function getContentCacheKey(string $html): string
+    {
+        $contentHash = md5($html);
+        $contentId = $this->page->id;
+        $contentTime = $this->page->updated_at?->timestamp ?? time();
+        $appVersion = AppVersion::get();
+        $filterConfig = config('app.content_filtering') ?? '';
+        return "page-content-cache::{$filterConfig}::{$appVersion}::{$contentId}::{$contentTime}::{$contentHash}";
     }
 
     /**

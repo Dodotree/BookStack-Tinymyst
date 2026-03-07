@@ -110,6 +110,7 @@ return [
     'import_zip_cant_read' => 'Não foi possível ler o arquivo ZIP.',
     'import_zip_cant_decode_data' => 'Não foi possível encontrar e decodificar o conteúdo ZIP data.json.',
     'import_zip_no_data' => 'Os dados do arquivo ZIP não têm o conteúdo esperado livro, capítulo ou página.',
+    'import_zip_data_too_large' => 'ZIP data.json content exceeds the configured application maximum upload size.',
     'import_validation_failed' => 'Falhou na validação da importação do ZIP com erros:',
     'import_zip_failed_notification' => 'Falhou ao importar arquivo ZIP.',
     'import_perms_books' => 'Você não tem as permissões necessárias para criar livros.',
@@ -125,6 +126,7 @@ return [
     'api_incorrect_token_secret' => 'O segredo fornecido para o código de API usado está incorreto',
     'api_user_no_api_permission' => 'O proprietário do código de API utilizado não tem permissão para fazer requisições de API',
     'api_user_token_expired' => 'O código de autenticação expirou',
+    'api_cookie_auth_only_get' => 'Only GET requests are allowed when using the API with cookie-based authentication',
 
     // Settings & Maintenance
     'maintenance_test_email_failure' => 'Erro encontrado ao enviar uma mensagem eletrônica de teste:',

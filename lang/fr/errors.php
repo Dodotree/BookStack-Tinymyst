@@ -109,6 +109,7 @@ return [
     'import_zip_cant_read' => 'Impossible de lire le fichier ZIP.',
     'import_zip_cant_decode_data' => 'Impossible de trouver et de décoder le contenu ZIP data.json.',
     'import_zip_no_data' => 'Les données du fichier ZIP n\'ont pas de livre, de chapitre ou de page attendus.',
+    'import_zip_data_too_large' => 'Le contenu du fichier ZIP pour data.json dépasse la taille maximale de téléversement autorisée.',
     'import_validation_failed' => 'L\'importation du ZIP n\'a pas été validée avec les erreurs :',
     'import_zip_failed_notification' => 'Impossible d\'importer le fichier ZIP.',
     'import_perms_books' => 'Vous n\'avez pas les permissions requises pour créer des livres.',
@@ -124,6 +125,7 @@ return [
     'api_incorrect_token_secret' => 'Le secret fourni pour le jeton d\'API utilisé est incorrect',
     'api_user_no_api_permission' => 'Le propriétaire du jeton API utilisé n\'a pas la permission de passer des requêtes API',
     'api_user_token_expired' => 'Le jeton d\'autorisation utilisé a expiré',
+    'api_cookie_auth_only_get' => 'Only GET requests are allowed when using the API with cookie-based authentication',
 
     // Settings & Maintenance
     'maintenance_test_email_failure' => 'Erreur émise lors de l\'envoi d\'un e-mail de test :',

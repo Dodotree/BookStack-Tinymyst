@@ -50,7 +50,7 @@ class EntityProvider
 
     public function pageNotWithinChapter(): Page
     {
-        return $this->page(fn(Builder $query) => $query->where('chapter_id', '=', 0));
+        return $this->page(fn(Builder $query) => $query->whereNull('chapter_id'));
     }
 
     public function templatePage(): Page
@@ -108,6 +108,14 @@ class EntityProvider
         $shelf = Bookshelf::query()->when($queryFilter, $queryFilter)->whereNotIn('id', $this->fetchCache['bookshelf'])->first();
         $this->addToCache($shelf);
         return $shelf;
+    }
+
+    /**
+     * Get a shelf that has books assigned.
+     */
+    public function shelfHasBooks(): Bookshelf
+    {
+        return $this->shelf(fn(Builder $query) => $query->whereHas('books'));
     }
 
     /**

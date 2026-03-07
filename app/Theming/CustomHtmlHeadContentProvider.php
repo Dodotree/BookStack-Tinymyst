@@ -4,25 +4,16 @@ namespace BookStack\Theming;
 
 use BookStack\Util\CspService;
 use BookStack\Util\HtmlContentFilter;
+use BookStack\Util\HtmlContentFilterConfig;
 use BookStack\Util\HtmlNonceApplicator;
 use Illuminate\Contracts\Cache\Repository as Cache;
 
 class CustomHtmlHeadContentProvider
 {
-    /**
-     * @var CspService
-     */
-    protected $cspService;
-
-    /**
-     * @var Cache
-     */
-    protected $cache;
-
-    public function __construct(CspService $cspService, Cache $cache)
-    {
-        $this->cspService = $cspService;
-        $this->cache = $cache;
+    public function __construct(
+        protected CspService $cspService,
+        protected Cache $cache
+    ) {
     }
 
     /**
@@ -50,7 +41,8 @@ class CustomHtmlHeadContentProvider
         $hash = md5($content);
 
         return $this->cache->remember('custom-head-export:' . $hash, 86400, function () use ($content) {
-            return HtmlContentFilter::removeScriptsFromHtmlString($content);
+            $config = new HtmlContentFilterConfig(filterOutNonContentElements: false, useAllowListFilter: false);
+            return (new HtmlContentFilter($config))->filterString($content);
         });
     }
 

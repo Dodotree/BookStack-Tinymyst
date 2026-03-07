@@ -9,6 +9,8 @@ use BookStack\Entities\Tools\Markdown\HtmlToMarkdown;
 use BookStack\Entities\Tools\Markdown\MarkdownToHtml;
 use BookStack\Extensions\Tinymist\Pages\TinymistPageEditorBridge;
 use BookStack\Permissions\Permission;
+use BookStack\Util\HtmlContentFilter;
+use BookStack\Util\HtmlContentFilterConfig;
 
 class PageEditorData
 {
@@ -50,6 +52,7 @@ class PageEditorData
         $isDraftRevision = false;
         $this->warnings = [];
         $editActivity = new PageEditActivity($page);
+        $lastEditorId = $page->updated_by ?? user()->id;
 
         if ($editActivity->hasActiveEditing()) {
             $this->warnings[] = $editActivity->activeEditingMessage();
@@ -61,8 +64,10 @@ class PageEditorData
             $page->forceFill($userDraft->only(['name', 'html', 'markdown']));
             $isDraftRevision = true;
             $this->warnings[] = $editActivity->getEditingActiveDraftMessage($userDraft);
+            $lastEditorId = $userDraft->created_by;
         }
 
+        // Get editor type and handle changes
         $editorType = $this->getEditorType($page);
         $this->updateContentForEditor($page, $editorType);
 
@@ -71,6 +76,11 @@ class PageEditorData
         if ($editorType === PageEditorType::Tinymist && config('tinymist.enabled', false)) {
             // Get ws_token and report status, mutates $page->markdown with content used for preview.
             $tinymistPreview = $this->tinymistPageEditorBridge->startPreview($page);
+        }elseif ($editorType->isHtmlBased() && !old('html') && $lastEditorId !== user()->id) {
+        // Filter HTML content if required
+            $filterConfig = HtmlContentFilterConfig::fromConfigString(config('app.content_filtering'));
+            $filter = new HtmlContentFilter($filterConfig);
+            $page->html = $filter->filterString($page->html);
         }
 
         return [

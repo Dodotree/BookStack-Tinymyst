@@ -8,12 +8,14 @@ use BookStack\Entities\Models\Chapter;
 use BookStack\Entities\Models\Entity;
 use BookStack\Entities\Models\Page;
 use BookStack\Entities\Queries\EntityQueries;
+use BookStack\Entities\Tools\ParentChanger;
 use BookStack\Permissions\Permission;
 
 class BookSorter
 {
     public function __construct(
         protected EntityQueries $queries,
+        protected ParentChanger $parentChanger,
     ) {
     }
 
@@ -33,22 +35,22 @@ class BookSorter
      */
     public function runBookAutoSort(Book $book): void
     {
-        $set = $book->sortRule;
-        if (!$set) {
+        $rule = $book->sortRule()->first();
+        if (!($rule instanceof SortRule)) {
             return;
         }
 
         $sortFunctions = array_map(function (SortRuleOperation $op) {
             return $op->getSortFunction();
-        }, $set->getOperations());
+        }, $rule->getOperations());
 
         $chapters = $book->chapters()
-            ->with('pages:id,name,priority,created_at,updated_at,chapter_id')
+            ->with('pages:id,name,book_id,chapter_id,priority,created_at,updated_at')
             ->get(['id', 'name', 'priority', 'created_at', 'updated_at']);
 
         /** @var (Chapter|Book)[] $topItems */
         $topItems = [
-            ...$book->directPages()->get(['id', 'name', 'priority', 'created_at', 'updated_at']),
+            ...$book->directPages()->get(['id', 'book_id', 'name', 'priority', 'created_at', 'updated_at']),
             ...$chapters,
         ];
 
@@ -155,11 +157,12 @@ class BookSorter
 
         // Action the required changes
         if ($bookChanged) {
-            $model->changeBook($newBook->id);
+            $this->parentChanger->changeBook($model, $newBook->id);
         }
 
         if ($model instanceof Page && $chapterChanged) {
             $model->chapter_id = $newChapter->id ?? 0;
+            $model->unsetRelation('chapter');
         }
 
         if ($priorityChanged) {

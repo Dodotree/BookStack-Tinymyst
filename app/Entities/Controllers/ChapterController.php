@@ -77,7 +77,15 @@ class ChapterController extends Controller
      */
     public function show(string $bookSlug, string $chapterSlug)
     {
-        $chapter = $this->queries->findVisibleBySlugsOrFail($bookSlug, $chapterSlug);
+        try {
+            $chapter = $this->queries->findVisibleBySlugsOrFail($bookSlug, $chapterSlug);
+        } catch (NotFoundException $exception) {
+            $chapter = $this->entityQueries->findVisibleByOldSlugs('chapter', $chapterSlug, $bookSlug);
+            if (is_null($chapter)) {
+                throw $exception;
+            }
+            return redirect($chapter->getUrl());
+        }
 
         $sidebarTree = (new BookContents($chapter->book))->getTree();
         $pages = $this->entityQueries->pages->visibleForChapterList($chapter->id)->get();
@@ -130,7 +138,7 @@ class ChapterController extends Controller
         $chapter = $this->queries->findVisibleBySlugsOrFail($bookSlug, $chapterSlug);
         $this->checkOwnablePermission(Permission::ChapterUpdate, $chapter);
 
-        $this->chapterRepo->update($chapter, $validated);
+        $chapter = $this->chapterRepo->update($chapter, $validated);
 
         return redirect($chapter->getUrl());
     }
