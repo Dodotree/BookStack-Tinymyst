@@ -91,7 +91,7 @@ class TinymistController extends Controller
     public function renewWsToken(Request $request)
     {
         $request->validate([
-            'page_id' => 'required|integer|exists:pages,id',
+            'page_id' => 'required|integer|min:1',
         ]);
 
         $pageId = $request->input('page_id');
