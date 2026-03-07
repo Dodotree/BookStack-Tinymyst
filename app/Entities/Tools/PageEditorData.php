@@ -76,8 +76,9 @@ class PageEditorData
         if ($editorType === PageEditorType::Tinymist && config('tinymist.enabled', false)) {
             // Get ws_token and report status, mutates $page->markdown with content used for preview.
             $tinymistPreview = $this->tinymistPageEditorBridge->startPreview($page);
-        }elseif ($editorType->isHtmlBased() && !old('html') && $lastEditorId !== user()->id) {
+        }
         // Filter HTML content if required
+        if ($editorType->isHtmlBased() && !old('html') && $lastEditorId !== user()->id) {
             $filterConfig = HtmlContentFilterConfig::fromConfigString(config('app.content_filtering'));
             $filter = new HtmlContentFilter($filterConfig);
             $page->html = $filter->filterString($page->html);
