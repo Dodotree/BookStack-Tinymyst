@@ -19,8 +19,7 @@ const { execSync } = require('child_process');
 const os = require('os');
 
 const VERSION = '0.14.2';
-const BASE_DIR = path.join(__dirname, '../..');
-const INSTALL_DIR = path.join(BASE_DIR, 'vendor/bin');
+const VENDOR_BIN_DIR = path.join(__dirname, '..', 'vendor', 'bin');
 
 // Determine platform
 const platform = os.platform();
@@ -57,7 +56,7 @@ console.log(`   Version: ${VERSION}`);
 console.log(`   Package: ${filename}`);
 
 // Check if already installed
-const expectedBinary = path.join(INSTALL_DIR, platform === 'win32' ? 'typst.exe' : 'typst');
+const expectedBinary = path.join(VENDOR_BIN_DIR, platform === 'win32' ? 'typst.exe' : 'typst');
 if (fs.existsSync(expectedBinary)) {
     try {
         const version = execSync(`"${expectedBinary}" --version`, { encoding: 'utf8' }).trim();
@@ -70,9 +69,9 @@ if (fs.existsSync(expectedBinary)) {
 }
 
 // Create vendor/bin directory if it doesn't exist
-if (!fs.existsSync(INSTALL_DIR)) {
-    fs.mkdirSync(INSTALL_DIR, { recursive: true });
-    console.log(`   Created: ${INSTALL_DIR}`);
+if (!fs.existsSync(VENDOR_BIN_DIR)) {
+    fs.mkdirSync(VENDOR_BIN_DIR, { recursive: true });
+    console.log(`   Created: ${VENDOR_BIN_DIR}`);
 }
 
 console.log(`\n📥 Downloading from GitHub...`);
@@ -172,7 +171,7 @@ function extractAndInstall(archivePath) {
  */
 function extractZip(archivePath) {
     // Use PowerShell to extract
-    const extractDir = path.join(INSTALL_DIR, 'typst-temp');
+    const extractDir = path.join(VENDOR_BIN_DIR, 'typst-temp');
 
     if (fs.existsSync(extractDir)) {
         fs.rmSync(extractDir, { recursive: true, force: true });
@@ -187,7 +186,7 @@ function extractZip(archivePath) {
 
     if (typstExe) {
         const sourcePath = path.join(extractDir, typstExe);
-        const targetPath = path.join(INSTALL_DIR, 'typst.exe');
+        const targetPath = path.join(VENDOR_BIN_DIR, 'typst.exe');
         fs.copyFileSync(sourcePath, targetPath);
 
         // Cleanup
@@ -209,7 +208,7 @@ function extractZip(archivePath) {
  */
 function extractTarXz(archivePath) {
     // Extract to temporary directory
-    const extractDir = path.join(INSTALL_DIR, 'typst-temp');
+    const extractDir = path.join(VENDOR_BIN_DIR, 'typst-temp');
 
     if (fs.existsSync(extractDir)) {
         fs.rmSync(extractDir, { recursive: true, force: true });
@@ -236,7 +235,7 @@ function extractTarXz(archivePath) {
     const typstBin = findTypst(extractDir);
 
     if (typstBin) {
-        const targetPath = path.join(INSTALL_DIR, 'typst');
+        const targetPath = path.join(VENDOR_BIN_DIR, 'typst');
         fs.copyFileSync(typstBin, targetPath);
         fs.chmodSync(targetPath, 0o755);
 

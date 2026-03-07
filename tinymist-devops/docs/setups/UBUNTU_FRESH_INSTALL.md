@@ -272,7 +272,7 @@ If you run Tinymist via PM2, the reliable way to block this is: run PM2 apps as 
 
 ```bash
 # 1) Create dedicated system user
-sudo adduser --system --group --home /var/lib/tinymist tinymist
+adduser --system --group --home /var/lib/tinymist tinymist
 
 # 2) Start only Tinymist PM2 apps as that user
 cd /var/www/bookstack
@@ -280,16 +280,74 @@ sudo -u tinymist -H pm2 start npm --name tinymist-ws -- run ws:start
 sudo -u tinymist -H pm2 start npm --name tinymist-preview -- run preview:start
 sudo -u tinymist -H pm2 save
 sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u tinymist --hp /var/lib/tinymist
+# or dev
+sudo -u tinymist -H pm2 start npm --name tinymist-ws-dev -- run ws:dev
+sudo -u tinymist -H pm2 start npm --name tinymist-preview-dev -- run preview:dev
 
 # 3) Allow localhost only for that user
-sudo iptables -I OUTPUT -m owner --uid-owner tinymist -d 127.0.0.0/8 -j ACCEPT
-sudo iptables -I OUTPUT -m owner --uid-owner tinymist -d ::1/128 -j ACCEPT
-sudo iptables -A OUTPUT -m owner --uid-owner tinymist -j REJECT
+iptables -I OUTPUT -m owner --uid-owner tinymist -d 127.0.0.0/8 -j ACCEPT
+ip6tables -I OUTPUT -m owner --uid-owner tinymist -d ::1/128 -j ACCEPT
+iptables -A OUTPUT -m owner --uid-owner tinymist -j REJECT
 
 # 4) Persist firewall rules
 sudo apt-get install -y iptables-persistent
 sudo netfilter-persistent save
 ```
+
+##### PM2 hardening + filesystem permissions (important)
+
+###### Minimal command set
+
+```bash
+adduser --system --group --home /var/lib/tinymist tinymist
+usermod -aG www-data tinymist # (or create a shared group and add both users)
+chmod 755 vendor/bin/tinymist vendor/bin/typst
+setfacl -R -m u:www-data:rwx,u:tinymist:rwx storage bootstrap/cache public/uploads
+setfacl -dR -m u:www-data:rwx,u:tinymist:rwx storage bootstrap/cache public/uploads
+```
+
+The dedicated `tinymist` user is for process isolation and network restrictions.
+
+- `/var/lib/tinymist` is only PM2 home (process list/log metadata), not where Typst/Tinymist binaries are stored.
+- `vendor/bin/tinymist` and `vendor/bin/typst` stay in the project and are executed by the PM2 process user.
+- `iptables -m owner --uid-owner tinymist ...` only affects network egress, not local file reads/writes.
+
+If PM2 runs as `tinymist` and Laravel runs as `www-data`, grant both users write access to runtime data paths (`storage`, `bootstrap/cache`, uploads), while keeping app code read-only.
+
+```bash
+# Optional but recommended ACL tooling
+sudo apt-get install -y acl
+
+cd /var/www/bookstack
+
+# Ensure binaries are executable by non-owner users
+chmod 755 vendor/bin/tinymist vendor/bin/typst || true
+
+# Ensure runtime directories exist
+mkdir -p storage/framework/{cache,sessions,views} bootstrap/cache public/uploads
+
+# Keep Laravel owner model for app files
+chown -R www-data:www-data storage bootstrap/cache public/uploads
+
+# Shared write ACL for Laravel + tinymist PM2 user
+setfacl -R -m u:www-data:rwx,u:tinymist:rwx storage bootstrap/cache public/uploads
+setfacl -dR -m u:www-data:rwx,u:tinymist:rwx storage bootstrap/cache public/uploads
+
+# Optional: keep group bits open for compatibility
+find storage bootstrap/cache public/uploads -type d -exec chmod 775 {} \;
+find storage bootstrap/cache public/uploads -type f -exec chmod 664 {} \;
+```
+
+Quick verification:
+
+```bash
+namei -l /var/www/bookstack/vendor/bin/tinymist
+getfacl -p /var/www/bookstack/storage | sed -n '1,20p'
+sudo -u tinymist -H test -w /var/www/bookstack/storage && echo "tinymist can write storage"
+sudo -u www-data test -w /var/www/bookstack/storage && echo "www-data can write storage"
+```
+
+If using this model, start PM2 apps as `tinymist` (as shown above), keep Nginx/PHP-FPM as `www-data`, and keep both WebSocket services bound to localhost.
 
 ##### Rollback (copy-paste)
 
@@ -302,8 +360,8 @@ sudo -u tinymist -H pm2 save
 while sudo iptables -C OUTPUT -m owner --uid-owner tinymist -d 127.0.0.0/8 -j ACCEPT 2>/dev/null; do
   sudo iptables -D OUTPUT -m owner --uid-owner tinymist -d 127.0.0.0/8 -j ACCEPT
 done
-while sudo iptables -C OUTPUT -m owner --uid-owner tinymist -d ::1/128 -j ACCEPT 2>/dev/null; do
-  sudo iptables -D OUTPUT -m owner --uid-owner tinymist -d ::1/128 -j ACCEPT
+while sudo ip6tables -C OUTPUT -m owner --uid-owner tinymist -d ::1/128 -j ACCEPT 2>/dev/null; do
+  sudo ip6tables -D OUTPUT -m owner --uid-owner tinymist -d ::1/128 -j ACCEPT
 done
 while sudo iptables -C OUTPUT -m owner --uid-owner tinymist -j REJECT 2>/dev/null; do
   sudo iptables -D OUTPUT -m owner --uid-owner tinymist -j REJECT
