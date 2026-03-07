@@ -154,6 +154,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```bash
 git clone https://github.com/Dodotree/BookStack-Tinymist.git /var/www/bookstack
 cd /var/www/bookstack/
+# ignore changes to file permissions
 git config core.fileMode false
 ```
 
@@ -180,7 +181,7 @@ mysql -h 127.0.0.1 -u bookstack-test -pbookstack-test bookstack-test -e 'SELECT 
 
 **Important:** Tests use TCP connection (`127.0.0.1`) not unix socket. The `bookstack-test` user must be created with `@'127.0.0.1'` as shown in the SQL above.
 
-For detailed testing documentation, see `tinymist-devops/TESTING_SETUP.md`.
+For detailed testing documentation, see `tinymist-devops/test-related`.
 
 ### Nginx configuration for tensorsum.com with free https
 
@@ -348,8 +349,14 @@ php artisan db:seed --class=DummyContentSeeder
 
 php artisan queue:restart
 systemctl restart php8.3-fpm.service
+
 npm ci
 npm run build
+# will create public/dist
+npm run production
+# check if theme is enabled and working (don't forget APP_THEME=tinymist in .env)
+# and also nginx rules to serve theme static
+php artisan tinker --execute="echo config('view.theme').PHP_EOL;"
 ```
 
 ## File Permissions
@@ -367,6 +374,13 @@ find . -type f -exec chmod 644 {} \;
 find . -type d -exec chmod 755 {} \;
 chmod -R 775 storage bootstrap/cache public/uploads
 chmod +x artisan
+
+mkdir -p storage/framework/{cache,sessions,views} bootstrap/cache
+find storage bootstrap/cache -type d -exec chmod 775 {} \;
+find storage bootstrap/cache -type f -exec chmod 664 {} \;
+chmod -R 775 storage bootstrap/cache public/uploads themes/tinymist/public/
+
+
 ```
 
 ### Users
