@@ -1,8 +1,8 @@
 <?php
 
-namespace BookStack\App\Providers;
+namespace BookStack\Extensions\Tinymist\Providers;
 
-use BookStack\Entities\Tools\Tinymist\TinymistPreviewManager;
+use BookStack\Extensions\Tinymist\Tools\TinymistPreviewManager;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 

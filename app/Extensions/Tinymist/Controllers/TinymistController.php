@@ -1,10 +1,10 @@
 <?php
 
-namespace BookStack\Entities\Controllers;
+namespace BookStack\Extensions\Tinymist\Controllers;
 
 use BookStack\Entities\Models\Page;
-use BookStack\Entities\Tools\Tinymist\TinymistPreviewManager;
-use BookStack\Entities\Tools\Tinymist\TinymistService;
+use BookStack\Extensions\Tinymist\Tools\TinymistPreviewManager;
+use BookStack\Extensions\Tinymist\Tools\TinymistService;
 use BookStack\Http\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;

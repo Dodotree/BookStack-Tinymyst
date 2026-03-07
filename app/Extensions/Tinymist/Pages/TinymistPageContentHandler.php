@@ -4,7 +4,7 @@ namespace BookStack\Extensions\Tinymist\Pages;
 
 use BookStack\Entities\Models\Page;
 use BookStack\Entities\Tools\PageEditorType;
-use BookStack\Entities\Tools\Tinymist\TinymistService;
+use BookStack\Extensions\Tinymist\Tools\TinymistService;
 
 class TinymistPageContentHandler
 {

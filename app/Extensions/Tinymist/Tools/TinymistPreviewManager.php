@@ -1,11 +1,11 @@
 <?php
 
-namespace BookStack\Entities\Tools\Tinymist;
+namespace BookStack\Extensions\Tinymist\Tools;
 
-use Illuminate\Support\Facades\Log;
 use BookStack\Entities\Models\Page;
 use BookStack\Uploads\Attachment;
 use BookStack\Uploads\FileStorage;
+use Illuminate\Support\Facades\Log;
 
 class TinymistPreviewManager
 {

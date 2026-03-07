@@ -1,15 +1,15 @@
 <?php
 
-use BookStack\Entities\Controllers as EntityControllers;
 use BookStack\Extensions\Tinymist\Attachments\TinymistAttachmentController;
+use BookStack\Extensions\Tinymist\Controllers\TinymistController;
 use BookStack\Extensions\Tinymist\Imports\TinymistImportController;
 use Illuminate\Support\Facades\Route;
 
 // Tinymist/Typst routes
-Route::post('/ajax/tinymist/compile', [EntityControllers\TinymistController::class, 'compile']);
-Route::post('/ajax/tinymist/check', [EntityControllers\TinymistController::class, 'check']);
-Route::get('/ajax/tinymist/status', [EntityControllers\TinymistController::class, 'status']);
-Route::post('/ajax/tinymist/renew-ws-token', [EntityControllers\TinymistController::class, 'renewWsToken']);
+Route::post('/ajax/tinymist/compile', [TinymistController::class, 'compile']);
+Route::post('/ajax/tinymist/check', [TinymistController::class, 'check']);
+Route::get('/ajax/tinymist/status', [TinymistController::class, 'status']);
+Route::post('/ajax/tinymist/renew-ws-token', [TinymistController::class, 'renewWsToken']);
 
 // Tinymist attachment integration routes (legacy paths kept stable)
 Route::get('/attachments/dirty/page/{pageId}', [TinymistAttachmentController::class, 'dirtyMapForPage']);

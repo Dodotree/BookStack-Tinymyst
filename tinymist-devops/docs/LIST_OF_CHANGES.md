@@ -30,27 +30,46 @@ Draft updates are also handled via bridge (`applyTinymistDraft(...)`).
 
 ## Related files (current paths)
 
+### Environment keys
+
+```env
+APP_THEME=tinymist
+TINYMIST_ENABLED=false
+TYPST_CLI_PATH=typst  # path to binary
+TINYMIST_CLI_PATH=tinymist # path to binary
+TINYMIST_TIMEOUT=30 # compilation timeout
+TINYMIST_MAX_SIZE=1024
+TINYMIST_WS_SECRET=<random 64-hex string>
+```
+
+***For more detailed information on possible merge conflicts with the Bookstack core
+see MERGE.md***
+
 ### Core backend
 
+- `app/Config/app.php` (provider registration reference only)
+- `app/Entities/Controllers/PageController.php` (add tinymist to list of inputs)
 - `app/Entities/Repos/PageRepo.php` (Tinymist save/draft bridge calls)
 - `app/Entities/Tools/PageContent.php` (`setNewTinymist(...)`)
 - `app/Entities/Tools/PageEditorType.php` (Tinymist enum case)
-- `app/Entities/Tools/Tinymist/TinymistService.php`
-- `app/Entities/Tools/Tinymist/TinymistPreviewManager.php`
-- `app/Entities/Controllers/TinymistController.php`
-- `app/App/Providers/TinymistServiceProvider.php` (loads `routes/tinymist.php`)
+- `app/Entities/Tools/PageEditorData.php` (update content for editor)
+- `app/Entities/Tools/PageEditorType.php` (recognize, set as not html based)
+- `app/Uploads/AttachmentService.php` (basically sync with preview storage and save/revert)
+- `app/Theming/ThemeController.php` (allow MIME types for extensions for WASM loading etc.)
+- `app/Util/CspService.php` for WASM loading
+- `app/Util/WebSafeMimeSniffer.php` for WASM loading
 
-### Extension-scoped backend
+### Frontend (the rest of it is in theme)
 
-- `app/Extensions/Tinymist/Pages/TinymistPageRepoBridge.php`
-- `app/Extensions/Tinymist/Pages/TinymistPageEditorBridge.php`
-- `app/Extensions/Tinymist/Pages/TinymistPageContentHandler.php`
-- `app/Extensions/Tinymist/Attachments/TinymistAttachmentController.php`
-- `app/Extensions/Tinymist/Attachments/TinymistAttachmentSyncService.php`
-- `app/Extensions/Tinymist/Attachments/TinymistAttachmentEditorContentService.php`
-- `app/Extensions/Tinymist/Imports/TinymistImportBridge.php`
-- `app/Extensions/Tinymist/Imports/TinymistImportController.php`
-- `app/Extensions/Tinymist/Imports/SinglePageImportService.php`
+- `resources/js/components/page-editor.js` (autosave event listeners)
+- `resources/js/services/components.ts` (component init behavior; note filename is `components.ts`)
+- `resources/js/components/ajax-delete-row.ts` needed for files dropdown, attachment delete success
+- `resources/js/services/events.ts` for capping their trace, shouldn't be there anyway
+- `resources/js/services/http.ts`
+
+### Configuration
+
+- `app/Config/tinymist.php`
 
 ### Routes
 
@@ -62,13 +81,21 @@ Draft updates are also handled via bridge (`applyTinymistDraft(...)`).
   - Tinymist attachment integration routes
   - `/import/single` (Tinymist single-page import)
 
-### Frontend + theme
+### Extension-scoped backend
 
-- `themes/tinymist/resources/js/components/tinymist-editor.ts`
-- `themes/tinymist/resources/js/components/tinymist-attachments-bridge.ts`
-- `themes/tinymist/resources/js/tinymist-bookstack.ts`
-- `resources/js/components/page-editor.js` (autosave event listeners)
-- `resources/js/services/components.ts` (component init behavior; note filename is `components.ts`)
+- `app/Extensions/Tinymist/Providers/TinymistServiceProvider.php` (loads `routes/tinymist.php`)
+- `app/Extensions/Tinymist/Controllers/TinymistController.php`
+- `app/Extensions/Tinymist/Tools/TinymistService.php`
+- `app/Extensions/Tinymist/Tools/TinymistPreviewManager.php`
+- `app/Extensions/Tinymist/Pages/TinymistPageRepoBridge.php`
+- `app/Extensions/Tinymist/Pages/TinymistPageEditorBridge.php`
+- `app/Extensions/Tinymist/Pages/TinymistPageContentHandler.php`
+- `app/Extensions/Tinymist/Attachments/TinymistAttachmentController.php`
+- `app/Extensions/Tinymist/Attachments/TinymistAttachmentSyncService.php`
+- `app/Extensions/Tinymist/Attachments/TinymistAttachmentEditorContentService.php`
+- `app/Extensions/Tinymist/Imports/TinymistImportBridge.php`
+- `app/Extensions/Tinymist/Imports/TinymistImportController.php`
+- `app/Extensions/Tinymist/Imports/SinglePageImportService.php`
 
 ### Blade templates (theme overrides)
 
@@ -86,25 +113,11 @@ Draft updates are also handled via bridge (`applyTinymistDraft(...)`).
 - `themes/tinymist/resources/sass/_tinymist.scss`
 - `themes/tinymist/lang/en/entities.php`
 
-### Configuration
-
-- `app/Config/tinymist.php`
-
-Environment keys:
-
-```env
-TINYMIST_ENABLED=false
-TYPST_CLI_PATH=typst  # path to binary
-TINYMIST_CLI_PATH=tinymist # path to binary
-TINYMIST_TIMEOUT=30 # compilation timeout
-TINYMIST_MAX_SIZE=1024
-```
-
 ## Notes on outdated paths (fixed in this doc)
 
 - `resources/views/pages/parts/tinymist-editor.blade.php` → now `themes/tinymist/pages/parts/tinymist-editor.blade.php`
 - `resources/views/pages/parts/form.blade.php` Tinymist changes are now theme override (`themes/tinymist/pages/parts/form.blade.php`)
 - `resources/js/services/component.js` → actual file is `resources/js/services/components.ts`
-- Tinymist AJAX/import routes are now defined in `routes/tinymist.php` (loaded by `TinymistServiceProvider`), not directly in `routes/web.php`
+- Tinymist AJAX/import routes are now defined in `routes/tinymist.php` (loaded by `app/Extensions/Tinymist/Providers/TinymistServiceProvider.php`, registered from `app/Config/app.php`), not directly in `routes/web.php`
 
 Check for more details about inserts into clean BookStack core in the REBASE.md

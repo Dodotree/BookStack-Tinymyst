@@ -141,6 +141,7 @@ DB_SOCKET=/var/run/mysqld/mysqld.sock
 
 Add these to .env (if not already present):
 
+- APP_THEME=tinymist
 - TINYMIST_ENABLED=true
 - TINYMIST_LSP_ENABLED=true
 - TINYMIST_WS_SECRET=<random 64-hex string>
@@ -292,6 +293,13 @@ iptables -A OUTPUT -m owner --uid-owner tinymist -j REJECT
 # 4) Persist firewall rules
 sudo apt-get install -y iptables-persistent
 sudo netfilter-persistent save
+
+# To prevent typst from loading packages on our server, we run it under
+# a dedicated user tinymist which only can access localhost
+# switching from www-data to tinymist user (Linux-specific) - requires sudo setup:
+visudo -f /etc/sudoers.d/bookstack-typst
+# line to add there:
+www-data ALL=(tinymist) NOPASSWD: /var/www/bookstack/vendor/bin/typst
 ```
 
 ##### PM2 hardening + filesystem permissions (important)

@@ -3,8 +3,8 @@
 namespace BookStack\Extensions\Tinymist\Attachments;
 
 use BookStack\Entities\Models\Page;
-use BookStack\Entities\Tools\Tinymist\TinymistPreviewManager;
 use BookStack\Exceptions\FileUploadException;
+use BookStack\Extensions\Tinymist\Tools\TinymistPreviewManager;
 use BookStack\Uploads\Attachment;
 use BookStack\Uploads\FileStorage;
 use BookStack\Util\FilePathNormalizer;

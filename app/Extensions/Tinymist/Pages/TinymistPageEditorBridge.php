@@ -3,7 +3,7 @@
 namespace BookStack\Extensions\Tinymist\Pages;
 
 use BookStack\Entities\Models\Page;
-use BookStack\Entities\Tools\Tinymist\TinymistPreviewManager;
+use BookStack\Extensions\Tinymist\Tools\TinymistPreviewManager;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 

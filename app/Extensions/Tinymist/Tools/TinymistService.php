@@ -1,6 +1,6 @@
 <?php
 
-namespace BookStack\Entities\Tools\Tinymist;
+namespace BookStack\Extensions\Tinymist\Tools;
 
 use Illuminate\Support\Facades\Log;
 
@@ -50,9 +50,9 @@ class TinymistService
             // Use typst CLI for compilation with short diagnostic format
             $command = sprintf(
                 '"%s" compile "%s" "%s" --format svg --diagnostic-format short 2>&1',
-                str_replace('"', '\"', $this->typstPath),
-                str_replace('"', '\"', $inputFile),
-                str_replace('"', '\"', $outputTemplate)
+                str_replace('"', '\\"', $this->typstPath),
+                str_replace('"', '\\"', $inputFile),
+                str_replace('"', '\\"', $outputTemplate)
             );
 
             // To prevent typst from loading packages on our server, we run it under
@@ -314,7 +314,7 @@ class TinymistService
     public function isTypstAvailable(): bool
     {
         try {
-            $command = sprintf('"%s" --version 2>&1', str_replace('"', '\"', $this->typstPath));
+            $command = sprintf('"%s" --version 2>&1', str_replace('"', '\\"', $this->typstPath));
             exec($command, $output, $returnCode);
             return $returnCode === 0;
         } catch (\Exception $e) {

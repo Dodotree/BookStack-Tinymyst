@@ -143,11 +143,13 @@ Platform support: Windows (x64/ARM64), Linux (x64/ARM64), macOS (x64/ARM64)
 3. **Configuration** (`.env`):
 
    ```env
+   APP_THEME=tinymist
    TINYMIST_ENABLED=true
    TYPST_CLI_PATH=/path/to/bookstack/vendor/bin/typst.exe
    TINYMIST_CLI_PATH=/path/to/bookstack/vendor/bin/tinymist.exe
    TINYMIST_TIMEOUT=30
    TINYMIST_MAX_SIZE=1024
+   TINYMIST_WS_SECRET=<random 64-hex string>
    ```
 
 4. **Permissions**:

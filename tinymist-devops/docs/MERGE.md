@@ -1,4 +1,4 @@
-# Integration with the base BookStack or rebase document
+# Integration with the base BookStack, merge or rebase document
 
 List of expected merges. Collection of integration hooks and small patches for Bookstack core files.
 
@@ -290,8 +290,6 @@ readme.md
 
 ### Temporary
 
-- `resources/views/entities/breadcrumbs.blade.php`
-    Revert it to whatever they have, history of accidental replacements of minor tags
 - `tests/Uploads/ImageTest.php`
     eh, commented out 2 functions because of the git CI
 
