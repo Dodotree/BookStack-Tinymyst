@@ -60,7 +60,6 @@ export {TagManager} from './tag-manager';
 export {TemplateManager} from './template-manager';
 export {TinymistPackageAdmin} from '../../../themes/tinymist/resources/js/components/tinymist-package-admin';
 export {TinymistPackageManager} from '../../../themes/tinymist/resources/js/components/tinymist-package-manager';
-export {TinymistPackageSelector} from '../../../themes/tinymist/resources/js/components/tinymist-package-selector';
 export {ToggleSwitch} from './toggle-switch';
 export {TriLayout} from './tri-layout';
 export {UserSelect} from './user-select';

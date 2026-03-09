@@ -7,12 +7,19 @@
 
 import { TinymistEditor } from "./components/tinymist-editor";
 import { TinymistAttachmentsBridge } from "./components/tinymist-attachments-bridge";
+import { TinymistPackageSelector } from "./components/tinymist-package-selector";
 
 if (window.$components) {
-    window.$components.register({ TinymistEditor });
+    window.$components.register({ TinymistEditor, TinymistPackageSelector });
     const tinymistElement = document.querySelector('[component="tinymist-editor"]');
     if (tinymistElement instanceof HTMLElement) {
         window.$components.init(tinymistElement);
+
+        document.querySelectorAll('[component="tinymist-package-selector"]').forEach(element => {
+            if (element instanceof HTMLElement) {
+                window.$components.init(element);
+            }
+        });
 
         const attachmentsElement = document.querySelector('[component="attachments"]');
         const rawPageId = attachmentsElement?.getAttribute('option:attachments:page-id') || '0';

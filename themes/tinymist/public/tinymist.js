@@ -37287,12 +37287,106 @@ var TinymistAttachmentsBridge = class {
   }
 };
 
+// resources/js/services/dom.ts
+function onChildEvent(listenerElement, childSelector, eventName, callback) {
+  listenerElement.addEventListener(eventName, (event) => {
+    const matchingChild = event.target?.closest(childSelector);
+    if (matchingChild) {
+      callback.call(matchingChild, event, matchingChild);
+    }
+  });
+}
+
+// themes/tinymist/resources/js/components/tinymist-package-selector.ts
+var TinymistPackageSelector = class extends Component {
+  setup() {
+    const searchInput = this.$refs.searchInput;
+    const searchButton = this.$refs.searchButton;
+    const searchCancel = this.$refs.searchCancel;
+    onChildEvent(this.$el, "[data-package-item]", "click", (event, item) => {
+      if (event.target?.closest('[data-package-action="insert"]')) {
+        return;
+      }
+      this.insertPackage(item);
+    });
+    onChildEvent(this.$el, '[data-package-action="insert"]', "click", (event, button) => {
+      event.stopPropagation();
+      const item = button.closest("[data-package-item]");
+      if (item instanceof HTMLElement) {
+        this.insertPackage(item);
+      }
+    });
+    this.$el.addEventListener("keydown", (event) => {
+      const target = event.target;
+      const item = target?.closest("[data-package-item]");
+      if (!(item instanceof HTMLElement)) {
+        return;
+      }
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        this.insertPackage(item);
+      }
+    });
+    const runSearch = () => this.applySearch(searchInput?.value || "");
+    searchInput?.addEventListener("input", runSearch);
+    searchInput?.addEventListener("keypress", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        runSearch();
+      }
+    });
+    searchButton?.addEventListener("click", runSearch);
+    searchCancel?.addEventListener("click", () => {
+      if (searchInput) {
+        searchInput.value = "";
+      }
+      runSearch();
+    });
+  }
+  insertPackage(item) {
+    const namespace2 = (item.dataset.packageNamespace || "").trim();
+    const name2 = (item.dataset.packageName || "").trim();
+    const version = (item.dataset.packageVersion || "").trim();
+    if (!namespace2 || !name2 || !version) {
+      return;
+    }
+    window.$events.emit("editor::insert", {
+      typst: `#import "@${namespace2}/${name2}:${version}": *
+`
+    });
+  }
+  applySearch(rawTerm) {
+    const term = rawTerm.trim().toLowerCase();
+    const items = Array.from(this.$el.querySelectorAll("[data-package-item]"));
+    const noResults = this.$refs.noResults;
+    let visibleCount = 0;
+    items.forEach((item) => {
+      const haystack = (item.dataset.packageSearch || "").toLowerCase();
+      const matches = term === "" || haystack.includes(term);
+      item.style.display = matches ? "" : "none";
+      visibleCount += matches ? 1 : 0;
+    });
+    const searchCancel = this.$refs.searchCancel;
+    if (searchCancel instanceof HTMLElement) {
+      searchCancel.style.display = term ? "block" : "none";
+    }
+    if (noResults instanceof HTMLElement) {
+      noResults.hidden = visibleCount !== 0;
+    }
+  }
+};
+
 // themes/tinymist/resources/js/tinymist-bookstack.ts
 if (window.$components) {
-  window.$components.register({ TinymistEditor });
+  window.$components.register({ TinymistEditor, TinymistPackageSelector });
   const tinymistElement = document.querySelector('[component="tinymist-editor"]');
   if (tinymistElement instanceof HTMLElement) {
     window.$components.init(tinymistElement);
+    document.querySelectorAll('[component="tinymist-package-selector"]').forEach((element) => {
+      if (element instanceof HTMLElement) {
+        window.$components.init(element);
+      }
+    });
     const attachmentsElement = document.querySelector('[component="attachments"]');
     const rawPageId = attachmentsElement?.getAttribute("option:attachments:page-id") || "0";
     const pageId = Number(rawPageId);
