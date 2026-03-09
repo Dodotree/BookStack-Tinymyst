@@ -1,5 +1,49 @@
 <?php
 
+$defaultExecutableExtension = DIRECTORY_SEPARATOR === '\\' ? '.exe' : '';
+
+$resolveProjectPath = static function (?string $value, string $defaultRelative): string {
+    $candidate = trim((string) $value);
+    $candidate = $candidate !== '' ? $candidate : $defaultRelative;
+
+    $isAbsolute = preg_match('#^(?:[A-Za-z]:[\\\\/]|[/\\\\]{2}|/)#', $candidate) === 1;
+
+    return $isAbsolute ? $candidate : base_path($candidate);
+};
+
+$resolveExecutablePath = static function (?string $value, string $defaultRelative) use ($resolveProjectPath): string {
+    $candidate = trim((string) $value);
+
+    if ($candidate === '') {
+        return $resolveProjectPath(null, $defaultRelative);
+    }
+
+    $looksLikePath = str_contains($candidate, '/')
+        || str_contains($candidate, '\\')
+        || $candidate === '.'
+        || str_starts_with($candidate, '.');
+
+    if (!$looksLikePath) {
+        return $candidate;
+    }
+
+    $resolved = $resolveProjectPath($candidate, $defaultRelative);
+    if (is_dir($resolved)) {
+        $resolved = rtrim($resolved, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . basename($defaultRelative);
+    }
+
+    return $resolved;
+};
+
+$resolvePackagePath = static function (?string $projectRelativePath, ?string $legacyStorageRelativePath) use ($resolveProjectPath): string {
+    $projectRelativePath = trim((string) $projectRelativePath);
+    if ($projectRelativePath !== '') {
+        return $resolveProjectPath($projectRelativePath, 'storage/app/tinymist/packages');
+    }
+
+    return storage_path('app/' . trim((string) ($legacyStorageRelativePath ?: 'tinymist/packages'), '/\\'));
+};
+
 /**
  * Tinymist/Typst editor configuration options.
  *
@@ -19,7 +63,7 @@ return [
     | if available in system PATH.
     |
     */
-    'typst_cli_path' => env('TYPST_CLI_PATH', base_path('vendor/bin/typst' . (DIRECTORY_SEPARATOR === '\\' ? '.exe' : ''))),
+    'typst_cli_path' => $resolveExecutablePath(env('TYPST_CLI_PATH'), 'vendor/bin/typst' . $defaultExecutableExtension),
 
     /*
     |--------------------------------------------------------------------------
@@ -29,7 +73,18 @@ return [
     | Path to tinymist CLI executable (for LSP features).
     |
     */
-    'tinymist_cli_path' => env('TINYMIST_CLI_PATH', base_path('vendor/bin/tinymist' . (DIRECTORY_SEPARATOR === '\\' ? '.exe' : ''))),
+    'tinymist_cli_path' => $resolveExecutablePath(env('TINYMIST_CLI_PATH'), 'vendor/bin/tinymist' . $defaultExecutableExtension),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Typst Package Path
+    |--------------------------------------------------------------------------
+    |
+    | Absolute path to locally installed Typst packages. `TYPST_PACKAGE_PATH`
+    | is treated as relative to the project root when not absolute.
+    |
+    */
+    'package_path' => $resolvePackagePath(env('TYPST_PACKAGE_PATH'), env('TINYMIST_PACKAGES_STORAGE_PATH')),
 
     /*
     |--------------------------------------------------------------------------

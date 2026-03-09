@@ -1,12 +1,13 @@
 import { config } from "dotenv";
 import { createServer } from "http";
 import { existsSync } from "fs";
-import { join, resolve } from "path";
+import { isAbsolute, join, resolve } from "path";
 import { URL } from "url";
 import { exec } from "child_process";
 import { WebSocketServer, WebSocket, RawData } from "ws";
 
 import { verifyRequestToken, verifyNewToken, AuthToken } from "../token-helper";
+import { PROJECT_ROOT, getTinymistCliPath, getTypstPackagePath } from "../shared/path-config";
 import { TinymistPreviewClient, PreviewClientOptions } from "./preview-client";
 
 config({ path: join(process.cwd(), ".env") });
@@ -36,7 +37,8 @@ const BRIDGE_HOST = process.env.TINYMIST_PREVIEW_BRIDGE_HOST ?? "127.0.0.1";
 const BRIDGE_PORT = Number(process.env.TINYMIST_PREVIEW_BRIDGE_PORT ?? 4020);
 const PREVIEW_HOST = process.env.TINYMIST_PREVIEW_HOST ?? "127.0.0.1";
 const CONTROL_BASE_PORT = Number(process.env.TINYMIST_CONTROL_BASE_PORT ?? 33626);
-const TINYMIST_CLI_PATH = process.env.TINYMIST_CLI_PATH ?? defaultTinymistPath();
+const TINYMIST_CLI_PATH = getTinymistCliPath();
+const TYPST_PACKAGE_PATH = getTypstPackagePath();
 
 const IDLE_TIMEOUT_MINUTES = Number(process.env.TINYMIST_PREVIEW_IDLE_TIMEOUT ?? 5);
 const IDLE_TIMEOUT_MS = IDLE_TIMEOUT_MINUTES > 0 ? IDLE_TIMEOUT_MINUTES * 60_000 : 0;
@@ -45,7 +47,6 @@ const PING_INTERVAL_MS = Number(process.env.TINYMIST_BRIDGE_PING_INTERVAL ?? 20_
 
 const PARTIAL_RENDERING = process.env.TINYMIST_PARTIAL_RENDERING !== "false";
 
-const PROJECT_ROOT = process.cwd();
 const STORAGE_ROOT = resolve(PROJECT_ROOT, "storage", "app", "tinymist");
 const LOG_DIRECTORY = resolve(PROJECT_ROOT, "storage", "logs");
 
@@ -53,6 +54,7 @@ const FILEPATH_PLACEHOLDER = "__TINYMIST_FILE__";
 
 const managerOptions: PreviewClientOptions = {
     tinymistExecutable: TINYMIST_CLI_PATH,
+    packagePath: TYPST_PACKAGE_PATH,
     projectRoot: PROJECT_ROOT,
     storageRoot: STORAGE_ROOT,
     logDir: LOG_DIRECTORY,
@@ -64,11 +66,6 @@ const managerOptions: PreviewClientOptions = {
     retryDelayMs: 250,
     idleTimeoutMs: IDLE_TIMEOUT_MS,
 };
-
-function defaultTinymistPath(): string {
-    const executable = process.platform === "win32" ? "tinymist.exe" : "tinymist";
-    return resolve(process.cwd(), "vendor", "bin", executable);
-}
 
 function rawDataToBuffer(data: RawData): Buffer {
     if (typeof data === "string") {
@@ -129,7 +126,7 @@ function execCommand(command: string): Promise<string> {
 async function cleanupOrphanedPreviewProcesses(): Promise<void> {
     try {
         const selfPid = process.pid;
-        const tinymistPath = resolve(TINYMIST_CLI_PATH);
+        const tinymistPath = TINYMIST_CLI_PATH.replace(/\\/g, "/").toLowerCase();
         if (process.platform === "win32") {
             const output = await execCommand("powershell -NoProfile -Command \"Get-CimInstance Win32_Process -Filter \\\"name='tinymist.exe'\\\" | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress\"");
             if (!output.trim()) {
@@ -170,7 +167,7 @@ async function cleanupOrphanedPreviewProcesses(): Promise<void> {
                 continue;
             }
             const cmd = line.slice(spaceIndex + 1).trim();
-            if (!cmd.includes(tinymistPath)) {
+            if (isAbsolute(TINYMIST_CLI_PATH) && !cmd.replace(/\\/g, "/").toLowerCase().includes(tinymistPath)) {
                 continue;
             }
             try {

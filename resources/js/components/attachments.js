@@ -84,4 +84,5 @@ export class Attachments extends Component {
     stopEdit() {
         this.showSection('list');
     }
+
 }

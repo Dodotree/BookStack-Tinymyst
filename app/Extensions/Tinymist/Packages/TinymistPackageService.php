@@ -464,6 +464,12 @@ class TinymistPackageService
 
     public function getPackagesRootPath(): string
     {
+        $configuredPath = trim((string) config('tinymist.package_path', ''));
+
+        if ($configuredPath !== '') {
+            return $configuredPath;
+        }
+
         return storage_path('app/' . trim((string) config('tinymist.packages_storage_path', 'tinymist/packages'), '/'));
     }
 

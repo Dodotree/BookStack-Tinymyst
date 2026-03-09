@@ -8,6 +8,7 @@ import WebSocket, { RawData } from "ws";
 
 export type PreviewClientOptions = {
     tinymistExecutable: string;
+    packagePath?: string;
     projectRoot: string;
     storageRoot: string;
     logDir?: string;
@@ -133,6 +134,7 @@ export class TinymistPreviewClient extends EventEmitter {
         this.filePath = resolve(filePath);
         this.options = {
             projectRoot: options.projectRoot ?? process.cwd(),
+            packagePath: options.packagePath ?? resolve(process.cwd(), "storage", "app", "tinymist", "packages"),
             storageRoot: options.storageRoot ?? resolve(process.cwd(), "storage", "app", "tinymist"),
             logDir: options.logDir ?? resolve(process.cwd(), "storage", "logs"),
             host: options.host ?? "127.0.0.1",
@@ -298,6 +300,7 @@ export class TinymistPreviewClient extends EventEmitter {
         const {
             host,
             tinymistExecutable,
+            packagePath,
             projectRoot,
             partialRendering,
             logDir,
@@ -322,6 +325,10 @@ export class TinymistPreviewClient extends EventEmitter {
 
         if (partialRendering) {
             args.push("--partial-rendering", "true");
+        }
+
+        if (packagePath) {
+            args.push("--package-path", packagePath);
         }
 
         // args.push(relativeFilePath);

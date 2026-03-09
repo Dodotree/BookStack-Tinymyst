@@ -800,3 +800,62 @@ My text
 #include "styles.typ" runs the top‑level #set and also makes heading available.
 #import "styles.typ": heading only brings in heading; it does not run the top‑level #set line.
 ```
+
+
+### LSP initiation
+
+```js
+import { pathToFileURL } from "node:url";
+
+const packagePath = "C:\\Users\\Ooo\\Desktop\\GitWork\\BookStack\\storage\\app\\tinymist\\packages";
+const packageCachePath = "C:\\Users\\Ooo\\Desktop\\GitWork\\BookStack\\storage\\app\\tinymist\\package-cache";
+
+const initResult = await this.sendRequest("initialize", {
+  processId: this.process.pid,
+  clientInfo: { name: "BookStack-Tinymist", version: "1.0.0" },
+
+  rootUri: pathToFileURL(this.options.cwd).toString(),
+
+  initializationOptions: {
+    // rootPath: this.options.cwd, // optional, somewhat deprecated
+    typstExtraArgs: [
+      "--package-path", packagePath,
+      "--package-cache-path", packageCachePath,
+      // optional:
+      // "--font-path", "C:\\path\\to\\fonts",
+      // "--ignore-system-fonts",
+    ],
+  },
+
+  capabilities: {
+    textDocument: {
+      synchronization: {
+        dynamicRegistration: false,
+        willSave: false,
+        willSaveWaitUntil: false,
+        didSave: true,
+      },
+      hover: {
+        dynamicRegistration: false,
+        contentFormat: ["markdown", "plaintext"],
+      },
+      completion: {
+        dynamicRegistration: false,
+        completionItem: { snippetSupport: true },
+      },
+      semanticTokens: {
+        dynamicRegistration: false,
+        requests: { full: { delta: true }, range: true },
+        formats: ["relative"],
+        tokenTypes: this.tokenTypes,
+        tokenModifiers: this.tokenModifiers,
+      },
+      publishDiagnostics: {
+        relatedInformation: true,
+        tagSupport: { valueSet: [1, 2] },
+      },
+    },
+  },
+});
+
+```

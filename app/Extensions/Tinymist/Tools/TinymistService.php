@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Log;
 class TinymistService
 {
     protected string $typstPath;
+    protected ?string $packagePath;
     protected string $tempDir;
     protected int $timeout;
 
@@ -19,6 +20,8 @@ class TinymistService
         // Fall back to base_path if config is not set
         $this->typstPath = config('tinymist.typst_cli_path')
             ?? base_path('vendor/bin/typst' . (DIRECTORY_SEPARATOR === '\\' ? '.exe' : ''));
+        $packagePath = config('tinymist.package_path');
+        $this->packagePath = is_string($packagePath) && trim($packagePath) !== '' ? $packagePath : null;
         $this->timeout = config('tinymist.timeout', 30);
         $this->tempDir = sys_get_temp_dir();
     }
@@ -49,10 +52,11 @@ class TinymistService
         try {
             // Use typst CLI for compilation with short diagnostic format
             $command = sprintf(
-                '"%s" compile "%s" "%s" --format svg --diagnostic-format short 2>&1',
+                '"%s" compile "%s" "%s" --format svg --diagnostic-format short%s 2>&1',
                 str_replace('"', '\\"', $this->typstPath),
                 str_replace('"', '\\"', $inputFile),
-                str_replace('"', '\\"', $outputTemplate)
+                str_replace('"', '\\"', $outputTemplate),
+                $this->buildPackagePathArgument()
             );
 
             // To prevent typst from loading packages on our server, we run it under
@@ -320,5 +324,17 @@ class TinymistService
         } catch (\Exception $e) {
             return false;
         }
+    }
+
+    protected function buildPackagePathArgument(): string
+    {
+        if ($this->packagePath === null) {
+            return '';
+        }
+
+        return sprintf(
+            ' --package-path "%s"',
+            str_replace('"', '\\"', $this->packagePath)
+        );
     }
 }

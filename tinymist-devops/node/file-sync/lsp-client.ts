@@ -1,7 +1,8 @@
 import { spawn, ChildProcess } from "child_process";
 import { platform } from "os";
-import { join, resolve, isAbsolute } from "path";
+import { join, resolve } from "path";
 import { existsSync, createWriteStream, WriteStream } from "fs";
+import { getTinymistCliPath, getTypstPackagePath } from "../shared/path-config";
 
 interface LSPMessage {
     jsonrpc: "2.0";
@@ -115,6 +116,9 @@ export class LSPClient {
         if (!this.process) {
             return;
         }
+
+        const typstExtraArgs = getTypstExtraArgs();
+
         // Send initialize request
         const initResult = await this.sendRequest("initialize", {
             processId: this.process.pid,
@@ -123,6 +127,9 @@ export class LSPClient {
                 version: "1.0.0",
             },
             rootUri: `file:///${this.options.cwd}`,
+            initializationOptions: typstExtraArgs.length > 0 ? {
+                typstExtraArgs,
+            } : undefined,
             capabilities: {
                 textDocumentSync: {
                     openClose: true,
@@ -497,22 +504,15 @@ export class LSPClient {
 // Determine the correct Tinymist executable based on platform
 function getTinymistCommand(): string {
     const isWindows = platform() === "win32";
+    const configuredPath = getTinymistCliPath();
 
-    // Check environment variable first
+    if (configuredPath !== (isWindows ? "tinymist.exe" : "tinymist") && existsSync(configuredPath)) {
+        console.log("[LSP Client] Using Tinymist from:", configuredPath);
+        return configuredPath;
+    }
+
     if (process.env.TINYMIST_CLI_PATH) {
-        const envPath = process.env.TINYMIST_CLI_PATH;
-
-        // If it's a relative path, resolve it from project root
-        const absolutePath = isAbsolute(envPath)
-            ? envPath
-            : resolve(process.cwd(), envPath);
-
-        if (existsSync(absolutePath)) {
-            console.log("[LSP Client] Using Tinymist from:", absolutePath);
-            return absolutePath;
-        } else {
-            console.warn("[LSP Client] TINYMIST_CLI_PATH not found:", absolutePath);
-        }
+        console.warn("[LSP Client] TINYMIST_CLI_PATH not found:", configuredPath);
     }
 
     // Try common locations
@@ -543,4 +543,14 @@ function getTinymistCommand(): string {
         console.warn("[LSP Client] Tinymist not found, using 'tinymist' (must be in PATH)");
         return "tinymist";
     }
+}
+
+function getTypstExtraArgs(): string[] {
+    const packagePath = getTypstPackagePath().trim();
+
+    if (packagePath === "") {
+        return [];
+    }
+
+    return ["--package-path", packagePath];
 }
