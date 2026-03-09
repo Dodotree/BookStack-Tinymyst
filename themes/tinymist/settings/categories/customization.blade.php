@@ -1,6 +1,11 @@
 @extends('settings.layout')
 
 @section('card')
+    @php
+        $tinymistPackageManager = $tinymistPackageManager ?? [];
+        $dependencyReport = null;
+    @endphp
+
     <h1 id="customization" class="list-heading">{{ trans('settings.app_customization') }}</h1>
     <form action="{{ url("/settings/customization") }}" method="POST" enctype="multipart/form-data">
         {{ csrf_field() }}
@@ -174,6 +179,24 @@
             <button type="submit" class="button">{{ trans('settings.settings_save') }}</button>
         </div>
     </form>
+
+    <hr class="my-xl">
+
+    <h2 id="tinymist-packages" class="list-heading">{{ trans('entities.tinymist_packages_heading') }}</h2>
+    <p class="small">{{ trans('entities.tinymist_packages_desc') }}</p>
+
+    <div component="tinymist-package-admin"
+         option:tinymist-package-admin:report-url="{{ url('/settings/customization/tinymist/packages/dependencies/report') }}"
+         option:tinymist-package-admin:install-url="{{ url('/settings/customization/tinymist/packages/dependencies/install') }}"
+         option:tinymist-package-admin:install-all-url="{{ url('/settings/customization/tinymist/packages/dependencies/install-all') }}"
+         option:tinymist-package-admin:request-error-text="{{ trans('entities.tinymist_packages_dependencies_request_failed') }}">
+        <div refs="tinymist-package-admin@content">
+            @include('settings.parts.tinymist-package-manager', [
+                'tinymistPackageManager' => $tinymistPackageManager,
+                'dependencyReport' => $dependencyReport,
+            ])
+        </div>
+    </div>
 @endsection
 
 @section('after-content')

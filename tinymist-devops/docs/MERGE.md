@@ -242,6 +242,14 @@ const componentElems = parentElement.querySelectorAll('[component],[components]'
          }
 ```
 
+- `resources/js/services/components/index.ts`
+Register not editor scripts so they would be bundled with the main package, not with WASM
+
+```ts
+export {TinymistPackageAdmin} from '../../../themes/tinymist/resources/js/components/tinymist-package-admin';
+export {TinymistPackageManager} from '../../../themes/tinymist/resources/js/components/tinymist-package-manager';
+```
+
 - `resources/js/services/events.ts` for capping their trace, shouldn't be there anyway
 
 - `resources/js/services/http.ts`

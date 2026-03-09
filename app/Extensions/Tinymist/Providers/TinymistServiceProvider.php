@@ -2,8 +2,11 @@
 
 namespace BookStack\Extensions\Tinymist\Providers;
 
+use BookStack\Extensions\Tinymist\Pages\TinymistEditorToolboxComposer;
+use BookStack\Extensions\Tinymist\Packages\TinymistPackageSettingsComposer;
 use BookStack\Extensions\Tinymist\Tools\TinymistPreviewManager;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
 class TinymistServiceProvider extends ServiceProvider
@@ -29,6 +32,9 @@ class TinymistServiceProvider extends ServiceProvider
         // }
 
         $this->app->make(TinymistPreviewManager::class);
+
+        View::composer('settings.categories.customization', TinymistPackageSettingsComposer::class);
+        View::composer('pages.parts.editor-toolbox', TinymistEditorToolboxComposer::class);
     }
 
     protected function registerRoutes(): void

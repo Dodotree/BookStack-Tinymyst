@@ -3,6 +3,7 @@
 use BookStack\Extensions\Tinymist\Attachments\TinymistAttachmentController;
 use BookStack\Extensions\Tinymist\Controllers\TinymistController;
 use BookStack\Extensions\Tinymist\Imports\TinymistImportController;
+use BookStack\Extensions\Tinymist\Packages\TinymistPackageController;
 use Illuminate\Support\Facades\Route;
 
 // Tinymist/Typst routes
@@ -18,3 +19,11 @@ Route::put('/attachments/{id}/undo-from-preview', [TinymistAttachmentController:
 
 // Tinymist single-page import route
 Route::post('/import/single', [TinymistImportController::class, 'uploadSingle']);
+
+// Tinymist package admin routes
+Route::post('/settings/customization/tinymist/packages/upload', [TinymistPackageController::class, 'uploadZip']);
+Route::post('/settings/customization/tinymist/packages/github/install', [TinymistPackageController::class, 'installGithub']);
+Route::post('/settings/customization/tinymist/packages/github/refresh', [TinymistPackageController::class, 'refreshGithub']);
+Route::post('/settings/customization/tinymist/packages/dependencies/report', [TinymistPackageController::class, 'dependencyReport']);
+Route::post('/settings/customization/tinymist/packages/dependencies/install', [TinymistPackageController::class, 'dependencyInstall']);
+Route::post('/settings/customization/tinymist/packages/dependencies/install-all', [TinymistPackageController::class, 'dependencyInstallAll']);

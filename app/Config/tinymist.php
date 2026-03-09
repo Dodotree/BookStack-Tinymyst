@@ -141,6 +141,20 @@ return [
     'ws_token_secret' => env('TINYMIST_WS_SECRET'),
     'ws_token_ttl' => env('TINYMIST_WS_TOKEN_TTL', 900),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Typst Package Storage
+    |--------------------------------------------------------------------------
+    |
+    | Location of installed Typst packages and the cached GitHub packages clone,
+    | both relative to storage/app.
+    |
+    */
+    'packages_storage_path' => env('TINYMIST_PACKAGES_STORAGE_PATH', 'tinymist/packages'),
+    'github_packages_storage_path' => env('TINYMIST_GITHUB_PACKAGES_STORAGE_PATH', 'tinymist/github/packages'),
+    'github_packages_repo' => env('TINYMIST_GITHUB_PACKAGES_REPO', 'https://github.com/typst/packages.git'),
+    'github_packages_branch' => env('TINYMIST_GITHUB_PACKAGES_BRANCH', 'main'),
+
 
     /*
     |--------------------------------------------------------------------------
