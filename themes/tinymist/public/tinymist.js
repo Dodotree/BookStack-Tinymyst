@@ -3548,6 +3548,7 @@ var PreviewBridgeClient = class extends TinymistWebSocketClient {
 var _PreviewControlPlane = class _PreviewControlPlane {
   constructor() {
     __publicField(this, "cursorSpotlightEnabled", true);
+    __publicField(this, "logCompileSuccess", false);
     this.sendControlMessage = this.sendControlMessage.bind(this);
     this.handleControlMessage = this.handleControlMessage.bind(this);
     window.$tmEventBus.listen(
@@ -3595,12 +3596,12 @@ var _PreviewControlPlane = class _PreviewControlPlane {
     }
   }
   onCompileStatus(kind, msg) {
-    if (kind === "Compiling") {
+    if (kind === "Compiling" && this.logCompileSuccess) {
       window.$tmEventBus.emit(tmEvents.ConsoleLog, {
         type: "info",
         message: "[Preview Control] Compiling..."
       });
-    } else if (kind === "CompileSuccess") {
+    } else if (kind === "CompileSuccess" && this.logCompileSuccess) {
       window.$tmEventBus.emit(tmEvents.ConsoleLog, {
         type: "success",
         message: "[Preview Control] Compilation successful"
@@ -36241,7 +36242,7 @@ var PreviewCursor = class {
     this.destroy = this.destroy.bind(this);
     this.pathToSelector = this.pathToSelector.bind(this);
     this.showCursor = this.showCursor.bind(this);
-    this.onViewportChange = this.showCursor.bind(this);
+    this.onViewportChange = this.showCursorWithoutEmit.bind(this);
     window.$tmEventBus.listen(
       tmEvents.DataCursorPaths,
       this.pathToSelector
@@ -36254,7 +36255,7 @@ var PreviewCursor = class {
         if (!this.spotlightEnabled) {
           this.hideCursor();
         } else {
-          this.showCursor();
+          this.onViewportChange();
         }
       }
     );
@@ -36415,10 +36416,13 @@ var PreviewCursor = class {
     );
     this.showCursor();
   }
+  showCursorWithoutEmit() {
+    this.showCursor(false);
+  }
   /**
    * Show cursor circle at the specified glyph position
    */
-  showCursor() {
+  showCursor(emitPosition = true) {
     if (!this.spotlightEnabled) {
       this.hideCursor();
       return;
@@ -36458,6 +36462,9 @@ var PreviewCursor = class {
     this.cursorCircle.setAttribute("cx", cx.toFixed(2));
     this.cursorCircle.setAttribute("cy", cy.toFixed(2));
     this.cursorCircle.setAttribute("r", r.toFixed(2));
+    if (!emitPosition) {
+      return;
+    }
     const contentX = glyphRect.left - previewRect.left + this.previewElement.scrollLeft + glyphRect.width / 2;
     const contentY = glyphRect.top - previewRect.top + this.previewElement.scrollTop + glyphRect.height / 2;
     window.$tmEventBus.emit(tmEvents.PreviewCursorPosition, {

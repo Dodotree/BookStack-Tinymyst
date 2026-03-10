@@ -11,6 +11,7 @@ type OutlineItem = {
 export class PreviewControlPlane {
     private static readonly FILEPATH_PLACEHOLDER = "__TINYMIST_FILE__";
     private cursorSpotlightEnabled = true;
+    private logCompileSuccess = false;
 
     constructor() {
         this.sendControlMessage = this.sendControlMessage.bind(this);
@@ -67,12 +68,12 @@ export class PreviewControlPlane {
     }
 
     private onCompileStatus(kind: string, msg?: any) {
-        if (kind === "Compiling") {
+        if (kind === "Compiling" && this.logCompileSuccess) {
             window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                 type: "info",
                 message: "[Preview Control] Compiling...",
             });
-        } else if (kind === "CompileSuccess") {
+        } else if (kind === "CompileSuccess" && this.logCompileSuccess) {
             window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                 type: "success",
                 message: "[Preview Control] Compilation successful",

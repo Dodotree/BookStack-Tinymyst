@@ -33,7 +33,7 @@ export class PreviewCursor {
         this.destroy = this.destroy.bind(this);
         this.pathToSelector = this.pathToSelector.bind(this);
         this.showCursor = this.showCursor.bind(this);
-        this.onViewportChange = this.showCursor.bind(this);
+        this.onViewportChange = this.showCursorWithoutEmit.bind(this);
         window.$tmEventBus.listen(
             tmEvents.DataCursorPaths,
             this.pathToSelector,
@@ -46,7 +46,7 @@ export class PreviewCursor {
                 if (!this.spotlightEnabled) {
                     this.hideCursor();
                 } else {
-                    this.showCursor();
+                    this.onViewportChange();
                 }
             },
         );
@@ -235,10 +235,14 @@ export class PreviewCursor {
         this.showCursor();
     }
 
+    private showCursorWithoutEmit(): void {
+        this.showCursor(false);
+    }
+
     /**
      * Show cursor circle at the specified glyph position
      */
-    private showCursor(): void {
+    private showCursor(emitPosition: boolean = true): void {
         if (!this.spotlightEnabled) {
             this.hideCursor();
             return;
@@ -295,6 +299,10 @@ export class PreviewCursor {
         this.cursorCircle.setAttribute("cx", cx.toFixed(2));
         this.cursorCircle.setAttribute("cy", cy.toFixed(2));
         this.cursorCircle.setAttribute("r", r.toFixed(2));
+
+        if (!emitPosition) {
+            return;
+        }
 
         const contentX =
             glyphRect.left -
