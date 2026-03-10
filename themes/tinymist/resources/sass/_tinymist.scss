@@ -119,6 +119,11 @@
     .cm-focused .cm-selectionBackground {
       @include mixins.lightDark(background-color, #cce5ff, #264f78, true);
     }
+
+    .ͼ2 .cm-tooltip {
+      @include mixins.lightDark(background-color, #fff, #1e1e1e);
+      @include mixins.lightDark(color, #24292f, #d4d4d4);
+    }
   }
 
   .tinymist-console-panel {

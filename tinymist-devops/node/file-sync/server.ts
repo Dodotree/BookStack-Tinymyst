@@ -88,6 +88,7 @@ const HOST = process.env.FILE_WS_HOST ?? "127.0.0.1";
 const STORAGE_ROOT =
     process.env.TYPST_STORAGE_ROOT ??
     join(process.cwd(), "storage", "app", "tinymist");
+const STORAGE_PATH_PLACEHOLDER = "TINYMIST_STORAGE";
 
 const HEARTBEAT_INTERVAL_MS = 20_000;
 const STALE_TIMEOUT_MS = 45_000;
@@ -354,6 +355,13 @@ class PageSession {
 
     broadcastDiagnostics(fileName: string, diagnostics: Array<unknown>): void {
         const state = this.getFileState(fileName);
+        diagnostics.map((d: any) => {
+            if ("message" in d) {
+                d.message = d.message.replace(STORAGE_ROOT, STORAGE_PATH_PLACEHOLDER);
+                return d;
+            }
+            return d;
+        });
         this.broadcast({
             type: "diagnostics",
             pageId: this.pageId,
