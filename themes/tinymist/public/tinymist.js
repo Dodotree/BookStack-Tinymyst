@@ -34641,13 +34641,20 @@ __publicField(_TinymistThemeSettings, "FONT_TOKENS", new Set(THEME_FONT_TOKENS))
 var TinymistThemeSettings = _TinymistThemeSettings;
 
 // themes/tinymist/resources/js/tinymist/console.ts
-var TinymistConsole = class {
-  constructor(panelSelector, consoleSelector) {
+var _TinymistConsole = class _TinymistConsole {
+  constructor(panelSelector, consoleSelector, options) {
     __publicField(this, "panelSelector");
     __publicField(this, "consoleSelector");
     __publicField(this, "collapsed", false);
+    __publicField(this, "dedupeWindowMs");
+    __publicField(this, "aggregateWindowMs");
+    __publicField(this, "maxMessages");
+    __publicField(this, "entries", []);
     this.panelSelector = panelSelector;
     this.consoleSelector = consoleSelector;
+    this.dedupeWindowMs = options?.dedupeWindowMs ?? _TinymistConsole.DEFAULT_DEDUPE_WINDOW_MS;
+    this.aggregateWindowMs = options?.aggregateWindowMs ?? _TinymistConsole.DEFAULT_AGGREGATE_WINDOW_MS;
+    this.maxMessages = options?.maxMessages ?? _TinymistConsole.DEFAULT_MAX_MESSAGES;
     this.logMessage = this.logMessage.bind(this);
     this.clearConsole = this.clearConsole.bind(this);
     this.handlePanelClick = this.handlePanelClick.bind(this);
@@ -34689,22 +34696,74 @@ var TinymistConsole = class {
       this.collapsed ? "true" : "false"
     );
   }
-  logMessage({
-    type,
-    message,
-    details
-  }) {
-    const timestamp = (/* @__PURE__ */ new Date()).toLocaleTimeString();
-    const messageDiv = document.createElement("div");
-    messageDiv.className = `${tmClassNames.ConsoleMessage} ${type}`;
-    messageDiv.innerHTML = `<span class="text-muted">[${timestamp}]</span> ` + this.escapeHtml(message) + "<br>" + this.getErrorDetails(details);
+  logMessage({ type, message, details }) {
     const consoleEl = document.querySelector(`${this.panelSelector} ${this.consoleSelector}`);
     if (!consoleEl) {
       console.warn("Console element not found for logging message:", message);
       return;
     }
-    consoleEl.appendChild(messageDiv);
+    const detailsHtml = this.getErrorDetails(details);
+    const signature = JSON.stringify([type, message, detailsHtml]);
+    const timestampMs = Date.now();
+    const existingEntry = this.findLatestEntry(signature);
+    if (existingEntry) {
+      const ageMs = timestampMs - existingEntry.timestampMs;
+      if (ageMs <= this.dedupeWindowMs) {
+        return;
+      }
+      if (ageMs <= this.aggregateWindowMs) {
+        this.removeEntry(existingEntry);
+        this.appendEntry(consoleEl, {
+          signature,
+          timestampMs,
+          repeatCount: existingEntry.repeatCount + 1,
+          element: this.buildMessageElement(type, message, detailsHtml, timestampMs, existingEntry.repeatCount + 1)
+        });
+        return;
+      }
+    }
+    this.appendEntry(consoleEl, {
+      signature,
+      timestampMs,
+      repeatCount: 1,
+      element: this.buildMessageElement(type, message, detailsHtml, timestampMs, 1)
+    });
+  }
+  buildMessageElement(type, message, detailsHtml, timestampMs, repeatCount) {
+    const timestamp = new Date(timestampMs).toLocaleTimeString();
+    const messageDiv = document.createElement("div");
+    messageDiv.className = `${tmClassNames.ConsoleMessage} ${type}`;
+    const badgeHtml = repeatCount > 1 ? `<span class="tinymist-console-message-badge" aria-label="Repeated ${repeatCount} times">(${repeatCount})</span>` : "";
+    const detailsBlock = detailsHtml !== "" ? `<div class="tinymist-console-message-details">${detailsHtml}</div>` : "";
+    messageDiv.innerHTML = `<div class="tinymist-console-message-line"><span class="text-muted tinymist-console-message-meta">[${timestamp}]</span>${badgeHtml}<span class="tinymist-console-message-body">${this.escapeHtml(message)}</span></div>` + detailsBlock;
+    return messageDiv;
+  }
+  findLatestEntry(signature) {
+    for (let i = this.entries.length - 1; i >= 0; i--) {
+      if (this.entries[i].signature === signature) {
+        return this.entries[i];
+      }
+    }
+    return null;
+  }
+  appendEntry(consoleEl, entry) {
+    consoleEl.appendChild(entry.element);
+    this.entries.push(entry);
+    this.pruneEntries();
     consoleEl.scrollTop = consoleEl.scrollHeight;
+  }
+  pruneEntries() {
+    while (this.entries.length > this.maxMessages) {
+      const entry = this.entries.shift();
+      entry?.element.remove();
+    }
+  }
+  removeEntry(entry) {
+    const index = this.entries.indexOf(entry);
+    if (index !== -1) {
+      this.entries.splice(index, 1);
+    }
+    entry.element.remove();
   }
   escapeHtml(text) {
     const div = document.createElement("div");
@@ -34735,12 +34794,17 @@ cause: ${error.cause}` + JSON.stringify(error, null, 2) + "</code>";
       console.warn("Console element not found for clearing.");
       return;
     }
+    this.entries = [];
     consoleEl.innerHTML = '<div class="text-muted p-m text-small">Console cleared.</div>';
   }
   destroy() {
     document.querySelector(this.panelSelector)?.removeEventListener("click", this.handlePanelClick);
   }
 };
+__publicField(_TinymistConsole, "DEFAULT_DEDUPE_WINDOW_MS", 1e3);
+__publicField(_TinymistConsole, "DEFAULT_AGGREGATE_WINDOW_MS", 3 * 6e4);
+__publicField(_TinymistConsole, "DEFAULT_MAX_MESSAGES", 20);
+var TinymistConsole = _TinymistConsole;
 
 // node_modules/@myriaddreamin/typst.ts/dist/esm/internal.types.mjs
 var kObject = /* @__PURE__ */ Symbol.for("reflexo-obj");

@@ -1,14 +1,44 @@
 // Visible editor console for displaying compilation messages and diagnostics
 import { tmClassNames, tmEvents } from "./constants";
 
+type TinymistConsoleMessage = {
+    type: "error" | "warning" | "info" | "success" | "hint";
+    message: string;
+    details?: unknown;
+};
+
+type TinymistConsoleEntry = {
+    signature: string;
+    timestampMs: number;
+    repeatCount: number;
+    element: HTMLDivElement;
+};
+
+type TinymistConsoleOptions = {
+    dedupeWindowMs?: number;
+    aggregateWindowMs?: number;
+    maxMessages?: number;
+};
+
 export class TinymistConsole {
+    static readonly DEFAULT_DEDUPE_WINDOW_MS = 1_000;
+    static readonly DEFAULT_AGGREGATE_WINDOW_MS = 3 * 60_000;
+    static readonly DEFAULT_MAX_MESSAGES = 20;
+
     panelSelector: string;
     consoleSelector: string;
     collapsed: boolean = false;
+    dedupeWindowMs: number;
+    aggregateWindowMs: number;
+    maxMessages: number;
+    entries: TinymistConsoleEntry[] = [];
 
-    constructor(panelSelector: string, consoleSelector: string) {
+    constructor(panelSelector: string, consoleSelector: string, options?: TinymistConsoleOptions) {
         this.panelSelector = panelSelector;
         this.consoleSelector = consoleSelector;
+        this.dedupeWindowMs = options?.dedupeWindowMs ?? TinymistConsole.DEFAULT_DEDUPE_WINDOW_MS;
+        this.aggregateWindowMs = options?.aggregateWindowMs ?? TinymistConsole.DEFAULT_AGGREGATE_WINDOW_MS;
+        this.maxMessages = options?.maxMessages ?? TinymistConsole.DEFAULT_MAX_MESSAGES;
 
         // Saving reference of the bound method to be able to remove listeners later if needed
         this.logMessage = this.logMessage.bind(this);
@@ -59,32 +89,104 @@ export class TinymistConsole {
         );
     }
 
-    logMessage({
-        type,
-        message,
-        details,
-    }: {
-        type: "error" | "warning" | "info" | "success" | "hint";
-        message: string;
-        details?: any;
-    }) {
-        const timestamp = new Date().toLocaleTimeString();
-        const messageDiv = document.createElement("div");
-        messageDiv.className = `${tmClassNames.ConsoleMessage} ${type}`;
-        messageDiv.innerHTML =
-            `<span class="text-muted">[${timestamp}]</span> ` +
-            this.escapeHtml(message) +
-            "<br>" +
-            this.getErrorDetails(details!);
-
+    logMessage({type, message, details}: TinymistConsoleMessage) {
         const consoleEl = document.querySelector(`${this.panelSelector} ${this.consoleSelector}`);
-        if(!consoleEl) {
+        if (!consoleEl) {
             console.warn("Console element not found for logging message:", message);
             return;
         }
-        consoleEl.appendChild(messageDiv);
+
+        const detailsHtml = this.getErrorDetails(details);
+        const signature = JSON.stringify([type, message, detailsHtml]);
+        const timestampMs = Date.now();
+        const existingEntry = this.findLatestEntry(signature);
+
+        if (existingEntry) {
+            const ageMs = timestampMs - existingEntry.timestampMs;
+
+            if (ageMs <= this.dedupeWindowMs) {
+                return;
+            }
+
+            if (ageMs <= this.aggregateWindowMs) {
+                this.removeEntry(existingEntry);
+                this.appendEntry(consoleEl, {
+                    signature,
+                    timestampMs,
+                    repeatCount: existingEntry.repeatCount + 1,
+                    element: this.buildMessageElement(type, message, detailsHtml, timestampMs, existingEntry.repeatCount + 1),
+                });
+                return;
+            }
+        }
+
+        this.appendEntry(consoleEl, {
+            signature,
+            timestampMs,
+            repeatCount: 1,
+            element: this.buildMessageElement(type, message, detailsHtml, timestampMs, 1),
+        });
+    }
+
+    buildMessageElement(
+        type: TinymistConsoleMessage["type"],
+        message: string,
+        detailsHtml: string,
+        timestampMs: number,
+        repeatCount: number,
+    ): HTMLDivElement {
+        const timestamp = new Date(timestampMs).toLocaleTimeString();
+        const messageDiv = document.createElement("div");
+        messageDiv.className = `${tmClassNames.ConsoleMessage} ${type}`;
+
+        const badgeHtml = repeatCount > 1
+            ? `<span class="tinymist-console-message-badge" aria-label="Repeated ${repeatCount} times">(${repeatCount})</span>`
+            : "";
+
+        const detailsBlock = detailsHtml !== "" ? `<div class="tinymist-console-message-details">${detailsHtml}</div>` : "";
+
+        messageDiv.innerHTML =
+            `<div class="tinymist-console-message-line">` +
+            `<span class="text-muted tinymist-console-message-meta">[${timestamp}]</span>` +
+            `${badgeHtml}` +
+            `<span class="tinymist-console-message-body">${this.escapeHtml(message)}</span>` +
+            `</div>` +
+            detailsBlock;
+
+        return messageDiv;
+    }
+
+    findLatestEntry(signature: string): TinymistConsoleEntry | null {
+        for (let i = this.entries.length - 1; i >= 0; i--) {
+            if (this.entries[i].signature === signature) {
+                return this.entries[i];
+            }
+        }
+
+        return null;
+    }
+
+    appendEntry(consoleEl: Element, entry: TinymistConsoleEntry): void {
+        consoleEl.appendChild(entry.element);
+        this.entries.push(entry);
+        this.pruneEntries();
         // Auto-scroll to bottom
         consoleEl.scrollTop = consoleEl.scrollHeight;
+    }
+
+    pruneEntries(): void {
+        while (this.entries.length > this.maxMessages) {
+            const entry = this.entries.shift();
+            entry?.element.remove();
+        }
+    }
+
+    removeEntry(entry: TinymistConsoleEntry): void {
+        const index = this.entries.indexOf(entry);
+        if (index !== -1) {
+            this.entries.splice(index, 1);
+        }
+        entry.element.remove();
     }
 
     escapeHtml(text: string) {
@@ -121,6 +223,7 @@ export class TinymistConsole {
             console.warn("Console element not found for clearing.");
             return;
         }
+        this.entries = [];
         consoleEl.innerHTML =
                 '<div class="text-muted p-m text-small">Console cleared.</div>';
     }
