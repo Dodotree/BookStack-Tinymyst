@@ -2685,6 +2685,7 @@ var tmEvents = {
   FallbackCompile: "fallback-compile",
   FallbackCompiledSvg: "fallback-compiled-svg",
   FallbackEnable: "fallback-enable",
+  FileSyncAck: "file-sync-ack",
   FileDirtyState: "file-dirty-state",
   FilesDirtyUpdated: "files-dirty-updated",
   FilesUpdated: "files-updated",
@@ -2701,6 +2702,7 @@ var tmEvents = {
   PreviewSendData: "preview-send-data",
   PruneSnapshots: "prune-snapshots",
   ResetFile: "reset-file",
+  SyncRemoteChanges: "sync-remote-changes",
   Status: "status",
   SyncConnect: "sync-connect",
   SyncDisconnect: "sync-disconnect",
@@ -2710,6 +2712,7 @@ var tmEvents = {
   TextDiff: "text-diff",
   ThemeSettingsOpen: "theme-settings-open",
   TokenRenewed: "token-renewed",
+  VersionedCursorRequest: "versioned-cursor-request",
   WasmDispose: "wasm-dispose",
   WasmInit: "wasm-init"
 };
@@ -3366,6 +3369,7 @@ var TinymistFileSyncClient = class extends TinymistWebSocketClient {
   handleMessage(data2) {
     try {
       const msg = JSON.parse(data2);
+      console.debug("[FilesLSP WS] Received message:", msg);
       const docVersion = "docVersion" in msg ? Number(msg.docVersion) : void 0;
       const fileName = typeof msg.fileName === "string" && msg.fileName.trim().length > 0 ? msg.fileName.trim() : void 0;
       if ((docVersion === void 0 || !fileName) && [
@@ -3385,18 +3389,34 @@ var TinymistFileSyncClient = class extends TinymistWebSocketClient {
           console.debug("[FilesLSP WS] Received pong");
           break;
         case "ack":
-          console.debug(
-            `[FilesLSP WS] Change acknowledged ${fileName} docVersion: ${docVersion}`
-          );
+          if (fileName != "authTokenAck") {
+            window.$tmEventBus.emit(tmEvents.FileSyncAck, {
+              timestamp: Date.now(),
+              fileName,
+              docVersion
+            });
+          }
           break;
         case "fullState":
           console.debug(
             `[FilesLSP WS] Received full state \x1B[31m${fileName}\x1B[0m, docVersion: \x1B[94m${docVersion}\x1B[0m`
           );
           window.$tmEventBus.emit(tmEvents.SyncFullState, {
+            timestamp: Date.now(),
             fileName,
             content: msg.content,
             docVersion
+          });
+          break;
+        case "remoteChanges":
+          console.debug(
+            `[FilesLSP WS] Received remote changes \x1B[31m${fileName}\x1B[0m, docVersion: \x1B[94m${docVersion}\x1B[0m`
+          );
+          window.$tmEventBus.emit(tmEvents.SyncRemoteChanges, {
+            timestamp: Date.now(),
+            fileName,
+            docVersion,
+            changes: msg.changes
           });
           break;
         case "semanticTokens":
@@ -3549,8 +3569,16 @@ var _PreviewControlPlane = class _PreviewControlPlane {
   constructor() {
     __publicField(this, "cursorSpotlightEnabled", true);
     __publicField(this, "logCompileSuccess", false);
+    __publicField(this, "pendingRenders", []);
+    __publicField(this, "currentRender", null);
+    __publicField(this, "pendingCursorRequests", /* @__PURE__ */ new Map());
     this.sendControlMessage = this.sendControlMessage.bind(this);
     this.handleControlMessage = this.handleControlMessage.bind(this);
+    this.trackRenderVersion = this.trackRenderVersion.bind(this);
+    this.shiftPendingRenders = this.shiftPendingRenders.bind(this);
+    this.unshiftCursorBlankDiff = this.unshiftCursorBlankDiff.bind(this);
+    this.clarifyRenderVersion = this.clarifyRenderVersion.bind(this);
+    this.addPendingCursorRequest = this.addPendingCursorRequest.bind(this);
     window.$tmEventBus.listen(
       tmEvents.PreviewControlMessage,
       this.handleControlMessage
@@ -3562,15 +3590,130 @@ var _PreviewControlPlane = class _PreviewControlPlane {
         this.cursorSpotlightEnabled = Boolean(enabled);
       }
     );
+    window.$tmEventBus.listen(
+      tmEvents.FileSyncAck,
+      this.trackRenderVersion
+    );
+    window.$tmEventBus.listen(
+      tmEvents.SyncRemoteChanges,
+      this.trackRenderVersion
+    );
+    window.$tmEventBus.listen(
+      tmEvents.SyncFullState,
+      this.clarifyRenderVersion
+    );
+    window.$tmEventBus.listen(
+      tmEvents.DataBinary,
+      this.shiftPendingRenders
+    );
+    window.$tmEventBus.listen(
+      tmEvents.VersionedCursorRequest,
+      this.addPendingCursorRequest
+    );
+  }
+  addPendingCursorRequest(payload) {
+    if (this.currentRender && payload.docVersion <= this.currentRender.docVersion) {
+      this.sendControlMessage(payload.request);
+      return;
+    }
+    this.pendingCursorRequests.set(payload.docVersion, payload);
+  }
+  // Since we should query for cursor paths for rendered docVersion, we can keep track of them too
+  // but it's here mainly for maintaining balance in the queue (diff-v1 after cursor paths)
+  unshiftCursorBlankDiff() {
+    this.pendingRenders.push({
+      type: "merge",
+      timestamp: Date.now(),
+      fileName: "entry.typ",
+      docVersion: this.currentRender?.docVersion ?? 0
+    });
+  }
+  shiftFailedRender() {
+    const failed = this.pendingRenders.shift();
+    if (!failed) {
+      return;
+    }
+    if (failed.type !== "merge") {
+      this.pendingRenders.unshift(failed);
+      console.warn(
+        `[Preview Control:queue] Expected to be failed diff "${failed.fileName}" docVersion: ${failed.docVersion} but got "${failed.type}". Keeping in queue.`,
+        this.pendingRenders
+      );
+    }
+  }
+  shiftPendingRenders(payload) {
+    const pending = this.pendingRenders.shift();
+    if (!pending) {
+      return;
+    }
+    if (payload.command === "diff-v1" && pending.type === "merge") {
+      this.setCurrentRender(pending);
+    } else if (payload.command === "new" && pending.type === "reset") {
+      this.setCurrentRender(pending);
+    } else {
+      this.pendingRenders.unshift(pending);
+      console.warn(
+        `[Preview Control:queue] Received "${payload.command}" but expected "${pending.type}". Keeping pending in queue.`,
+        this.pendingRenders
+      );
+    }
+  }
+  setCurrentRender(pending) {
+    this.currentRender = pending;
+    const pendingCursor = this.pendingCursorRequests.get(
+      pending.docVersion
+    );
+    if (pendingCursor) {
+      this.sendControlMessage(pendingCursor.request);
+      this.pruneCursorRequests(pending.docVersion);
+    }
+  }
+  pruneCursorRequests(olderThan) {
+    for (const [docVersion, request] of this.pendingCursorRequests) {
+      if (request.docVersion <= olderThan) {
+        this.pendingCursorRequests.delete(docVersion);
+      }
+    }
+  }
+  clarifyRenderVersion(payload) {
+    console.debug(
+      `\x1B[31m[Preview Control:track]\x1B[0m "${payload.fileName}" docVersion: \x1B[94m${payload.docVersion}\x1B[0m`,
+      this.pendingRenders
+    );
+    const pending = this.pendingRenders.pop();
+    if (!pending) {
+      return;
+    }
+    if (pending.fileName !== payload.fileName) {
+      this.pendingRenders.push(pending);
+      return;
+    }
+    this.pendingRenders.push({
+      ...pending,
+      docVersion: payload.docVersion,
+      timestamp: Date.now()
+    });
+  }
+  trackRenderVersion(payload) {
+    console.debug(
+      `\x1B[31m[Preview Control:clarify]\x1B[0m "${payload.fileName}" docVersion: \x1B[94m${payload.docVersion}\x1B[0m`,
+      this.pendingRenders
+    );
+    this.pendingRenders.push({
+      type: "merge",
+      timestamp: Date.now(),
+      fileName: payload.fileName,
+      docVersion: payload.docVersion
+    });
   }
   handleControlMessage(raw) {
     console.log(
-      `[Preview Control] Control message length: ${raw.length}`,
+      `[Preview Control:in] Control message length: ${raw.length}`,
       raw.length < 60 ? raw : "too long to display"
     );
     try {
       const msg = JSON.parse(raw);
-      if (msg.type === "pong" || msg.type === "tokenUpdated" || msg.type === "previewRestarted") {
+      if (msg.type === "pong" || msg.type === "tokenUpdated") {
         return;
       }
       if (msg.event === "compileStatus") {
@@ -3582,43 +3725,62 @@ var _PreviewControlPlane = class _PreviewControlPlane {
       } else if (msg.status) {
         window.$tmEventBus.emit(tmEvents.ConsoleLog, {
           type: "info",
-          message: `[Preview Bridge (via Control)] Status: ${msg.status}`
+          message: `[Preview Control:in] Status: ${msg.status}`
         });
+        if (msg.status === "current-requested") {
+          this.pendingRenders.push({
+            type: "reset",
+            timestamp: Date.now(),
+            fileName: "entry.typ",
+            // "current" is for "entry.typ" but edited file can be different, preview doesn't know what is being edited
+            docVersion: msg.docVersion
+          });
+          console.debug(`\x1B[31m[Preview Control:current]\x1B[0m`, this.pendingRenders);
+        }
       } else {
-        console.warn(`[Preview Control] Unknown message: ${raw}`);
+        console.warn(`[Preview Control:in] Unknown message: ${raw}`);
         window.$tmEventBus.emit(tmEvents.ConsoleLog, {
           type: "warning",
-          message: `[Preview Bridge (via Control)] Unknown message: ${raw}`
+          message: `[Preview Control:in] Unknown message: ${raw}`
         });
       }
     } catch (error) {
-      console.warn(`[Preview Control] Failed to parse message: ${raw}`);
+      console.warn(
+        `[Preview Control:in] Failed to parse message: ${raw}`
+      );
     }
   }
   onCompileStatus(kind, msg) {
-    if (kind === "Compiling" && this.logCompileSuccess) {
+    if (kind === "Compiling") {
       window.$tmEventBus.emit(tmEvents.ConsoleLog, {
         type: "info",
-        message: "[Preview Control] Compiling..."
+        message: "[Preview Control:in] Compiling..."
       });
-    } else if (kind === "CompileSuccess" && this.logCompileSuccess) {
+      console.log(this.currentRender, this.pendingRenders);
+    } else if (kind === "CompileSuccess") {
       window.$tmEventBus.emit(tmEvents.ConsoleLog, {
         type: "success",
-        message: "[Preview Control] Compilation successful"
+        message: `[Preview Control:in] Compilation successful for "${this.currentRender?.fileName}" docVersion: ${this.currentRender?.docVersion}. Pending ${this.pendingRenders.length} render(s) in queue.`
       });
     } else if (kind === "CompileError") {
+      this.shiftFailedRender();
       window.$tmEventBus.emit(tmEvents.ConsoleLog, {
         type: "error",
-        message: "[Preview Control] Compilation failed"
+        message: `[Preview Control:in] Compilation failed for "${this.currentRender?.fileName}" docVersion: ${this.currentRender?.docVersion}. Pending ${this.pendingRenders.length} render(s) in queue.`
       });
-      console.error("[Preview Control] Compile Error:", msg);
+      console.error("[Preview Control:in] Compile Error:", msg);
     }
   }
   onSyncChanges(msg) {
-    console.log("[Preview Control] Syncing changes received but not used:", msg);
+    console.log(
+      "[Preview Control:in] Syncing changes received but not used:",
+      msg
+    );
   }
   onOutline(items) {
-    console.log("[Preview Control] Document outline received but not used:", items);
+    console.log(
+      "[Preview Control:in] Document outline received but not used"
+    );
   }
   sendControlMessage(message) {
     let msg;
@@ -3652,7 +3814,11 @@ var _PreviewControlPlane = class _PreviewControlPlane {
           line: message.line,
           character: message.character
         };
-        console.log("[Preview Control] Sending cursor position:", msg);
+        console.log(
+          "[Preview Control:out] Sending cursor position:",
+          msg
+        );
+        this.unshiftCursorBlankDiff();
         break;
       case "sourceScrollBySpan":
         msg = {
@@ -3668,15 +3834,18 @@ var _PreviewControlPlane = class _PreviewControlPlane {
         break;
       default:
         console.warn(
-          `[Preview Control] Unknown control message event: ${message.event}`
+          `[Preview Control:out] Unknown control message event: ${message.event}`
         );
         return;
     }
     console.log(
-      `[Preview Control] Sending Control Plane ${message.event}:`,
+      `[Preview Control:out] Sending Control Plane ${message.event}:`,
       msg
     );
-    window.$tmEventBus.emit(tmEvents.PreviewSendControl, JSON.stringify(msg));
+    window.$tmEventBus.emit(
+      tmEvents.PreviewSendControl,
+      JSON.stringify(msg)
+    );
   }
 };
 __publicField(_PreviewControlPlane, "FILEPATH_PLACEHOLDER", "__TINYMIST_FILE__");
@@ -3717,9 +3886,6 @@ var PreviewDataPlane = class {
   async handleBinaryMessage(msg) {
     try {
       const rawLength = msg.length;
-      console.log(
-        `[Preview Data] Raw message length: ${rawLength} bytes`
-      );
       const commaIndex = msg.indexOf(44);
       if (commaIndex === -1) {
         console.warn(
@@ -3730,9 +3896,7 @@ var PreviewDataPlane = class {
       }
       const command2 = this.textDecoder.decode(msg.slice(0, commaIndex));
       const payload = msg.slice(commaIndex + 1);
-      console.log(
-        `[Preview Data] Message command "${command2}" (payload ${payload.length} bytes, raw ${rawLength})`
-      );
+      console.log(`[Preview Data] Processing command: "${command2}"`);
       switch (command2) {
         case "diff-v1":
           window.$tmEventBus.emit(tmEvents.DataBinary, {
@@ -22815,6 +22979,34 @@ var defaultKeymap = /* @__PURE__ */ [
   { key: "Ctrl-m", mac: "Shift-Alt-m", run: toggleTabFocusMode }
 ].concat(standardKeymap);
 
+// node_modules/@codemirror/collab/dist/index.js
+function rebaseUpdates(updates, over) {
+  if (!over.length || !updates.length)
+    return updates;
+  let changes = null, skip = 0;
+  for (let update of over) {
+    let other = skip < updates.length ? updates[skip] : null;
+    if (other && other.clientID == update.clientID) {
+      if (changes)
+        changes = changes.mapDesc(other.changes, true);
+      skip++;
+    } else {
+      changes = changes ? changes.composeDesc(update.changes) : update.changes;
+    }
+  }
+  if (skip)
+    updates = updates.slice(skip);
+  return !changes ? updates : updates.map((update) => {
+    let updateChanges = update.changes.map(changes);
+    changes = changes.mapDesc(update.changes, true);
+    return {
+      changes: updateChanges,
+      effects: update.effects && StateEffect.mapEffects(update.effects, changes),
+      clientID: update.clientID
+    };
+  });
+}
+
 // node_modules/@codemirror/autocomplete/dist/index.js
 var CompletionContext = class {
   /**
@@ -33078,6 +33270,8 @@ var TinymistEditorUI = class {
     __publicField(this, "changeDebounceMs", 150);
     __publicField(this, "dirtyStateDebounceMs", 300);
     __publicField(this, "fallbackDebounceMs", 800);
+    __publicField(this, "collabClientId", `tinymist-${crypto.randomUUID()}`);
+    // formality to distinguish local vs remote changes in rebase
     __publicField(this, "fallbackEnabled", false);
     this.editor = document.querySelector(tmSelectors.TextArea);
     this.imageViewSelector = `${tmSelectors.Root} ${tmSelectors.ImageView}`;
@@ -33088,6 +33282,7 @@ var TinymistEditorUI = class {
     this.syncEntryContentToTextarea = this.syncEntryContentToTextarea.bind(this);
     this.updateListenerForCodeMirror = this.updateListenerForCodeMirror.bind(this);
     this.syncFullStateFromServer = this.syncFullStateFromServer.bind(this);
+    this.syncRemoteChangesFromServer = this.syncRemoteChangesFromServer.bind(this);
     this.pruneSnapshots = this.pruneSnapshots.bind(this);
     this.onInput = this.onInput.bind(this);
     this.buttonsListener = this.buttonsListener.bind(this);
@@ -33301,19 +33496,14 @@ var TinymistEditorUI = class {
     }
     this.editor.style.display = "block";
   }
-  updateListenerForCodeMirror(update) {
-    if (update.docChanged) {
-      this.onInput();
-      this.onDocumentChange(update.transactions);
-    }
-    if (update.selectionSet) {
-      this.onCursorPositionChange(update.state);
-    }
-  }
   setupListeners() {
     window.$tmEventBus.listen(
       tmEvents.SyncFullState,
       this.syncFullStateFromServer
+    );
+    window.$tmEventBus.listen(
+      tmEvents.SyncRemoteChanges,
+      this.syncRemoteChangesFromServer
     );
     window.$tmEventBus.listen(tmEvents.PruneSnapshots, this.pruneSnapshots);
     window.$tmEventBus.listen(
@@ -33501,6 +33691,35 @@ ${selectedCode}
     }
     window.$tmEventBus.emit(tmEvents.SyncOpenFile, { fileName });
   }
+  updateListenerForCodeMirror(update) {
+    if (update.docChanged) {
+      this.onInput();
+      this.onDocumentChange(update.transactions);
+    }
+    if (update.selectionSet) {
+      const state = this.getOrCreateFileState(this.activeFileName);
+      if (!state.pendingSendTimer) {
+        this.onCursorPositionChange(update.state);
+      }
+    }
+  }
+  onCursorPositionChange(state) {
+    if (this.activeFileName !== this.entryFileName) {
+      return;
+    }
+    const pos = state.selection.main.head;
+    const line = state.doc.lineAt(pos);
+    window.$tmEventBus.emit(tmEvents.VersionedCursorRequest, {
+      docVersion: this.getOrCreateFileState(this.entryFileName).docVersion,
+      request: {
+        event: "changeCursorPosition",
+        fileName: this.entryFileName,
+        line: line.number - 1,
+        // 0-indexed
+        character: Math.max(0, pos - line.from - 1)
+      }
+    });
+  }
   onDocumentChange(transactions) {
     if (transactions.some(
       (tr) => tr.annotation(Transaction.userEvent) === "tinymist-sync"
@@ -33524,6 +33743,10 @@ ${selectedCode}
     if (lastSnapshot) {
       state.snapshots[state.snapshots.length - 1].afterTransactions = lastSnapshot.afterTransactions ? lastSnapshot.afterTransactions.compose(changes) : changes;
     }
+    this.schedulePendingFlush(fileName);
+  }
+  schedulePendingFlush(fileName) {
+    const state = this.getOrCreateFileState(fileName);
     if (state.pendingSendTimer) {
       clearTimeout(state.pendingSendTimer);
     }
@@ -33533,6 +33756,104 @@ ${selectedCode}
       },
       this.fallbackEnabled ? this.fallbackDebounceMs : this.changeDebounceMs
     );
+  }
+  syncRemoteChangesFromServer(payload) {
+    const state = this.getOrCreateFileState(payload.fileName);
+    const nextDocVersion = Number(payload.docVersion);
+    if (!Number.isFinite(nextDocVersion) || nextDocVersion < 1) {
+      return;
+    }
+    let remoteChanges;
+    try {
+      remoteChanges = ChangeSet.fromJSON(payload.changes);
+    } catch (error) {
+      console.error("[Editor] Failed to parse remote changes", {
+        fileName: payload.fileName,
+        docVersion: payload.docVersion,
+        error
+      });
+      window.$tmEventBus.emit(tmEvents.SyncOpenFile, {
+        fileName: payload.fileName
+      });
+      return;
+    }
+    const baseDocVersion = nextDocVersion - 1;
+    const baseSnapshotIndex = state.snapshots.findIndex(
+      (snapshot) => snapshot.docVersion === baseDocVersion
+    );
+    if (baseSnapshotIndex === -1) {
+      console.warn("[Editor] Missing base snapshot for remote merge", {
+        fileName: payload.fileName,
+        requestedDocVersion: nextDocVersion,
+        availableSnapshots: state.snapshots.map(
+          (snapshot) => snapshot.docVersion
+        )
+      });
+      window.$tmEventBus.emit(tmEvents.SyncOpenFile, {
+        fileName: payload.fileName
+      });
+      return;
+    }
+    const baseSnapshot = state.snapshots[baseSnapshotIndex];
+    let localPending = ChangeSet.empty(baseSnapshot.snapshot.length);
+    let hasLocalPending = false;
+    for (let i = baseSnapshotIndex; i < state.snapshots.length; i++) {
+      const snapshot = state.snapshots[i];
+      if (!snapshot.afterTransactions.empty) {
+        localPending = hasLocalPending ? localPending.compose(snapshot.afterTransactions) : snapshot.afterTransactions;
+        hasLocalPending = true;
+      }
+    }
+    const remoteDoc = remoteChanges.apply(
+      EditorState.create({ doc: baseSnapshot.snapshot }).doc
+    );
+    const syncedContent = remoteDoc.toString();
+    const rebasedLocal = hasLocalPending ? rebaseUpdates(
+      [{ changes: localPending, clientID: this.collabClientId }],
+      [{ changes: remoteChanges.desc, clientID: "remote" }]
+    )[0]?.changes ?? ChangeSet.empty(remoteDoc.length) : ChangeSet.empty(remoteDoc.length);
+    const finalContent = rebasedLocal.empty ? syncedContent : rebasedLocal.apply(remoteDoc).toString();
+    const currentToFinal = hasLocalPending ? remoteChanges.map(localPending, true) : remoteChanges;
+    if (state.pendingSendTimer) {
+      clearTimeout(state.pendingSendTimer);
+      state.pendingSendTimer = null;
+    }
+    state.docVersion = nextDocVersion;
+    state.currentContent = finalContent;
+    state.savedContentHash = this.hashString(syncedContent);
+    state.loaded = true;
+    state.snapshots = [
+      {
+        docVersion: nextDocVersion,
+        snapshot: syncedContent,
+        afterTransactions: rebasedLocal
+      }
+    ];
+    if (payload.fileName === this.activeFileName && this.editorView) {
+      const currentText = this.editorView.state.doc.toString();
+      const nextSelection = this.editorView.state.selection.map(
+        currentToFinal
+      );
+      if (!currentToFinal.empty || currentText !== finalContent || !nextSelection.eq(this.editorView.state.selection)) {
+        this.editorView.dispatch({
+          changes: currentToFinal,
+          selection: nextSelection,
+          annotations: [
+            Transaction.userEvent.of("tinymist-sync"),
+            Transaction.addToHistory.of(false),
+            Transaction.remote.of(true)
+          ]
+        });
+      }
+    }
+    if (!rebasedLocal.empty) {
+      this.schedulePendingFlush(payload.fileName);
+    }
+    this.queueDirtyStateEmit(payload.fileName);
+    window.$tmEventBus.emit(tmEvents.ConsoleLog, {
+      type: "info",
+      message: `[Editor] Remote changes merged for ${payload.fileName}`
+    });
   }
   flushPendingChanges(fileName) {
     const state = this.getOrCreateFileState(fileName);
@@ -33556,6 +33877,7 @@ ${selectedCode}
         changes: pendingChanges,
         docVersion: state.docVersion
       });
+      this.onCursorPositionChange(this.editorView.state);
     }
     state.snapshots.push({
       docVersion: state.docVersion,
@@ -33680,20 +34002,6 @@ ${selectedCode}
       (s) => s.docVersion >= Math.min(payload.docVersion, state.docVersion - 1)
     );
     state.snapshots = pruned;
-  }
-  onCursorPositionChange(state) {
-    if (this.activeFileName !== this.entryFileName) {
-      return;
-    }
-    const pos = state.selection.main.head;
-    const line = state.doc.lineAt(pos);
-    window.$tmEventBus.emit(tmEvents.Control, {
-      event: "changeCursorPosition",
-      fileName: this.entryFileName,
-      line: line.number - 1,
-      // 0-indexed
-      character: pos - line.from
-    });
   }
   insertFromEditorEvent(eventContent) {
     const insertText = (eventContent?.typst || eventContent?.markdown || eventContent?.html || "").toString();
@@ -36662,21 +36970,16 @@ var PreviewRenderer = class {
         action = "reset";
       }
       console.log(
-        `[Preview WASM] Applying ${action} with ${payload.length} bytes`
+        `[Preview WASM] Applying "${command2}" action "${action}" with ${payload.length} bytes`
       );
       const diffResult = this.renderer.manipulateData({
         renderSession: session,
         action,
         data: payload
       });
-      console.log(
-        "[Preview WASM] Data applied successfully, diffResult:",
-        diffResult
-      );
       if (action === "reset") {
         this.hasInitialDocument = true;
       }
-      console.log("[Preview WASM] Rendering to SVG...");
       const svg2 = await session.renderSvg({
         data_selection: {
           body: true,
@@ -36686,7 +36989,7 @@ var PreviewRenderer = class {
         }
       });
       this.updateSVG(svg2);
-      console.log("[Preview WASM] Render complete");
+      console.log(`[Preview WASM] Render "${command2}" action "${action}" complete`);
       window.$tmEventBus.emit(tmEvents.DataCursorShow);
     } catch (e) {
       console.error(`[Preview WASM] Rendering failed:`, e);

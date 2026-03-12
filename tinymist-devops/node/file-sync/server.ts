@@ -45,6 +45,13 @@ type OutgoingMessagePayload =
         docVersion: number;
     }
     | {
+        type: "remoteChanges";
+        pageId: number;
+        fileName: string;
+        docVersion: number;
+        changes: unknown;
+    }
+    | {
         type: "fullState";
         pageId: number;
         fileName: string;
@@ -199,6 +206,7 @@ class PageSession {
     }
 
     private sendAck(ws: WebSocket, fileName: string, docVersion: number) {
+        console.log(`Ack for file ${fileName} docVersion ${docVersion}`);
         this.send(ws, {
             type: "ack",
             pageId: this.pageId,
@@ -336,7 +344,7 @@ class PageSession {
         try {
             verifyNewToken(msg.token, ctx.pageId);
             // Send acknowledgment
-            this.sendAck(ctx.socket, defaultFileName, this.getFileState(defaultFileName).docVersion);
+            this.sendAck(ctx.socket, 'authTokenAck', 1);
         } catch (err) {
             console.error("[File Sync] Token update failed:", err);
             this.send(ctx.socket, {
@@ -349,6 +357,18 @@ class PageSession {
 
     broadcast(payload: OutgoingMessagePayload): void {
         for (const browser of this.browsers) {
+            this.send(browser.socket, payload);
+        }
+    }
+
+    private broadcastToOtherTabs(
+        uniqueTabId: string,
+        payload: OutgoingMessagePayload,
+    ): void {
+        for (const browser of this.browsers) {
+            if (browser.uniqueTabId === uniqueTabId) {
+                continue;
+            }
             this.send(browser.socket, payload);
         }
     }
@@ -482,6 +502,13 @@ class PageSession {
 
         state.docVersion = msg.docVersion;
         this.sendAck(ctx.socket, state.fileName, state.docVersion);
+        this.broadcastToOtherTabs(ctx.uniqueTabId, {
+            type: "remoteChanges",
+            pageId: this.pageId,
+            fileName: state.fileName,
+            docVersion: state.docVersion,
+            changes: msg.changes,
+        });
 
         if (!lspClient) {
             notifyAllLspStatus("down", "client not initialized");

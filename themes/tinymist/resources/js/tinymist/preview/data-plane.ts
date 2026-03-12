@@ -17,6 +17,7 @@ export class PreviewDataPlane {
                 this.cursorSpotlightEnabled = Boolean(enabled);
             },
         );
+
         window.$tmEventBus.listen(tmEvents.Destroy, () => {
             this.textDecoder = null as any;
             this.processingQueue = Promise.resolve();
@@ -39,9 +40,7 @@ export class PreviewDataPlane {
     private async handleBinaryMessage(msg: Uint8Array) {
         try {
             const rawLength = msg.length;
-            console.log(
-                `[Preview Data] Raw message length: ${rawLength} bytes`,
-            );
+
             // Parse message format: "type,payload"
             const commaIndex = msg.indexOf(44); // ASCII for ','
             if (commaIndex === -1) {
@@ -55,9 +54,7 @@ export class PreviewDataPlane {
             const command = this.textDecoder.decode(msg.slice(0, commaIndex));
             const payload = msg.slice(commaIndex + 1);
 
-            console.log(
-                `[Preview Data] Message command "${command}" (payload ${payload.length} bytes, raw ${rawLength})`,
-            );
+            console.log(`[Preview Data] Processing command: "${command}"`);
 
             switch (command) {
                 case "diff-v1":

@@ -96,6 +96,8 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
     protected handleMessage(data: string): void {
         try {
             const msg = JSON.parse(data);
+            console.debug("[FilesLSP WS] Received message:", msg);
+
             const docVersion =
                 "docVersion" in msg ? Number(msg.docVersion) : undefined;
             const fileName =
@@ -126,9 +128,14 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
                     break;
 
                 case "ack":
-                    console.debug(
-                        `[FilesLSP WS] Change acknowledged ${fileName} docVersion: ${docVersion}`,
-                    );
+                    // For tokens and successful file updates
+                    if (fileName != 'authTokenAck') {
+                        window.$tmEventBus.emit(tmEvents.FileSyncAck, {
+                            timestamp: Date.now(),
+                            fileName: fileName!,
+                            docVersion: docVersion!,
+                        });
+                    }
                     break;
 
                 case "fullState":
@@ -136,9 +143,22 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
                         `[FilesLSP WS] Received full state \x1b[31m${fileName}\x1b[0m, docVersion: \x1b[94m${docVersion}\x1b[0m`,
                     );
                     window.$tmEventBus.emit(tmEvents.SyncFullState, {
+                        timestamp: Date.now(),
                         fileName,
                         content: msg.content,
                         docVersion: docVersion!,
+                    });
+                    break;
+
+                case "remoteChanges":
+                    console.debug(
+                        `[FilesLSP WS] Received remote changes \x1b[31m${fileName}\x1b[0m, docVersion: \x1b[94m${docVersion}\x1b[0m`,
+                    );
+                    window.$tmEventBus.emit(tmEvents.SyncRemoteChanges, {
+                        timestamp: Date.now(),
+                        fileName,
+                        docVersion: docVersion!,
+                        changes: msg.changes,
                     });
                     break;
 

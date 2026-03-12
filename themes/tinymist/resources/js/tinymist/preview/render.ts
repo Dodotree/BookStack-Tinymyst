@@ -224,7 +224,7 @@ export class PreviewRenderer {
             }
 
             console.log(
-                `[Preview WASM] Applying ${action} with ${payload.length} bytes`,
+                `[Preview WASM] Applying "${command}" action "${action}" with ${payload.length} bytes`,
             );
             // same as session.manipulateData
             const diffResult = this.renderer!.manipulateData({
@@ -233,16 +233,10 @@ export class PreviewRenderer {
                 data: payload,
             });
 
-            console.log(
-                "[Preview WASM] Data applied successfully, diffResult:",
-                diffResult,
-            );
-
             if (action === "reset") {
                 this.hasInitialDocument = true;
             }
 
-            console.log("[Preview WASM] Rendering to SVG...");
             // defaults are all true, right now have no use for inline helper script
             // could be simple session.renderSvg({});
             const svg = await session.renderSvg({
@@ -256,8 +250,9 @@ export class PreviewRenderer {
 
             this.updateSVG(svg);
 
-            console.log("[Preview WASM] Render complete");
+            console.log(`[Preview WASM] Render "${command}" action "${action}" complete`);
             window.$tmEventBus.emit(tmEvents.DataCursorShow); // reinsert cursor if possible
+
         } catch (e: any) {
             console.error(`[Preview WASM] Rendering failed:`, e);
 

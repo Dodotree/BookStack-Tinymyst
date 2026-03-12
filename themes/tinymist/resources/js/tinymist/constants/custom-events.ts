@@ -14,6 +14,7 @@ export const tmEvents = {
     FallbackCompile: "fallback-compile",
     FallbackCompiledSvg: "fallback-compiled-svg",
     FallbackEnable: "fallback-enable",
+    FileSyncAck: "file-sync-ack",
     FileDirtyState: "file-dirty-state",
     FilesDirtyUpdated: "files-dirty-updated",
     FilesUpdated: "files-updated",
@@ -30,6 +31,7 @@ export const tmEvents = {
     PreviewSendData: "preview-send-data",
     PruneSnapshots: "prune-snapshots",
     ResetFile: "reset-file",
+    SyncRemoteChanges: "sync-remote-changes",
     Status: "status",
     SyncConnect: "sync-connect",
     SyncDisconnect: "sync-disconnect",
@@ -39,6 +41,7 @@ export const tmEvents = {
     TextDiff: "text-diff",
     ThemeSettingsOpen: "theme-settings-open",
     TokenRenewed: "token-renewed",
+    VersionedCursorRequest: "versioned-cursor-request",
     WasmDispose: "wasm-dispose",
     WasmInit: "wasm-init",
 } as const;
@@ -67,6 +70,7 @@ export type TinymistEventPayloads = {
     [tmEvents.FallbackCompile]: { docVersion: number; content: string };
     [tmEvents.FallbackCompiledSvg]: { svg: string; docVersion?: number | string };
     [tmEvents.FallbackEnable]: boolean;
+    [tmEvents.FileSyncAck]: { timestamp: number; fileName: string; docVersion: number };
     [tmEvents.FileDirtyState]: { fileName: string; isDirty: boolean };
     [tmEvents.FilesDirtyUpdated]: { dirtyMap?: Record<string, boolean> };
     [tmEvents.FilesUpdated]: { html?: string };
@@ -83,11 +87,13 @@ export type TinymistEventPayloads = {
     [tmEvents.PreviewSendData]: string | Uint8Array;
     [tmEvents.PruneSnapshots]: { fileName: string; docVersion: number };
     [tmEvents.ResetFile]: { fileName?: string };
+    [tmEvents.SyncRemoteChanges]: { timestamp: number; fileName: string; docVersion: number; changes: any };
     [tmEvents.Status]: { what: string; connected: boolean };
     [tmEvents.SyncConnect]: undefined;
     [tmEvents.SyncDisconnect]: undefined;
-    [tmEvents.SyncFullState]: { fileName: string; content: string; docVersion: number };
+    [tmEvents.SyncFullState]: { timestamp: number; fileName: string; content: string; docVersion: number };
     [tmEvents.SyncOpenFile]: { fileName: string };
+    [tmEvents.VersionedCursorRequest]: { docVersion: number; request: { event: string; fileName: string; line: number; character: number } };
     [tmEvents.TextChange]: string;
     [tmEvents.TextDiff]: { fileName: string; changes: any; docVersion: number };
     [tmEvents.ThemeSettingsOpen]: undefined;

@@ -11,6 +11,7 @@ import {
 } from "@codemirror/view";
 
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { rebaseUpdates } from "@codemirror/collab";
 import {
     ChangeSet,
     Compartment,
@@ -80,6 +81,7 @@ export class TinymistEditorUI {
     private readonly changeDebounceMs = 150;
     private readonly dirtyStateDebounceMs = 300;
     private readonly fallbackDebounceMs = 800;
+    private readonly collabClientId = `tinymist-${crypto.randomUUID()}`; // formality to distinguish local vs remote changes in rebase
 
     private fallbackEnabled = false;
 
@@ -107,6 +109,8 @@ export class TinymistEditorUI {
         this.updateListenerForCodeMirror =
             this.updateListenerForCodeMirror.bind(this);
         this.syncFullStateFromServer = this.syncFullStateFromServer.bind(this);
+        this.syncRemoteChangesFromServer =
+            this.syncRemoteChangesFromServer.bind(this);
         this.pruneSnapshots = this.pruneSnapshots.bind(this);
         this.onInput = this.onInput.bind(this);
         this.buttonsListener = this.buttonsListener.bind(this);
@@ -340,21 +344,14 @@ export class TinymistEditorUI {
         this.editor.style.display = "block";
     }
 
-    updateListenerForCodeMirror(update: any) {
-        if (update.docChanged) {
-            this.onInput();
-            this.onDocumentChange(update.transactions);
-        }
-        // Track cursor position changes
-        if (update.selectionSet) {
-            this.onCursorPositionChange(update.state);
-        }
-    }
-
     setupListeners() {
         window.$tmEventBus.listen(
             tmEvents.SyncFullState,
             this.syncFullStateFromServer,
+        );
+        window.$tmEventBus.listen(
+            tmEvents.SyncRemoteChanges,
+            this.syncRemoteChangesFromServer,
         );
         window.$tmEventBus.listen(tmEvents.PruneSnapshots, this.pruneSnapshots);
         window.$tmEventBus.listen(
@@ -576,6 +573,39 @@ export class TinymistEditorUI {
         window.$tmEventBus.emit(tmEvents.SyncOpenFile, { fileName: fileName });
     }
 
+    updateListenerForCodeMirror(update: any) {
+        if (update.docChanged) {
+            this.onInput();
+            this.onDocumentChange(update.transactions);
+        }
+        // Track cursor position changes
+        if (update.selectionSet) {
+            const state = this.getOrCreateFileState(this.activeFileName);
+            // Since diffs are debounced it doesn't make sense to ram the server with cursor updates on every keystroke
+            if( !state.pendingSendTimer ) {
+                this.onCursorPositionChange(update.state);
+            }
+        }
+    }
+
+    onCursorPositionChange(state: any) {
+        if (this.activeFileName !== this.entryFileName) {
+            return;
+        }
+        // Get cursor position and line
+        const pos = state.selection.main.head;
+        const line = state.doc.lineAt(pos);
+        window.$tmEventBus.emit(tmEvents.VersionedCursorRequest, {
+            docVersion: this.getOrCreateFileState(this.entryFileName).docVersion,
+            request: {
+                event: "changeCursorPosition",
+                fileName: this.entryFileName,
+                line: line.number - 1, // 0-indexed
+                character: Math.max(0, pos - line.from - 1),
+            },
+        });
+    }
+
     onDocumentChange(transactions: readonly Transaction[]) {
         if (
             transactions.some(
@@ -609,6 +639,12 @@ export class TinymistEditorUI {
                     : changes;
         }
 
+        this.schedulePendingFlush(fileName);
+    }
+
+    private schedulePendingFlush(fileName: string): void {
+        const state = this.getOrCreateFileState(fileName);
+
         if (state.pendingSendTimer) {
             clearTimeout(state.pendingSendTimer);
         }
@@ -620,6 +656,134 @@ export class TinymistEditorUI {
                 ? this.fallbackDebounceMs
                 : this.changeDebounceMs,
         );
+    }
+
+    private syncRemoteChangesFromServer(payload: {
+        fileName: string;
+        docVersion: number;
+        changes: unknown;
+    }): void {
+        const state = this.getOrCreateFileState(payload.fileName);
+        const nextDocVersion = Number(payload.docVersion);
+
+        if (!Number.isFinite(nextDocVersion) || nextDocVersion < 1) {
+            return;
+        }
+
+        let remoteChanges: ChangeSet;
+        try {
+            remoteChanges = ChangeSet.fromJSON(payload.changes);
+        } catch (error) {
+            console.error("[Editor] Failed to parse remote changes", {
+                fileName: payload.fileName,
+                docVersion: payload.docVersion,
+                error,
+            });
+            window.$tmEventBus.emit(tmEvents.SyncOpenFile, {
+                fileName: payload.fileName,
+            });
+            return;
+        }
+
+        const baseDocVersion = nextDocVersion - 1;
+        const baseSnapshotIndex = state.snapshots.findIndex(
+            (snapshot) => snapshot.docVersion === baseDocVersion,
+        );
+
+        if (baseSnapshotIndex === -1) {
+            console.warn("[Editor] Missing base snapshot for remote merge", {
+                fileName: payload.fileName,
+                requestedDocVersion: nextDocVersion,
+                availableSnapshots: state.snapshots.map((snapshot) =>
+                    snapshot.docVersion,
+                ),
+            });
+            window.$tmEventBus.emit(tmEvents.SyncOpenFile, {
+                fileName: payload.fileName,
+            });
+            return;
+        }
+
+        const baseSnapshot = state.snapshots[baseSnapshotIndex];
+        let localPending = ChangeSet.empty(baseSnapshot.snapshot.length);
+        let hasLocalPending = false;
+
+        for (let i = baseSnapshotIndex; i < state.snapshots.length; i++) {
+            const snapshot = state.snapshots[i];
+            if (!snapshot.afterTransactions.empty) {
+                localPending = hasLocalPending
+                    ? localPending.compose(snapshot.afterTransactions)
+                    : snapshot.afterTransactions;
+                hasLocalPending = true;
+            }
+        }
+
+        const remoteDoc = remoteChanges.apply(
+            EditorState.create({ doc: baseSnapshot.snapshot }).doc,
+        );
+        const syncedContent = remoteDoc.toString();
+        const rebasedLocal = hasLocalPending
+            ? (rebaseUpdates(
+                  [{ changes: localPending, clientID: this.collabClientId }],
+                  [{ changes: remoteChanges.desc, clientID: "remote" }],
+              )[0]?.changes ?? ChangeSet.empty(remoteDoc.length))
+            : ChangeSet.empty(remoteDoc.length);
+        const finalContent = rebasedLocal.empty
+            ? syncedContent
+            : rebasedLocal.apply(remoteDoc).toString();
+        const currentToFinal = hasLocalPending
+            ? remoteChanges.map(localPending, true)
+            : remoteChanges;
+
+        if (state.pendingSendTimer) {
+            clearTimeout(state.pendingSendTimer);
+            state.pendingSendTimer = null;
+        }
+
+        state.docVersion = nextDocVersion;
+        state.currentContent = finalContent;
+        state.savedContentHash = this.hashString(syncedContent);
+        state.loaded = true;
+        state.snapshots = [
+            {
+                docVersion: nextDocVersion,
+                snapshot: syncedContent,
+                afterTransactions: rebasedLocal,
+            },
+        ];
+
+        if (payload.fileName === this.activeFileName && this.editorView) {
+            const currentText = this.editorView.state.doc.toString();
+            const nextSelection = this.editorView.state.selection.map(
+                currentToFinal,
+            );
+
+            if (
+                !currentToFinal.empty ||
+                currentText !== finalContent ||
+                !nextSelection.eq(this.editorView.state.selection)
+            ) {
+                this.editorView.dispatch({
+                    changes: currentToFinal,
+                    selection: nextSelection,
+                    annotations: [
+                        Transaction.userEvent.of("tinymist-sync"),
+                        Transaction.addToHistory.of(false),
+                        Transaction.remote.of(true),
+                    ],
+                });
+            }
+        }
+
+        if (!rebasedLocal.empty) {
+            this.schedulePendingFlush(payload.fileName);
+        }
+
+        this.queueDirtyStateEmit(payload.fileName);
+        window.$tmEventBus.emit(tmEvents.ConsoleLog, {
+            type: "info",
+            message: `[Editor] Remote changes merged for ${payload.fileName}`,
+        });
     }
 
     private flushPendingChanges(fileName: string): void {
@@ -651,6 +815,10 @@ export class TinymistEditorUI {
                 changes: pendingChanges,
                 docVersion: state.docVersion,
             });
+
+            // The problem is that even after the server side copy is changed and "ack" received,
+            // there's no way of knowing that preview is already rendered and cursor paths are for that updated preview.
+            this.onCursorPositionChange(this.editorView!.state);
         }
 
         state.snapshots.push({
@@ -807,21 +975,6 @@ export class TinymistEditorUI {
                 Math.min(payload.docVersion, state.docVersion - 1),
         );
         state.snapshots = pruned;
-    }
-
-    onCursorPositionChange(state: any) {
-        if (this.activeFileName !== this.entryFileName) {
-            return;
-        }
-        // Get cursor position and line
-        const pos = state.selection.main.head;
-        const line = state.doc.lineAt(pos);
-        window.$tmEventBus.emit(tmEvents.Control, {
-            event: "changeCursorPosition",
-            fileName: this.entryFileName,
-            line: line.number - 1, // 0-indexed
-            character: pos - line.from,
-        });
     }
 
     private insertFromEditorEvent(eventContent: {

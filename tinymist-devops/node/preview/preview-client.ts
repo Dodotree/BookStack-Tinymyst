@@ -13,14 +13,13 @@ export type PreviewClientOptions = {
     storageRoot: string;
     logDir?: string;
     host?: string;
+    websocketOrigin?: string;
     controlBasePort: number;
     portScanAttempts?: number;
     partialRendering?: boolean;
     retryAttempts?: number;
     retryDelayMs?: number;
     idleTimeoutMs?: number;
-    autoCurrentRequest?: boolean;
-    autoCursorUpdates?: boolean;
 };
 
 export type PortPair = {
@@ -138,14 +137,13 @@ export class TinymistPreviewClient extends EventEmitter {
             storageRoot: options.storageRoot ?? resolve(process.cwd(), "storage", "app", "tinymist"),
             logDir: options.logDir ?? resolve(process.cwd(), "storage", "logs"),
             host: options.host ?? "127.0.0.1",
+            websocketOrigin: options.websocketOrigin ?? `http://${options.host ?? "127.0.0.1"}`,
             controlBasePort: options.controlBasePort,
             portScanAttempts: options.portScanAttempts ?? 100,
             tinymistExecutable: options.tinymistExecutable,
             partialRendering: options.partialRendering ?? true,
             retryAttempts: options.retryAttempts ?? 25,
             retryDelayMs: options.retryDelayMs ?? 250,
-            autoCurrentRequest: options.autoCurrentRequest ?? true,
-            autoCursorUpdates: options.autoCursorUpdates ?? true,
             idleTimeoutMs: options.idleTimeoutMs ?? 300000,
         };
     }
@@ -162,9 +160,10 @@ export class TinymistPreviewClient extends EventEmitter {
         return super.off(event, listener as (...args: unknown[]) => void);
     }
 
-    async start(): Promise<PortPair> {
+    async start(): Promise<void> {
         if (this.process) {
-            return this.ensureSockets();
+            await this.ensureSockets();
+            return;
         }
 
         this.emit("status", "starting", { pageId: this.pageId });
@@ -186,12 +185,6 @@ export class TinymistPreviewClient extends EventEmitter {
         }
 
         this.emit("status", "ready", { pageId: this.pageId, ports });
-        if (this.options.autoCurrentRequest) {
-            // It should wait not only for open, but also for already rendered first frame
-            this.sendData("current");
-            this.emit("status", "auto-current-request-sent");
-        }
-        return ports;
     }
 
     private async ensureSockets(): Promise<PortPair> {
@@ -224,7 +217,9 @@ export class TinymistPreviewClient extends EventEmitter {
 
         for (let attempt = 1; attempt <= maxAttempts; attempt++) {
             try {
-                const socket = new WebSocket(url);
+                const socket = new WebSocket(url, {
+                    origin: this.options.websocketOrigin,
+                });
                 if( kind === "data") {
                     socket.binaryType = "arraybuffer";
                 }
@@ -241,26 +236,6 @@ export class TinymistPreviewClient extends EventEmitter {
                 } else {
                     socket.on("message", (data) => {
                         this.emit("data-message", data);
-                        if (this.options.autoCursorUpdates && data instanceof Uint8Array && this.isNewOrDiff(data)) {
-                            // Check if it's 'diff-v1' or 'new' and request cursor update
-                            //
-                            // We can keep track of cursors positions as they change in the editor
-                            // For all tabs and users connected to this preview
-                            // Position can change without editing, but editing likely to change position
-                            // So, editing cursor updates position only and after successful data message
-                            // we can request cursor path for each cursor
-                            // Cursor without editing flag requests paths immediately and only for itself
-                            // Currently there's no way to know which cursor got it's path from preview
-                            // Only the order of queued requests (might fail)
-                            // and reasonable time expectations might help here
-                            const msg = {
-                                event: "changeCursorPosition",
-                                filepath: this.filePath,
-                                line: 0,
-                                character: 0,
-                            };
-                            socket.send(JSON.stringify(msg));
-                        }
                     });
                 }
 

@@ -21,16 +21,13 @@ interface BridgeSocket extends WebSocket {
 // pageId -> PreviewSession
 type SessionMap = Map<number, PreviewSession>;
 
+// Messages from browser to bridge server, not forwarded to preview client directly
+// Preview client only receives the raw text or binary data, like "current" from data channel or stringified JSON from control channel
 type IncomingMessagePayload =
     | { type: "ping" }
     | {
         type: "updateToken";
         token: string;
-    }
-    | { type: "restartPreview" }
-    | {
-        type: "current";
-        pageId: number;
     };
 
 const BRIDGE_HOST = process.env.TINYMIST_PREVIEW_BRIDGE_HOST ?? "127.0.0.1";
@@ -52,6 +49,12 @@ const LOG_DIRECTORY = resolve(PROJECT_ROOT, "storage", "logs");
 
 const FILEPATH_PLACEHOLDER = "__TINYMIST_FILE__";
 
+function buildHttpOrigin(host: string, port?: number): string {
+    const normalizedHost = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+    const portSegment = typeof port === "number" && Number.isFinite(port) ? `:${port}` : "";
+    return `http://${normalizedHost}${portSegment}`;
+}
+
 const managerOptions: PreviewClientOptions = {
     tinymistExecutable: TINYMIST_CLI_PATH,
     packagePath: TYPST_PACKAGE_PATH,
@@ -59,6 +62,7 @@ const managerOptions: PreviewClientOptions = {
     storageRoot: STORAGE_ROOT,
     logDir: LOG_DIRECTORY,
     host: PREVIEW_HOST,
+    websocketOrigin: process.env.TINYMIST_PREVIEW_ORIGIN ?? buildHttpOrigin(BRIDGE_HOST, BRIDGE_PORT),
     controlBasePort: CONTROL_BASE_PORT,
     portScanAttempts: 200,
     partialRendering: PARTIAL_RENDERING,
@@ -284,15 +288,17 @@ class PreviewSession {
     }
 
     handleBrowserMessage(socket: BridgeSocket, data: RawData, isBinary: boolean): void {
+
         this.logMessage("incoming", data, isBinary);
+
         const buffer = rawDataToBuffer(data);
         if (buffer.length === 0) {
             return;
         }
-
         const text = buffer.toString();
 
-        if (!isBinary && (buffer[0] === 0x7b || text.trim().startsWith("{"))) {
+        // Stringified control channel message
+        if (!isBinary && text.trim().startsWith("{")) {
             if (!this.client.isControlReady()) {
                 return;
             }
@@ -304,20 +310,21 @@ class PreviewSession {
             return;
         }
 
+        // That is most likely "current" for data plane
+        if (!this.client.isDataReady()) {
+            return;
+        }
         if (isBinary) {
-            if (!this.client.isDataReady()) {
-                return;
-            }
             if (Buffer.isBuffer(data)) {
                 this.client.sendData(data);
             } else {
                 this.client.sendData(buffer);
             }
         } else {
-            if (!this.client.isDataReady()) {
-                return;
-            }
             this.client.sendData(text);
+            if (text === "current") {
+                this.broadcastStatus("current-requested", {});
+            }
         }
     }
 
@@ -494,7 +501,7 @@ async function bootstrap() {
             }
 
             if (!pageId || !Number.isFinite(pageId)) {
-                socket.close(1008, "Missing pageId");
+                socket.close(1008, `Missing pageId in token ${pageId}`);
                 return;
             }
 
@@ -518,12 +525,6 @@ async function bootstrap() {
                                 const refreshed = verifyNewToken(payload.token, pageId);
                                 client.authToken = refreshed;
                                 socket.send(JSON.stringify({ type: "tokenUpdated", exp: refreshed.exp }));
-                                return;
-                            }
-                            if (payload.type === "restartPreview") {
-                                session = await sessionManager.restartSession(pageId);
-                                session.addBrowser(client);
-                                socket.send(JSON.stringify({ type: "previewRestarted" }));
                                 return;
                             }
                         }
