@@ -28,7 +28,6 @@ type PendingCursorRequest = {
 export class PreviewControlPlane {
     private static readonly FILEPATH_PLACEHOLDER = "__TINYMIST_FILE__";
     private cursorSpotlightEnabled = true;
-    private logCompileSuccess = false;
     private pendingRenders: RenderVersion[] = [];
     private currentRender: RenderVersion | null = null;
     private pendingCursorRequests: Map<number, PendingCursorRequest> =
@@ -43,6 +42,7 @@ export class PreviewControlPlane {
         this.unshiftCursorBlankDiff = this.unshiftCursorBlankDiff.bind(this);
         this.clarifyRenderVersion = this.clarifyRenderVersion.bind(this);
         this.addPendingCursorRequest = this.addPendingCursorRequest.bind(this);
+        this.prunePendingRenders = this.prunePendingRenders.bind(this);
 
         window.$tmEventBus.listen(
             tmEvents.PreviewControlMessage,
@@ -81,10 +81,22 @@ export class PreviewControlPlane {
             tmEvents.VersionedCursorRequest,
             this.addPendingCursorRequest,
         );
+
+        window.$tmEventBus.listen(
+            tmEvents.RenderVersion,
+            ({ version }: { version: number }) => {
+                console.log(`Render version: ${version}`);
+                this.prunePendingRenders(version);
+                this.pruneCursorRequests(version);
+            },
+        );
     }
 
     private addPendingCursorRequest(payload: PendingCursorRequest): void {
-        if (this.currentRender && payload.docVersion <= this.currentRender.docVersion) {
+        if (
+            this.currentRender &&
+            payload.docVersion <= this.currentRender.docVersion
+        ) {
             // If the requested docVersion is already rendered, we can send the cursor position immediately
             this.sendControlMessage(payload.request);
             return;
@@ -92,29 +104,16 @@ export class PreviewControlPlane {
         this.pendingCursorRequests.set(payload.docVersion, payload);
     }
 
-    // Since we should query for cursor paths for rendered docVersion, we can keep track of them too
-    // but it's here mainly for maintaining balance in the queue (diff-v1 after cursor paths)
-    private unshiftCursorBlankDiff(): void {
-        this.pendingRenders.push({
-            type: "merge",
-            timestamp: Date.now(),
-            fileName: "entry.typ",
-            docVersion: this.currentRender?.docVersion ?? 0,
-        });
-    }
-
     private shiftFailedRender() {
-        const failed = this.pendingRenders.shift();
-        if (!failed) {
+        // since failed compile status only received on diffs
+        if (
+            this.pendingRenders.length === 0 ||
+            this.pendingRenders[0].type !== "merge"
+        ) {
             return;
         }
-        if (failed.type !== "merge") {
-            this.pendingRenders.unshift(failed);
-            console.warn(
-                `[Preview Control:queue] Expected to be failed diff "${failed.fileName}" docVersion: ${failed.docVersion} but got "${failed.type}". Keeping in queue.`,
-                this.pendingRenders,
-            );
-        }
+
+        this.pendingRenders.shift();
     }
 
     private shiftPendingRenders(payload: {
@@ -153,9 +152,22 @@ export class PreviewControlPlane {
             pending.docVersion,
         );
         if (pendingCursor) {
+            this.unshiftCursorBlankDiff(pending.docVersion);
             this.sendControlMessage(pendingCursor.request);
             this.pruneCursorRequests(pending.docVersion);
         }
+    }
+
+    // for maintaining balance in the queue (diff-v1 after cursor paths)
+    // Cursor path are not provided all all nodes, if they are: outline, cursorPaths, diff-v1
+    // but the message still will trigger: outline, diff-v1
+    private unshiftCursorBlankDiff(docVersion: number): void {
+        this.pendingRenders.push({
+            type: "merge",
+            timestamp: Date.now(),
+            fileName: "entry.typ",
+            docVersion,
+        });
     }
 
     pruneCursorRequests(olderThan: number): void {
@@ -166,6 +178,13 @@ export class PreviewControlPlane {
         }
     }
 
+    prunePendingRenders(renderVersion: number): void {
+        this.pendingRenders = this.pendingRenders.filter(
+            (pending) =>
+                !pending.docVersion || pending.docVersion > renderVersion,
+        );
+    }
+
     clarifyRenderVersion(payload: {
         fileName: string;
         docVersion: number;
@@ -174,21 +193,17 @@ export class PreviewControlPlane {
             `\x1b[31m[Preview Control:track]\x1b[0m "${payload.fileName}" docVersion: \x1b[94m${payload.docVersion}\x1b[0m`,
             this.pendingRenders,
         );
-        const pending = this.pendingRenders.pop();
-        if (!pending) {
+        if (
+            this.pendingRenders.length === 0 ||
+            this.pendingRenders[this.pendingRenders.length - 1].fileName !==
+                payload.fileName
+        ) {
             return;
         }
-
-        if (pending.fileName !== payload.fileName) {
-            this.pendingRenders.push(pending);
-            return;
-        }
-
-        this.pendingRenders.push({
-            ...pending,
-            docVersion: payload.docVersion,
-            timestamp: Date.now(),
-        });
+        this.pendingRenders[this.pendingRenders.length - 1].docVersion =
+            payload.docVersion;
+        this.pendingRenders[this.pendingRenders.length - 1].timestamp =
+            Date.now();
     }
 
     trackRenderVersion(payload: {
@@ -199,7 +214,7 @@ export class PreviewControlPlane {
             `\x1b[31m[Preview Control:clarify]\x1b[0m "${payload.fileName}" docVersion: \x1b[94m${payload.docVersion}\x1b[0m`,
             this.pendingRenders,
         );
-        // note that data channel's diff-v1 can be received without compiling after cursor path request
+        // docVersion comes from ack or remote sync
         this.pendingRenders.push({
             type: "merge",
             timestamp: Date.now(),
@@ -239,9 +254,12 @@ export class PreviewControlPlane {
                         type: "reset",
                         timestamp: Date.now(),
                         fileName: "entry.typ", // "current" is for "entry.typ" but edited file can be different, preview doesn't know what is being edited
-                        docVersion: msg.docVersion,
+                        docVersion: 0, // "current" docVersion is unknown until svg with the marker is rendered
                     });
-                    console.debug(`\x1b[31m[Preview Control:current]\x1b[0m`, this.pendingRenders);
+                    console.debug(
+                        `\x1b[31m[Preview Control:current]\x1b[0m`,
+                        this.pendingRenders,
+                    );
                 }
             } else {
                 console.warn(`[Preview Control:in] Unknown message: ${raw}`);
@@ -333,10 +351,6 @@ export class PreviewControlPlane {
                     "[Preview Control:out] Sending cursor position:",
                     msg,
                 );
-
-                // Cursor path are not provided by all nodes,
-                // but the message still will trigger outline and diff-v1
-                this.unshiftCursorBlankDiff();
                 break;
 
             case "sourceScrollBySpan":

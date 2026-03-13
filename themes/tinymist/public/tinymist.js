@@ -2701,6 +2701,7 @@ var tmEvents = {
   PreviewSendControl: "preview-send-control",
   PreviewSendData: "preview-send-data",
   PruneSnapshots: "prune-snapshots",
+  RenderVersion: "render-version",
   ResetFile: "reset-file",
   SyncRemoteChanges: "sync-remote-changes",
   Status: "status",
@@ -3568,7 +3569,6 @@ var PreviewBridgeClient = class extends TinymistWebSocketClient {
 var _PreviewControlPlane = class _PreviewControlPlane {
   constructor() {
     __publicField(this, "cursorSpotlightEnabled", true);
-    __publicField(this, "logCompileSuccess", false);
     __publicField(this, "pendingRenders", []);
     __publicField(this, "currentRender", null);
     __publicField(this, "pendingCursorRequests", /* @__PURE__ */ new Map());
@@ -3579,6 +3579,7 @@ var _PreviewControlPlane = class _PreviewControlPlane {
     this.unshiftCursorBlankDiff = this.unshiftCursorBlankDiff.bind(this);
     this.clarifyRenderVersion = this.clarifyRenderVersion.bind(this);
     this.addPendingCursorRequest = this.addPendingCursorRequest.bind(this);
+    this.prunePendingRenders = this.prunePendingRenders.bind(this);
     window.$tmEventBus.listen(
       tmEvents.PreviewControlMessage,
       this.handleControlMessage
@@ -3610,6 +3611,14 @@ var _PreviewControlPlane = class _PreviewControlPlane {
       tmEvents.VersionedCursorRequest,
       this.addPendingCursorRequest
     );
+    window.$tmEventBus.listen(
+      tmEvents.RenderVersion,
+      ({ version }) => {
+        console.log(`Render version: ${version}`);
+        this.prunePendingRenders(version);
+        this.pruneCursorRequests(version);
+      }
+    );
   }
   addPendingCursorRequest(payload) {
     if (this.currentRender && payload.docVersion <= this.currentRender.docVersion) {
@@ -3618,28 +3627,11 @@ var _PreviewControlPlane = class _PreviewControlPlane {
     }
     this.pendingCursorRequests.set(payload.docVersion, payload);
   }
-  // Since we should query for cursor paths for rendered docVersion, we can keep track of them too
-  // but it's here mainly for maintaining balance in the queue (diff-v1 after cursor paths)
-  unshiftCursorBlankDiff() {
-    this.pendingRenders.push({
-      type: "merge",
-      timestamp: Date.now(),
-      fileName: "entry.typ",
-      docVersion: this.currentRender?.docVersion ?? 0
-    });
-  }
   shiftFailedRender() {
-    const failed = this.pendingRenders.shift();
-    if (!failed) {
+    if (this.pendingRenders.length === 0 || this.pendingRenders[0].type !== "merge") {
       return;
     }
-    if (failed.type !== "merge") {
-      this.pendingRenders.unshift(failed);
-      console.warn(
-        `[Preview Control:queue] Expected to be failed diff "${failed.fileName}" docVersion: ${failed.docVersion} but got "${failed.type}". Keeping in queue.`,
-        this.pendingRenders
-      );
-    }
+    this.pendingRenders.shift();
   }
   shiftPendingRenders(payload) {
     const pending = this.pendingRenders.shift();
@@ -3664,9 +3656,21 @@ var _PreviewControlPlane = class _PreviewControlPlane {
       pending.docVersion
     );
     if (pendingCursor) {
+      this.unshiftCursorBlankDiff(pending.docVersion);
       this.sendControlMessage(pendingCursor.request);
       this.pruneCursorRequests(pending.docVersion);
     }
+  }
+  // for maintaining balance in the queue (diff-v1 after cursor paths)
+  // Cursor path are not provided all all nodes, if they are: outline, cursorPaths, diff-v1
+  // but the message still will trigger: outline, diff-v1
+  unshiftCursorBlankDiff(docVersion) {
+    this.pendingRenders.push({
+      type: "merge",
+      timestamp: Date.now(),
+      fileName: "entry.typ",
+      docVersion
+    });
   }
   pruneCursorRequests(olderThan) {
     for (const [docVersion, request] of this.pendingCursorRequests) {
@@ -3675,24 +3679,21 @@ var _PreviewControlPlane = class _PreviewControlPlane {
       }
     }
   }
+  prunePendingRenders(renderVersion) {
+    this.pendingRenders = this.pendingRenders.filter(
+      (pending) => !pending.docVersion || pending.docVersion > renderVersion
+    );
+  }
   clarifyRenderVersion(payload) {
     console.debug(
       `\x1B[31m[Preview Control:track]\x1B[0m "${payload.fileName}" docVersion: \x1B[94m${payload.docVersion}\x1B[0m`,
       this.pendingRenders
     );
-    const pending = this.pendingRenders.pop();
-    if (!pending) {
+    if (this.pendingRenders.length === 0 || this.pendingRenders[this.pendingRenders.length - 1].fileName !== payload.fileName) {
       return;
     }
-    if (pending.fileName !== payload.fileName) {
-      this.pendingRenders.push(pending);
-      return;
-    }
-    this.pendingRenders.push({
-      ...pending,
-      docVersion: payload.docVersion,
-      timestamp: Date.now()
-    });
+    this.pendingRenders[this.pendingRenders.length - 1].docVersion = payload.docVersion;
+    this.pendingRenders[this.pendingRenders.length - 1].timestamp = Date.now();
   }
   trackRenderVersion(payload) {
     console.debug(
@@ -3733,9 +3734,13 @@ var _PreviewControlPlane = class _PreviewControlPlane {
             timestamp: Date.now(),
             fileName: "entry.typ",
             // "current" is for "entry.typ" but edited file can be different, preview doesn't know what is being edited
-            docVersion: msg.docVersion
+            docVersion: 0
+            // "current" docVersion is unknown until svg with the marker is rendered
           });
-          console.debug(`\x1B[31m[Preview Control:current]\x1B[0m`, this.pendingRenders);
+          console.debug(
+            `\x1B[31m[Preview Control:current]\x1B[0m`,
+            this.pendingRenders
+          );
         }
       } else {
         console.warn(`[Preview Control:in] Unknown message: ${raw}`);
@@ -3818,7 +3823,6 @@ var _PreviewControlPlane = class _PreviewControlPlane {
           "[Preview Control:out] Sending cursor position:",
           msg
         );
-        this.unshiftCursorBlankDiff();
         break;
       case "sourceScrollBySpan":
         msg = {
@@ -37020,6 +37024,13 @@ var PreviewRenderer = class {
     this.baseSvgWidth = null;
     this.baseSvgHeight = null;
     this.applyZoomToSvg();
+    const marker = document.querySelector('[data-typst-label^="doc-version-"]');
+    const version = marker?.getAttribute("data-typst-label")?.slice("doc-version-".length);
+    if (version) {
+      window.$tmEventBus.emit(tmEvents.RenderVersion, {
+        version
+      });
+    }
   }
   handleZoomIn() {
     this.setZoom(this.zoomLevel + this.zoomStep);

@@ -490,7 +490,7 @@ class PageSession {
         }
 
         try {
-            fileManager.persistDocument(this.pageId, updated, state.fileName);
+            fileManager.persistDocument(this.pageId, updated, state.fileName, msg.docVersion);
         } catch (err) {
             this.send(ctx.socket, {
                 type: "error",

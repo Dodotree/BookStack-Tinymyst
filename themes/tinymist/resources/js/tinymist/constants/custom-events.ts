@@ -30,6 +30,7 @@ export const tmEvents = {
     PreviewSendControl: "preview-send-control",
     PreviewSendData: "preview-send-data",
     PruneSnapshots: "prune-snapshots",
+    RenderVersion: "render-version",
     ResetFile: "reset-file",
     SyncRemoteChanges: "sync-remote-changes",
     Status: "status",
@@ -86,6 +87,7 @@ export type TinymistEventPayloads = {
     [tmEvents.PreviewSendControl]: string;
     [tmEvents.PreviewSendData]: string | Uint8Array;
     [tmEvents.PruneSnapshots]: { fileName: string; docVersion: number };
+    [tmEvents.RenderVersion]: { version: number };
     [tmEvents.ResetFile]: { fileName?: string };
     [tmEvents.SyncRemoteChanges]: { timestamp: number; fileName: string; docVersion: number; changes: any };
     [tmEvents.Status]: { what: string; connected: boolean };

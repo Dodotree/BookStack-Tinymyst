@@ -290,6 +290,14 @@ export class PreviewRenderer {
         this.baseSvgWidth = null;
         this.baseSvgHeight = null;
         this.applyZoomToSvg();
+
+        const marker = document.querySelector('[data-typst-label^="doc-version-"]');
+        const version = marker?.getAttribute('data-typst-label')?.slice('doc-version-'.length) as number | undefined;
+        if (version) {
+            window.$tmEventBus.emit(tmEvents.RenderVersion, {
+                version,
+            });
+        }
     }
 
     private handleZoomIn(): void {
