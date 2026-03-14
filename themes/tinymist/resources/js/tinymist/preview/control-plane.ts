@@ -32,7 +32,7 @@ export class PreviewControlPlane {
     private cursorSpotlightEnabled = true;
     private pendingRenders: RenderVersion[] = [];
     private currentRender: RenderVersion | null = null;
-    private confirmedRenderVersion = 0;
+    private confirmedRenderVersion : RenderVersion | null = null;
     private pendingCursorRequests: Map<number, PendingCursorRequest> =
         new Map();
 
@@ -87,11 +87,14 @@ export class PreviewControlPlane {
 
         window.$tmEventBus.listen(
             tmEvents.RenderVersion,
-            ({ version }: { version: number }) => {
-                this.prunePendingRenders(version);
-                this.pruneCursorRequests(version);
-                this.confirmedRenderVersion = version;
-                // console.log(`Render version: ${version} ${this.pendingRenders.length} pending renders:`, this.pendingRenders);
+            (payload: RenderVersion) =>  {
+                this.prunePendingRenders(payload.docVersion);
+                this.pruneCursorRequests(payload.docVersion);
+                this.confirmedRenderVersion = payload;
+                if(!this.currentRender || payload.docVersion >= this.currentRender.docVersion) {
+                    this.currentRender = payload;
+                }
+                // console.log(`Render version: ${payload.docVersion} ${this.pendingRenders.length} pending renders:`, this.pendingRenders);
                 // console.log("Current render:", this.currentRender);
             },
         );
@@ -99,7 +102,7 @@ export class PreviewControlPlane {
 
     private addPendingCursorRequest(payload: PendingCursorRequest): void {
         if (
-            this.confirmedRenderVersion >= payload.docVersion ||
+            this.confirmedRenderVersion && this.confirmedRenderVersion.docVersion >= payload.docVersion ||
             (this.currentRender && payload.docVersion <= this.currentRender.docVersion)
         ) {
             // If the requested docVersion is already rendered, we can send the cursor position immediately
@@ -273,7 +276,7 @@ export class PreviewControlPlane {
                         `[Preview Control:in] Cursor position requested by ${msg.details.uniqueTabId}`,
                         msg,
                     );
-                    this.pushCursorBlankDiff(this.confirmedRenderVersion);
+                    this.pushCursorBlankDiff(this.confirmedRenderVersion?.docVersion || 0);
                 }
             } else {
                 console.warn(`[Preview Control:in] Unknown message: ${raw}`);

@@ -263,6 +263,7 @@ export class PreviewRenderer {
             });
 
             this.updateSVG(svg);
+            console.log(`[Preview WASM] Render "${command}" action "${action}" complete`);
 
             if (command === "diff-v1") {
                 this.pmewmaDiff = 0.4 * this.pmewmaDiff + 0.6 * payload.length;
@@ -270,7 +271,17 @@ export class PreviewRenderer {
                 this.pmewmaNew = 0.4 * this.pmewmaNew + 0.6 * payload.length;
             }
 
-            console.log(`[Preview WASM] Render "${command}" action "${action}" complete`);
+            const marker = this.previewElement.querySelector('[data-typst-label^="doc-version-"]');
+            const version = marker?.getAttribute('data-typst-label')?.slice('doc-version-'.length) as number | undefined;
+            if (version) {
+                window.$tmEventBus.emit(tmEvents.RenderVersion, {
+                    type: command,
+                    timestamp: Date.now(),
+                    fileName: this.activeFileName,
+                    docVersion: version
+                });
+            }
+
             window.$tmEventBus.emit(tmEvents.DataCursorShow); // reinsert cursor if possible
 
         } catch (e: any) {
@@ -310,14 +321,6 @@ export class PreviewRenderer {
         this.baseSvgWidth = null;
         this.baseSvgHeight = null;
         this.applyZoomToSvg();
-
-        const marker = document.querySelector('[data-typst-label^="doc-version-"]');
-        const version = marker?.getAttribute('data-typst-label')?.slice('doc-version-'.length) as number | undefined;
-        if (version) {
-            window.$tmEventBus.emit(tmEvents.RenderVersion, {
-                version,
-            });
-        }
     }
 
     private handleZoomIn(): void {
