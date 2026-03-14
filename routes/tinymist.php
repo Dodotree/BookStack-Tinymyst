@@ -18,7 +18,7 @@ Route::put('/attachments/{id}/save-from-preview', [TinymistAttachmentController:
 Route::put('/attachments/{id}/undo-from-preview', [TinymistAttachmentController::class, 'undoFromPreview']);
 
 // Tinymist single-page import route
-Route::post('/import/single', [TinymistImportController::class, 'uploadSingle']);
+Route::post('/ajax/tinymist/import/single', [TinymistImportController::class, 'uploadSingle']);
 
 // Tinymist package admin routes
 Route::post('/settings/customization/tinymist/packages/upload', [TinymistPackageController::class, 'uploadZip']);

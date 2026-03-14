@@ -11,6 +11,7 @@ use BookStack\Entities\Queries\EntityQueries;
 use BookStack\Entities\Repos\PageRepo;
 use BookStack\Entities\Tools\Markdown\HtmlToMarkdown;
 use BookStack\Permissions\Permission;
+use BookStack\Uploads\Attachment;
 use BookStack\Uploads\AttachmentService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -21,6 +22,8 @@ use ZipArchive;
 class SinglePageImportService
 {
     protected const MAX_ZIP_FILES = 500;
+    protected const MAX_NESTED_ZIP_DEPTH = 3;
+    protected const MAX_NESTED_ZIP_ARCHIVES = 12;
 
     public function __construct(
         protected PageRepo $pageRepo,
@@ -111,19 +114,46 @@ class SinglePageImportService
         $tempDir = $this->createTempDir();
         try {
             $files = $this->extractZip($zipPath, $tempDir);
+            $files = $this->unwrapSingleBranchZipPaths($files);
+
+            if (!$this->hasSupportedEntryFile($files)) {
+                $files = $this->expandNestedZipFiles($files, $tempDir);
+                $files = $this->unwrapSingleBranchZipPaths($files);
+            }
+
             $templateConfig = $this->readTypstToml($files);
             $templateEntry = $this->buildTemplateEntryPath($templateConfig);
-            $entryPath = $this->selectEntryTyp($files, $templateEntry);
-            $this->createAttachmentsFromZipFiles($files, $entryPath, $draft);
+            $entryFile = $this->selectEntryFile($files, $templateEntry);
+            $entryPath = $entryFile['path'];
+            $entryExtension = $entryFile['extension'];
+
+            $attachmentUrlMap = $this->createAttachmentsFromZipFiles(
+                $files,
+                $entryPath,
+                $draft,
+                $entryExtension === 'typ',
+            );
 
             $entryContent = file_get_contents($entryPath);
             if (!is_string($entryContent)) {
                 throw new RuntimeException(trans('entities.import_single_entry_missing'));
             }
 
+            if (in_array($entryExtension, ['md', 'markdown', 'txt'], true)) {
+                $rewrittenMarkdown = $this->rewriteImportedMarkdownAttachmentLinks($entryContent, $attachmentUrlMap);
+                return $this->publishMarkdown($draft, $name, $rewrittenMarkdown);
+            }
+
+            if (in_array($entryExtension, ['html', 'htm'], true)) {
+                $markdown = (new HtmlToMarkdown($entryContent))->convert();
+                $rewrittenMarkdown = $this->rewriteImportedMarkdownAttachmentLinks($markdown, $attachmentUrlMap);
+                return $this->publishMarkdown($draft, $name, $rewrittenMarkdown);
+            }
+
             Log::info('Single-page import typst template details', [
                 'page_id' => $draft->id,
                 'entry_path' => $entryPath,
+                'entry_extension' => $entryExtension,
                 'toml_path' => $templateConfig['toml_path'] ?? null,
                 'package_name' => $templateConfig['package_name'] ?? null,
                 'package_version' => $templateConfig['package_version'] ?? null,
@@ -227,47 +257,94 @@ class SinglePageImportService
         return $files;
     }
 
-    protected function selectEntryTyp(array $files, ?string $templateEntry): string
+    /**
+     * @param array<int, array{path: string, relative: string}> $files
+     * @return array{path: string, relative: string, extension: string}
+     */
+    protected function selectEntryFile(array $files, ?string $templateEntry): array
     {
+        $supportedExtensions = ['typ', 'md', 'markdown', 'html', 'htm', 'txt'];
+
         if ($templateEntry) {
             $templateEntry = ltrim(str_replace('\\', '/', $templateEntry), '/');
             foreach ($files as $file) {
-                if ($file['relative'] === $templateEntry) {
-                    return $file['path'];
+                if ($file['relative'] !== $templateEntry) {
+                    continue;
+                }
+
+                $extension = strtolower(pathinfo($file['relative'], PATHINFO_EXTENSION));
+                if (in_array($extension, $supportedExtensions, true)) {
+                    return [
+                        'path' => $file['path'],
+                        'relative' => $file['relative'],
+                        'extension' => $extension,
+                    ];
                 }
             }
         }
 
-        $typFiles = array_values(array_filter($files, function (array $file): bool {
-            return strtolower(pathinfo($file['relative'], PATHINFO_EXTENSION)) === 'typ';
+        $entryCandidates = array_values(array_filter($files, function (array $file) use ($supportedExtensions): bool {
+            $extension = strtolower(pathinfo($file['relative'], PATHINFO_EXTENSION));
+            return in_array($extension, $supportedExtensions, true);
         }));
 
-        if (empty($typFiles)) {
+        if (empty($entryCandidates)) {
             throw new RuntimeException(trans('entities.import_single_entry_missing'));
         }
 
-        foreach ($typFiles as $path) {
-            if (strtolower(basename($path['relative'])) === 'entry.typ') {
-                return $path['path'];
+        $preferredEntryNames = [
+            'entry.typ', 'main.typ',
+            'entry.md', 'main.md', 'index.md', 'readme.md',
+            'entry.markdown', 'main.markdown', 'index.markdown', 'readme.markdown',
+            'entry.html', 'main.html', 'index.html', 'readme.html',
+            'entry.htm', 'main.htm', 'index.htm', 'readme.htm',
+            'entry.txt', 'main.txt', 'index.txt', 'readme.txt',
+        ];
+
+        foreach ($preferredEntryNames as $preferredName) {
+            foreach ($entryCandidates as $file) {
+                if (strtolower(basename($file['relative'])) === $preferredName) {
+                    return [
+                        'path' => $file['path'],
+                        'relative' => $file['relative'],
+                        'extension' => strtolower(pathinfo($file['relative'], PATHINFO_EXTENSION)),
+                    ];
+                }
             }
         }
 
-        foreach ($typFiles as $path) {
-            if (strtolower(basename($path['relative'])) === 'main.typ') {
-                return $path['path'];
-            }
+        if (count($entryCandidates) === 1) {
+            $file = $entryCandidates[0];
+            return [
+                'path' => $file['path'],
+                'relative' => $file['relative'],
+                'extension' => strtolower(pathinfo($file['relative'], PATHINFO_EXTENSION)),
+            ];
         }
+
+        $typFiles = array_values(array_filter($entryCandidates, function (array $file): bool {
+            return strtolower(pathinfo($file['relative'], PATHINFO_EXTENSION)) === 'typ';
+        }));
 
         if (count($typFiles) === 1) {
-            return $typFiles[0]['path'];
+            $file = $typFiles[0];
+            return [
+                'path' => $file['path'],
+                'relative' => $file['relative'],
+                'extension' => 'typ',
+            ];
         }
 
         throw new RuntimeException(trans('entities.import_single_entry_ambiguous'));
     }
 
-    protected function createAttachmentsFromZipFiles(array $files, string $entryPath, Page $draft): void
+    /**
+     * @return array<string, string> filename => root-relative attachment URL
+     */
+    protected function createAttachmentsFromZipFiles(array $files, string $entryPath, Page $draft, bool $reserveEntryTypName = true): array
     {
         $seen = [];
+        $attachmentUrlMap = [];
         foreach ($files as $file) {
             $filePath = $file['path'];
             $baseName = basename($file['relative']);
@@ -279,7 +356,7 @@ class SinglePageImportService
                 continue;
             }
 
-            if ($baseName === 'entry.typ') {
+            if ($reserveEntryTypName && $baseName === 'entry.typ') {
                 throw new RuntimeException(trans('entities.import_single_entry_conflict'));
             }
 
@@ -288,8 +365,11 @@ class SinglePageImportService
             }
             $seen[$baseName] = true;
 
-            $this->createAttachmentFromFile($draft->id, $filePath, $baseName);
+            $attachment = $this->createAttachmentFromFile($draft->id, $filePath, $baseName);
+            $attachmentUrlMap[$baseName] = '/attachments/' . $attachment->id;
         }
+
+        return $attachmentUrlMap;
     }
 
     /**
@@ -395,7 +475,7 @@ class SinglePageImportService
         return str_replace($patterns, $entrypoint, $content);
     }
 
-    protected function createAttachmentFromFile(int $pageId, string $filePath, string $originalName): void
+    protected function createAttachmentFromFile(int $pageId, string $filePath, string $originalName): Attachment
     {
         if (!userCan(Permission::AttachmentCreateAll)) {
             throw new RuntimeException(trans('errors.import_perms_attachments'));
@@ -409,7 +489,66 @@ class SinglePageImportService
             true
         );
 
-        $this->attachmentService->saveNewUpload($upload, $pageId);
+        return $this->attachmentService->saveNewUpload($upload, $pageId);
+    }
+
+    /**
+     * Rewrite markdown links/images that point to imported local filenames
+     * to root-relative attachment URLs.
+     *
+     * @param array<string, string> $attachmentUrlMap
+     */
+    protected function rewriteImportedMarkdownAttachmentLinks(string $content, array $attachmentUrlMap): string
+    {
+        if (empty($attachmentUrlMap) || trim($content) === '') {
+            return $content;
+        }
+
+        $normalizedMap = [];
+        foreach ($attachmentUrlMap as $fileName => $url) {
+            $normalizedMap[strtolower($fileName)] = $url;
+        }
+
+        $rewriteUrl = function (string $rawUrl) use ($normalizedMap): string {
+            $trimmed = trim($rawUrl);
+            if ($trimmed === '') {
+                return $rawUrl;
+            }
+
+            if (
+                str_starts_with($trimmed, 'http://')
+                || str_starts_with($trimmed, 'https://')
+                || str_starts_with($trimmed, '/')
+                || str_starts_with($trimmed, '#')
+                || str_starts_with($trimmed, 'mailto:')
+                || str_starts_with($trimmed, 'data:')
+            ) {
+                return $rawUrl;
+            }
+
+            $trimmed = trim($trimmed, "<>'\" ");
+            $trimmed = ltrim($trimmed, './');
+
+            $pathOnly = explode('?', explode('#', $trimmed, 2)[0], 2)[0];
+            $baseName = basename(str_replace('\\\\', '/', $pathOnly));
+            $lookup = strtolower(urldecode($baseName));
+
+            if (!isset($normalizedMap[$lookup])) {
+                return $rawUrl;
+            }
+
+            return $normalizedMap[$lookup];
+        };
+
+        $content = preg_replace_callback('/(!?\[[^\]]*\]\()([^\)]+)(\))/', function (array $matches) use ($rewriteUrl): string {
+            return $matches[1] . $rewriteUrl($matches[2]) . $matches[3];
+        }, $content) ?? $content;
+
+        $content = preg_replace_callback('/(<img\b[^>]*\bsrc\s*=\s*["\'])([^"\']+)(["\'])/i', function (array $matches) use ($rewriteUrl): string {
+            return $matches[1] . $rewriteUrl($matches[2]) . $matches[3];
+        }, $content) ?? $content;
+
+        return $content;
     }
 
     protected function sanitizeZipPath(string $name): ?string
@@ -432,6 +571,138 @@ class SinglePageImportService
         }
 
         return implode('/', $segments);
+    }
+
+    /**
+     * @param array<int, array{path: string, relative: string}> $files
+     */
+    protected function hasSupportedEntryFile(array $files): bool
+    {
+        foreach ($files as $file) {
+            $extension = strtolower(pathinfo($file['relative'], PATHINFO_EXTENSION));
+            if (in_array($extension, ['typ', 'md', 'markdown', 'html', 'htm', 'txt'], true)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Expands nested zip archives in-place within the extracted file map.
+     * Useful for export formats that wrap the real content in another zip.
+     *
+     * @param array<int, array{path: string, relative: string}> $files
+     * @return array<int, array{path: string, relative: string}>
+     */
+    protected function expandNestedZipFiles(array $files, string $tempDir): array
+    {
+        $result = $files;
+        $expandedArchives = 0;
+
+        for ($depth = 0; $depth < self::MAX_NESTED_ZIP_DEPTH; $depth++) {
+            $expandedThisPass = false;
+            $next = [];
+
+            foreach ($result as $file) {
+                $extension = strtolower(pathinfo($file['relative'], PATHINFO_EXTENSION));
+                if ($extension !== 'zip') {
+                    $next[] = $file;
+                    continue;
+                }
+
+                if ($expandedArchives >= self::MAX_NESTED_ZIP_ARCHIVES) {
+                    throw new RuntimeException(trans('entities.import_single_zip_nested_too_many'));
+                }
+
+                $expandedArchives++;
+                $expandedThisPass = true;
+
+                $nestedTemp = $tempDir . DIRECTORY_SEPARATOR . 'nested-' . Str::random(8);
+                if (!is_dir($nestedTemp)) {
+                    mkdir($nestedTemp, 0755, true);
+                }
+
+                $nestedFiles = $this->extractZip($file['path'], $nestedTemp);
+                $parentDir = trim(str_replace('\\', '/', dirname($file['relative'])), './');
+
+                foreach ($nestedFiles as $nestedFile) {
+                    $relative = $nestedFile['relative'];
+                    if ($parentDir !== '') {
+                        $relative = $parentDir . '/' . ltrim($relative, '/');
+                    }
+
+                    $next[] = [
+                        'path' => $nestedFile['path'],
+                        'relative' => str_replace('\\', '/', $relative),
+                    ];
+                }
+            }
+
+            $result = $next;
+
+            if (!$expandedThisPass || $this->hasSupportedEntryFile($result)) {
+                break;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Collapse unnecessary leading folder wrappers when all files are nested
+     * under the same single branch (e.g. folder/folder/files -> files).
+     *
+     * @param array<int, array{path: string, relative: string}> $files
+     * @return array<int, array{path: string, relative: string}>
+     */
+    protected function unwrapSingleBranchZipPaths(array $files): array
+    {
+        if (count($files) < 2) {
+            return $files;
+        }
+
+        $relativePaths = array_values(array_map(fn (array $file): string => $file['relative'], $files));
+        $stripDepth = 0;
+
+        while (true) {
+            $firstSegments = [];
+
+            foreach ($relativePaths as $relativePath) {
+                $segments = explode('/', $relativePath);
+                if (count($segments) < 2) {
+                    $firstSegments = [];
+                    break;
+                }
+
+                $firstSegments[] = $segments[0];
+            }
+
+            if (count($firstSegments) === 0 || count(array_unique($firstSegments)) !== 1) {
+                break;
+            }
+
+            $stripDepth++;
+            $relativePaths = array_values(array_map(function (string $relativePath): string {
+                $segments = explode('/', $relativePath);
+                array_shift($segments);
+                return implode('/', $segments);
+            }, $relativePaths));
+        }
+
+        if ($stripDepth === 0) {
+            return $files;
+        }
+
+        return array_values(array_map(function (array $file) use ($stripDepth): array {
+            $segments = explode('/', $file['relative']);
+            $segments = array_slice($segments, $stripDepth);
+
+            return [
+                'path' => $file['path'],
+                'relative' => implode('/', $segments),
+            ];
+        }, $files));
     }
 
     protected function createTempDir(): string

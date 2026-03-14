@@ -6,7 +6,7 @@
 
         <main class="card content-wrap auto-height mt-xxl">
             <h2 class="list-heading">{{ trans('entities.import_single') }}</h2>
-            <form action="{{ url('/import/single') }}" enctype="multipart/form-data" method="POST">
+            <form action="{{ url('/ajax/tinymist/import/single') }}" enctype="multipart/form-data" method="POST">
                 {{ csrf_field() }}
                 <div class="flex-container-row justify-space-between wrap gap-x-xl gap-y-s">
                     <p class="flex min-width-l text-muted mb-s">{{ trans('entities.import_single_desc') }}</p>

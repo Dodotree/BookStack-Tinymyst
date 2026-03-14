@@ -2,7 +2,7 @@
 
 return [
     'import_single' => 'Import Single Page',
-    'import_single_desc' => 'Create a new page by uploading a single .typ, .md, .html, .txt file or a Typst template ZIP. ZIP uploads must contain a .typ entry file (entry.typ, main.typ, or a single .typ file).',
+    'import_single_desc' => 'Create a new page by uploading a single .typ, .md, .html, .txt file or a ZIP with related assets. ZIP uploads must contain one entry file (.typ, .md, .markdown, .html, .htm, or .txt).',
     'import_single_file' => 'Select file to upload',
     'import_single_parent' => 'Page Location',
     'import_single_name' => 'Page Name (optional)',
@@ -14,9 +14,10 @@ return [
     'import_single_zip_unsafe' => 'The uploaded ZIP file contains unsafe paths.',
     'import_single_zip_too_many' => 'The uploaded ZIP file contains too many files.',
     'import_single_zip_too_large' => 'The uploaded ZIP file is too large after extraction.',
-    'import_single_entry_missing' => 'No entry .typ file could be found in the uploaded ZIP file.',
-    'import_single_entry_ambiguous' => 'Multiple .typ files found. Please include entry.typ, main.typ, or only one .typ file.',
-    'import_single_entry_conflict' => 'The uploaded ZIP file contains an entry.typ conflict.',
+    'import_single_zip_nested_too_many' => 'The uploaded ZIP file contains too many nested ZIP archives.',
+    'import_single_entry_missing' => 'No supported entry file was found in the uploaded ZIP file.',
+    'import_single_entry_ambiguous' => 'Multiple possible entry files were found. Please include entry/main/index/readme for the file you want to import, or keep only one supported entry file in the ZIP root.',
+    'import_single_entry_conflict' => 'The uploaded ZIP file contains an entry.typ conflict for Typst import.',
     'import_single_flatten_conflict' => 'The uploaded ZIP file contains duplicate file names.',
     'import_single_parent_invalid' => 'The selected parent location is not valid for a page import.',
 
