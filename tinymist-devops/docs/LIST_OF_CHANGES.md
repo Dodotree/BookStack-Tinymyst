@@ -58,6 +58,8 @@ see MERGE.md***
 - `app/Theming/ThemeController.php` (allow MIME types for extensions for WASM loading etc.)
 - `app/Util/CspService.php` for WASM loading
 - `app/Util/WebSafeMimeSniffer.php` for WASM loading
+- `app\Console\Commands\CleanupRuntimeFilesCommand.php` for scheduled cleanup
+- `app\Console\Kernel.php` for cleanup command registration
 
 ### Frontend (the rest of it is in theme)
 

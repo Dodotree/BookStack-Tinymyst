@@ -16,7 +16,7 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule)
     {
-        //
+        $schedule->command('bookstack:cleanup-runtime-files')->hourly()->withoutOverlapping();
     }
 
     /**

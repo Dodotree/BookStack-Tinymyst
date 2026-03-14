@@ -45,6 +45,10 @@ const PING_INTERVAL_MS = Number(process.env.TINYMIST_BRIDGE_PING_INTERVAL ?? 20_
 
 const PARTIAL_RENDERING = process.env.TINYMIST_PARTIAL_RENDERING !== "false";
 const CLEANUP_COMMAND_TIMEOUT_MS = Number(process.env.TINYMIST_PREVIEW_CLEANUP_TIMEOUT ?? 8_000);
+const MAX_PREVIEW_SERVERS_ENV = Number(process.env.TINYMIST_MAX_PREVIEW_SERVERS ?? 20);
+const MAX_PREVIEW_SERVERS = Number.isFinite(MAX_PREVIEW_SERVERS_ENV) && MAX_PREVIEW_SERVERS_ENV > 0
+    ? Math.floor(MAX_PREVIEW_SERVERS_ENV)
+    : 20;
 
 const STORAGE_ROOT = resolve(PROJECT_ROOT, "storage", "app", "tinymist");
 const LOG_DIRECTORY = resolve(PROJECT_ROOT, "storage", "logs");
@@ -199,6 +203,13 @@ async function cleanupOrphanedPreviewProcesses(): Promise<void> {
         }
     } catch (error) {
         console.warn("[Preview Bridge] Failed to cleanup orphaned preview processes", error);
+    }
+}
+
+class PreviewCapacityError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = "PreviewCapacityError";
     }
 }
 
@@ -418,7 +429,10 @@ class PreviewSessionManager {
     private readonly sessions: SessionMap = new Map();
     private readonly pending: Map<number, Promise<PreviewSession>> = new Map();
 
-    constructor(private readonly options: PreviewClientOptions) {}
+    constructor(
+        private readonly options: PreviewClientOptions,
+        private readonly maxPreviewServers: number,
+    ) {}
 
     async getSession(pageId: number): Promise<PreviewSession> {
         const existing = this.sessions.get(pageId);
@@ -429,6 +443,10 @@ class PreviewSessionManager {
         const pending = this.pending.get(pageId);
         if (pending) {
             return pending;
+        }
+
+        if (this.getTotalSessionCount() >= this.maxPreviewServers) {
+            throw new PreviewCapacityError(`Maximum preview servers limit reached (${this.maxPreviewServers})`);
         }
 
         const creation = this.createSession(pageId);
@@ -459,6 +477,11 @@ class PreviewSessionManager {
     async restartSession(pageId: number): Promise<PreviewSession> {
         const existing = this.sessions.get(pageId);
         let nextControlBase = this.options.controlBasePort;
+
+        if (!existing && this.getTotalSessionCount() >= this.maxPreviewServers) {
+            throw new PreviewCapacityError(`Maximum preview servers limit reached (${this.maxPreviewServers})`);
+        }
+
         if (existing) {
             const ports = existing.getPorts();
             if (ports?.controlPort) {
@@ -482,13 +505,17 @@ class PreviewSessionManager {
         await session.ready(SESSION_READY_TIMEOUT_MS);
         return session;
     }
+
+    private getTotalSessionCount(): number {
+        return this.sessions.size + this.pending.size;
+    }
 }
 
 async function bootstrap() {
 
     await cleanupOrphanedPreviewProcesses();
 
-    const sessionManager = new PreviewSessionManager(managerOptions);
+    const sessionManager = new PreviewSessionManager(managerOptions, MAX_PREVIEW_SERVERS);
 
     const server = createServer();
     const wss = new WebSocketServer({ server });
@@ -533,7 +560,17 @@ async function bootstrap() {
             client.uniqueTabId = tokenPayload?.uniqueTabId;
             client.authToken = tokenPayload ?? undefined;
 
-            let session = await sessionManager.getSession(pageId);
+            let session: PreviewSession;
+            try {
+                session = await sessionManager.getSession(pageId);
+            } catch (error) {
+                if (error instanceof PreviewCapacityError) {
+                    console.warn(`[Preview Bridge] Rejecting page ${pageId}: ${error.message}`);
+                    socket.close(1013, "MAX_PREVIEW_SERVERS_REACHED");
+                    return;
+                }
+                throw error;
+            }
             session.addBrowser(client);
 
             socket.on("message", async (data, isBinary) => {
