@@ -23,13 +23,16 @@ type PendingCursorRequest = {
         character: number;
     };
     docVersion: number;
+    timestamp: number;
 };
 
 export class PreviewControlPlane {
     private static readonly FILEPATH_PLACEHOLDER = "__TINYMIST_FILE__";
+    private static readonly maxWaitForRenderMs = 60_000; // 1 minute
     private cursorSpotlightEnabled = true;
     private pendingRenders: RenderVersion[] = [];
     private currentRender: RenderVersion | null = null;
+    private confirmedRenderVersion = 0;
     private pendingCursorRequests: Map<number, PendingCursorRequest> =
         new Map();
 
@@ -39,7 +42,7 @@ export class PreviewControlPlane {
 
         this.trackRenderVersion = this.trackRenderVersion.bind(this);
         this.shiftPendingRenders = this.shiftPendingRenders.bind(this);
-        this.unshiftCursorBlankDiff = this.unshiftCursorBlankDiff.bind(this);
+        this.pushCursorBlankDiff = this.pushCursorBlankDiff.bind(this);
         this.clarifyRenderVersion = this.clarifyRenderVersion.bind(this);
         this.addPendingCursorRequest = this.addPendingCursorRequest.bind(this);
         this.prunePendingRenders = this.prunePendingRenders.bind(this);
@@ -85,17 +88,19 @@ export class PreviewControlPlane {
         window.$tmEventBus.listen(
             tmEvents.RenderVersion,
             ({ version }: { version: number }) => {
-                console.log(`Render version: ${version}`);
                 this.prunePendingRenders(version);
                 this.pruneCursorRequests(version);
+                this.confirmedRenderVersion = version;
+                // console.log(`Render version: ${version} ${this.pendingRenders.length} pending renders:`, this.pendingRenders);
+                // console.log("Current render:", this.currentRender);
             },
         );
     }
 
     private addPendingCursorRequest(payload: PendingCursorRequest): void {
         if (
-            this.currentRender &&
-            payload.docVersion <= this.currentRender.docVersion
+            this.confirmedRenderVersion >= payload.docVersion ||
+            (this.currentRender && payload.docVersion <= this.currentRender.docVersion)
         ) {
             // If the requested docVersion is already rendered, we can send the cursor position immediately
             this.sendControlMessage(payload.request);
@@ -152,7 +157,6 @@ export class PreviewControlPlane {
             pending.docVersion,
         );
         if (pendingCursor) {
-            this.unshiftCursorBlankDiff(pending.docVersion);
             this.sendControlMessage(pendingCursor.request);
             this.pruneCursorRequests(pending.docVersion);
         }
@@ -161,7 +165,7 @@ export class PreviewControlPlane {
     // for maintaining balance in the queue (diff-v1 after cursor paths)
     // Cursor path are not provided all all nodes, if they are: outline, cursorPaths, diff-v1
     // but the message still will trigger: outline, diff-v1
-    private unshiftCursorBlankDiff(docVersion: number): void {
+    private pushCursorBlankDiff(docVersion: number): void {
         this.pendingRenders.push({
             type: "merge",
             timestamp: Date.now(),
@@ -172,7 +176,7 @@ export class PreviewControlPlane {
 
     pruneCursorRequests(olderThan: number): void {
         for (const [docVersion, request] of this.pendingCursorRequests) {
-            if (request.docVersion <= olderThan) {
+            if (request.docVersion <= olderThan || Date.now() - request.timestamp > PreviewControlPlane.maxWaitForRenderMs) {
                 this.pendingCursorRequests.delete(docVersion);
             }
         }
@@ -181,7 +185,8 @@ export class PreviewControlPlane {
     prunePendingRenders(renderVersion: number): void {
         this.pendingRenders = this.pendingRenders.filter(
             (pending) =>
-                !pending.docVersion || pending.docVersion > renderVersion,
+                (!pending.docVersion || pending.docVersion > renderVersion) &&
+                (!pending.timestamp || Date.now() - pending.timestamp <= PreviewControlPlane.maxWaitForRenderMs),
         );
     }
 
@@ -202,8 +207,6 @@ export class PreviewControlPlane {
         }
         this.pendingRenders[this.pendingRenders.length - 1].docVersion =
             payload.docVersion;
-        this.pendingRenders[this.pendingRenders.length - 1].timestamp =
-            Date.now();
     }
 
     trackRenderVersion(payload: {
@@ -260,6 +263,17 @@ export class PreviewControlPlane {
                         `\x1b[31m[Preview Control:current]\x1b[0m`,
                         this.pendingRenders,
                     );
+                }
+
+                if (msg.status === "cursor-requested") {
+                    window.$tmEventBus.emit(tmEvents.PreviewCursorRequest, {
+                        uniqueTabId: msg.details?.uniqueTabId,
+                    });
+                    console.log(
+                        `[Preview Control:in] Cursor position requested by ${msg.details.uniqueTabId}`,
+                        msg,
+                    );
+                    this.pushCursorBlankDiff(this.confirmedRenderVersion);
                 }
             } else {
                 console.warn(`[Preview Control:in] Unknown message: ${raw}`);

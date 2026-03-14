@@ -587,6 +587,7 @@
   @include mixins.lightDark(background-color, #fcdbdb, #250505);
   @include mixins.lightDark(border-color, vars.$negative, vars.$negative-dark);
   @include mixins.lightDark(color, #4d0706, vars.$negative-dark);
+  /* Pink slip background-color: #f8d7da; border-color: #f5c6cb; color: #721c24; */
   border: 1px solid;
   border-radius: 4px;
   margin: vars.$m 0;

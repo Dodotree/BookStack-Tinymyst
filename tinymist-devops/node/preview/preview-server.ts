@@ -14,6 +14,7 @@ config({ path: join(process.cwd(), ".env") });
 
 interface BridgeSocket extends WebSocket {
     pageId?: number;
+    uniqueTabId?: string;
     authToken?: AuthToken;
     isAlive: boolean;
 }
@@ -43,6 +44,7 @@ const SESSION_READY_TIMEOUT_MS = Number(process.env.TINYMIST_PREVIEW_READY_TIMEO
 const PING_INTERVAL_MS = Number(process.env.TINYMIST_BRIDGE_PING_INTERVAL ?? 20_000);
 
 const PARTIAL_RENDERING = process.env.TINYMIST_PARTIAL_RENDERING !== "false";
+const CLEANUP_COMMAND_TIMEOUT_MS = Number(process.env.TINYMIST_PREVIEW_CLEANUP_TIMEOUT ?? 8_000);
 
 const STORAGE_ROOT = resolve(PROJECT_ROOT, "storage", "app", "tinymist");
 const LOG_DIRECTORY = resolve(PROJECT_ROOT, "storage", "logs");
@@ -111,9 +113,9 @@ function rawDataToString(data: RawData): string {
     return String(data);
 }
 
-function execCommand(command: string): Promise<string> {
+function execCommand(command: string, timeoutMs?: number): Promise<string> {
     return new Promise((resolveExec, rejectExec) => {
-        exec(command, { windowsHide: true }, (error, stdout, stderr) => {
+        exec(command, { windowsHide: true, timeout: timeoutMs }, (error, stdout, stderr) => {
             if (error) {
                 rejectExec(error);
                 return;
@@ -131,22 +133,35 @@ async function cleanupOrphanedPreviewProcesses(): Promise<void> {
     try {
         const selfPid = process.pid;
         const tinymistPath = TINYMIST_CLI_PATH.replace(/\\/g, "/").toLowerCase();
+
+        // Windows part
         if (process.platform === "win32") {
-            const output = await execCommand("powershell -NoProfile -Command \"Get-CimInstance Win32_Process -Filter \\\"name='tinymist.exe'\\\" | Select-Object ProcessId,CommandLine | ConvertTo-Json -Compress\"");
+            const output = await execCommand("wmic process where \"name='tinymist.exe'\" get ProcessId,CommandLine /FORMAT:CSV", CLEANUP_COMMAND_TIMEOUT_MS);
             if (!output.trim()) {
                 return;
             }
-            const items = JSON.parse(output);
-            const processes = Array.isArray(items) ? items : [items];
-            for (const proc of processes) {
-                const cmd: string = proc.CommandLine || "";
+            const lines = output
+                .split(/\r?\n/)
+                .map((line) => line.trim())
+                .filter(Boolean)
+                .filter((line) => !line.startsWith("Node,"));
+
+            for (const line of lines) {
+                const lastCommaIndex = line.lastIndexOf(",");
+                if (lastCommaIndex <= 0 || lastCommaIndex >= line.length - 1) {
+                    continue;
+                }
+                const cmd = line.slice(line.indexOf(",") + 1, lastCommaIndex).trim();
+                if (!cmd) {
+                    continue;
+                }
                 if (!cmd.toLowerCase().includes("preview")) {
                     continue;
                 }
-                const pid = Number(proc.ProcessId);
+                const pid = Number(line.slice(lastCommaIndex + 1).trim());
                 if (Number.isFinite(pid) && pid > 0 && pid !== selfPid) {
                     try {
-                        await execCommand(`taskkill /F /PID ${pid}`);
+                        await execCommand(`taskkill /F /PID ${pid}`, CLEANUP_COMMAND_TIMEOUT_MS);
                         console.log(`[Preview Bridge] Cleaned orphan tinymist preview process ${pid}`);
                     } catch (error) {
                         console.warn(`[Preview Bridge] Failed to kill tinymist preview process ${pid}`, error);
@@ -156,7 +171,8 @@ async function cleanupOrphanedPreviewProcesses(): Promise<void> {
             return;
         }
 
-        const output = await execCommand("ps -Ao pid=,args=");
+        // Unix-like part (windows finished/returned above)
+        const output = await execCommand("ps -Ao pid=,args=", CLEANUP_COMMAND_TIMEOUT_MS);
         const lines = output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
         for (const line of lines) {
             if (!line.includes("tinymist") || !line.includes("preview")) {
@@ -175,7 +191,7 @@ async function cleanupOrphanedPreviewProcesses(): Promise<void> {
                 continue;
             }
             try {
-                await execCommand(`kill -9 ${pid}`);
+                await execCommand(`kill -9 ${pid}`, CLEANUP_COMMAND_TIMEOUT_MS);
                 console.log(`[Preview Bridge] Cleaned orphan tinymist preview process ${pid}`);
             } catch (error) {
                 console.warn(`[Preview Bridge] Failed to kill tinymist preview process ${pid}`, error);
@@ -307,6 +323,10 @@ class PreviewSession {
                 ? text.split(FILEPATH_PLACEHOLDER).join(encodedPath)
                 : text;
             this.client.sendControl(updatedText);
+
+            if (text.includes("changeCursorPosition") && socket.uniqueTabId) {
+                this.broadcastStatus("cursor-requested", { uniqueTabId: socket.uniqueTabId });
+            }
             return;
         }
 
@@ -473,6 +493,10 @@ async function bootstrap() {
     const server = createServer();
     const wss = new WebSocketServer({ server });
 
+    server.on("error", (error) => {
+        console.error("[Preview Bridge] HTTP server error", error);
+    });
+
     wss.on("connection", async (socket: WebSocket, request) => {
         const client = socket as BridgeSocket;
         client.isAlive = true;
@@ -506,6 +530,7 @@ async function bootstrap() {
             }
 
             client.pageId = pageId;
+            client.uniqueTabId = tokenPayload?.uniqueTabId;
             client.authToken = tokenPayload ?? undefined;
 
             let session = await sessionManager.getSession(pageId);

@@ -52,11 +52,11 @@ export class PreviewRenderer {
     private cursorSpotlightUserEnabled = true;
     private scrollIntoViewUserEnabled = true;
 
-    constructor() {
+    constructor(uniqueTabId?: string) {
         this.paneSelector = `${tmSelectors.Root} ${tmSelectors.PreviewPane}`;
         this.previewElement = document.querySelector(`${tmSelectors.Root} ${tmSelectors.PreviewContent}`) as HTMLElement;
 
-        new PreviewCursor(this.previewElement);
+        new PreviewCursor(this.previewElement, uniqueTabId);
 
         this.handleSyncInit = this.handleSyncInit.bind(this);
         this.dispose = this.dispose.bind(this);
@@ -257,7 +257,7 @@ export class PreviewRenderer {
             console.error(`[Preview WASM] Rendering failed:`, e);
 
             this.previewElement.innerHTML = `
-                <div style="padding: 20px; color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px;">
+                <div class="${tmClassNames.PreviewError}">
                     <h4>Preview Rendering Failed</h4>
                     <p><strong>Command:</strong> ${command}</p>
                     <p><strong>Payload size:</strong> ${payload.length} bytes</p>
@@ -629,6 +629,7 @@ export class PreviewRenderer {
                 type: "success",
                 message: "[Preview WASM] Renderer session restarted",
             });
+            window.$tmEventBus.emit(tmEvents.PreviewSendData, "current");
         } catch (restartError) {
             console.error("[Preview WASM] Recovery failed:", restartError);
             window.$tmEventBus.emit(tmEvents.ConsoleLog, {

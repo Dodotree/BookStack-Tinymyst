@@ -60,7 +60,7 @@ export class TinymistApp {
         connectionsManager.start();
 
         try {
-            new PreviewRenderer();
+            new PreviewRenderer(this.uniqueTabId);
             window.$tmEventBus.emit(tmEvents.WasmInit);
         } catch (error) {
             console.error("[Tinymist App] renderer setup failed:", error);

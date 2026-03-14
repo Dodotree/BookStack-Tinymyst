@@ -24,6 +24,7 @@ export const tmEvents = {
     LspSemanticTokensDelta: "lsp-semantic-tokens-delta",
     PreviewConnect: "preview-connect",
     PreviewControlMessage: "preview-control-message",
+    PreviewCursorRequest: "preview-cursor-request",
     PreviewCursorPosition: "preview-cursor-position",
     PreviewDataMessage: "preview-data-message",
     PreviewDisconnect: "preview-disconnect",
@@ -81,6 +82,7 @@ export type TinymistEventPayloads = {
     [tmEvents.LspSemanticTokensDelta]: { fileName: string; edits: any[]; resultId?: string; previousResultId?: string; docVersion: number };
     [tmEvents.PreviewConnect]: undefined;
     [tmEvents.PreviewControlMessage]: string;
+    [tmEvents.PreviewCursorRequest]: { uniqueTabId?: string };
     [tmEvents.PreviewCursorPosition]: { contentX: number; contentY: number; width: number; height: number };
     [tmEvents.PreviewDataMessage]: Uint8Array;
     [tmEvents.PreviewDisconnect]: undefined;
@@ -95,7 +97,7 @@ export type TinymistEventPayloads = {
     [tmEvents.SyncDisconnect]: undefined;
     [tmEvents.SyncFullState]: { timestamp: number; fileName: string; content: string; docVersion: number };
     [tmEvents.SyncOpenFile]: { fileName: string };
-    [tmEvents.VersionedCursorRequest]: { docVersion: number; request: { event: string; fileName: string; line: number; character: number } };
+    [tmEvents.VersionedCursorRequest]: { docVersion: number; timestamp: number; request: { event: string; fileName: string; line: number; character: number } };
     [tmEvents.TextChange]: string;
     [tmEvents.TextDiff]: { fileName: string; changes: any; docVersion: number };
     [tmEvents.ThemeSettingsOpen]: undefined;

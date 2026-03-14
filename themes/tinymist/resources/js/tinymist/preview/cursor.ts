@@ -15,20 +15,42 @@ type CursorParams = {
     charIndex: number;
 };
 
+type CursorState = {
+    params: CursorParams;
+    updatedAt: number;
+    circle: SVGCircleElement | null;
+};
+
+const CURSOR_STALE_MS = 60_000;
+const UNKNOWN_TAB_KEY = "__unknown__";
+const OWNER_CURSOR_COLOR = "#66bab7";
+const UNKNOWN_CURSOR_COLOR = "#9ca3af";
+const REMOTE_CURSOR_COLORS = [
+    "#60a5fa",
+    "#f59e0b",
+    "#a78bfa",
+    "#f472b6",
+    "#34d399",
+    "#f87171",
+    "#06b6d4",
+    "#eab308",
+];
+
 export class PreviewCursor {
     private previewElement: HTMLElement;
     private overlayElement: HTMLDivElement | null = null;
     private overlaySvg: SVGSVGElement | null = null;
-    private cursorCircle: SVGCircleElement | null = null;
-    private cursorParams: CursorParams = {
-        textSelector: "svg.typst-doc>g.typst-group",
-        charIndex: 0,
-    };
+
+    private latestCursorRequesterTabId: string = "";
+    private cursorStates = new Map<string, CursorState>();
+
     private onViewportChange: () => void;
     private spotlightEnabled = true;
+    private readonly uniqueTabId: string;
 
-    constructor(previewElement: HTMLElement) {
+    constructor(previewElement: HTMLElement, uniqueTabId?: string) {
         this.previewElement = previewElement;
+        this.uniqueTabId = uniqueTabId || "";
 
         this.destroy = this.destroy.bind(this);
         this.pathToSelector = this.pathToSelector.bind(this);
@@ -38,6 +60,13 @@ export class PreviewCursor {
             tmEvents.DataCursorPaths,
             this.pathToSelector,
         );
+        window.$tmEventBus.listen(
+            tmEvents.PreviewCursorRequest,
+            ({ uniqueTabId }: { uniqueTabId?: string }) => {
+                this.latestCursorRequesterTabId = uniqueTabId || "";
+            },
+        );
+
         window.$tmEventBus.listen(tmEvents.DataCursorShow, this.showCursor);
         window.$tmEventBus.listen(
             tmEvents.CursorSpotlightToggle,
@@ -86,6 +115,67 @@ export class PreviewCursor {
 
         this.overlayElement.appendChild(this.overlaySvg);
         this.previewElement.appendChild(this.overlayElement);
+    }
+
+    private getTabKey(uniqueTabId?: string): string {
+        return uniqueTabId && uniqueTabId.length > 0
+            ? uniqueTabId
+            : UNKNOWN_TAB_KEY;
+    }
+
+    private isOwnerTab(tabKey: string): boolean {
+        return (
+            tabKey !== UNKNOWN_TAB_KEY &&
+            this.uniqueTabId.length > 0 &&
+            tabKey === this.uniqueTabId
+        );
+    }
+
+    private getCursorColor(tabKey: string): string {
+        if (tabKey === UNKNOWN_TAB_KEY) {
+            return UNKNOWN_CURSOR_COLOR;
+        }
+        if (this.isOwnerTab(tabKey)) {
+            return OWNER_CURSOR_COLOR;
+        }
+
+        let hash = 0;
+        for (let index = 0; index < tabKey.length; index++) {
+            hash = (hash * 31 + tabKey.charCodeAt(index)) >>> 0;
+        }
+        return REMOTE_CURSOR_COLORS[hash % REMOTE_CURSOR_COLORS.length];
+    }
+
+    private createCursorCircle(color: string): SVGCircleElement {
+        const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        circle.setAttribute("fill", color);
+        circle.setAttribute("fill-opacity", "0.25");
+        circle.setAttribute("stroke", color);
+        circle.setAttribute("stroke-opacity", "0.65");
+        circle.setAttribute("stroke-width", "1.5");
+        circle.dataset.cursorIndicator = "true";
+        circle.style.pointerEvents = "none";
+        circle.style.transition = "cx 0.1s ease, cy 0.1s ease, r 0.1s ease";
+        return circle;
+    }
+
+    private removeTabCursor(tabKey: string): void {
+        const state = this.cursorStates.get(tabKey);
+        if (!state) {
+            return;
+        }
+        state.circle?.remove();
+        this.cursorStates.delete(tabKey);
+    }
+
+    private pruneStaleCursors(): void {
+        const now = Date.now();
+        for (const [tabKey, state] of this.cursorStates) {
+            if (now - state.updatedAt > CURSOR_STALE_MS) {
+                state.circle?.remove();
+                this.cursorStates.delete(tabKey);
+            }
+        }
     }
 
     /**
@@ -155,10 +245,15 @@ export class PreviewCursor {
         console.debug(loc); // e.g. "1f2a3b4c" (span id as hex) or undefined
     */
 
-    private pathToSelector(paths: any): void {
-        if (!this.spotlightEnabled) {
-            return;
+    private resolveCursorParams(paths: any): CursorParams | null {
+        if (!Array.isArray(paths)) {
+            return null;
         }
+
+        if (!this.spotlightEnabled) {
+            return null;
+        }
+
         const kindMap: Record<number, string> = {
             0: ".typst-text", // g
             1: ".typst-group", // g
@@ -169,7 +264,7 @@ export class PreviewCursor {
         };
         // const validChildren = `>g.typst-group,>g.typst-text,>.typst-image,>.typst-shape,>g.typst-wrap`;
 
-        this.cursorParams = paths.reduce(
+        const result = paths.reduce(
             (cursorMax: CursorParams, steps: any[]) => {
                 const pairs: [string, number][] = steps.map((step: any) => [
                     kindMap[Number(step.kind)] ?? "???",
@@ -227,118 +322,140 @@ export class PreviewCursor {
                 return { textSelector, charIndex: charStep[1] };
             },
             {
-                textSelector: this.cursorParams.textSelector,
+                textSelector: "svg.typst-doc>g.typst-group",
                 charIndex: 0,
             } as CursorParams,
         );
 
-        this.showCursor();
+        if (!result.textSelector || result.charIndex <= 0) {
+            return null;
+        }
+
+        return result;
+    }
+
+    private pathToSelector(paths: any): void {
+        if (!this.spotlightEnabled) {
+            return;
+        }
+
+        const tabKey = this.getTabKey(this.latestCursorRequesterTabId);
+        const params = this.resolveCursorParams(paths);
+        if (!params) {
+            return;
+        }
+
+        const prev = this.cursorStates.get(tabKey);
+        this.cursorStates.set(tabKey, {
+            params,
+            updatedAt: Date.now(),
+            circle: prev?.circle ?? null,
+        });
+
+        this.showAllCursors(this.isOwnerTab(tabKey));
     }
 
     private showCursorWithoutEmit(): void {
-        this.showCursor(false);
+        this.showAllCursors(false);
     }
 
     /**
      * Show cursor circle at the specified glyph position
      */
     private showCursor(emitPosition: boolean = true): void {
+        this.showAllCursors(emitPosition);
+    }
+
+    private showAllCursors(emitOwnerPosition: boolean = true): void {
         if (!this.spotlightEnabled) {
             this.hideCursor();
             return;
         }
-        // console.debug('[Preview WASM] showCursor with params:', this.cursorParams, this.overlaySvg, 'cursorCircle exists:', !!this.cursorCircle);
-
-        const textNode = document.querySelector(this.cursorParams.textSelector);
-        if (!textNode) return;
-
-        // console.debug(`[Preview WASM] text char ${this.cursorParams.charIndex}`, textNode);
-
-        const glyphNode = textNode.querySelector(
-            `:nth-child(${this.cursorParams.charIndex} of use,path)`,
-        ) as SVGGraphicsElement | null;
-        if (!glyphNode) return;
-
-        // console.debug('[Preview WASM] glyph node for cursor:', glyphNode);
 
         this.ensureOverlay();
-
-        if (!this.overlaySvg) return;
-
-        if (!this.cursorCircle) {
-            this.cursorCircle = document.createElementNS(
-                "http://www.w3.org/2000/svg",
-                "circle",
-            );
-            this.cursorCircle.setAttribute("fill", "#66bab7");
-            this.cursorCircle.setAttribute("fill-opacity", "0.25");
-            this.cursorCircle.setAttribute("stroke", "#66bab7");
-            this.cursorCircle.setAttribute("stroke-opacity", "0.65");
-            this.cursorCircle.setAttribute("stroke-width", "1.5");
-            this.cursorCircle.dataset.cursorIndicator = "true";
-            this.cursorCircle.style.pointerEvents = "none";
-            this.cursorCircle.style.transition =
-                "cx 0.1s ease, cy 0.1s ease, r 0.1s ease";
-            this.overlaySvg.appendChild(this.cursorCircle);
-        }
-
-        const glyphRect = glyphNode.getBoundingClientRect();
-        const overlayRect = this.overlaySvg.getBoundingClientRect();
-
-        const previewRect = this.previewElement.getBoundingClientRect();
-
-        const cx = glyphRect.left - overlayRect.left + glyphRect.width / 2;
-        const cy = glyphRect.top - overlayRect.top + glyphRect.height / 2;
-        const r = Math.min(
-            30,
-            Math.max(15, Math.max(glyphRect.width, glyphRect.height) / 2),
-        );
-        // console.debug(`[Preview WASM] glyphRect:`, glyphRect, `overlayRect:`, overlayRect, `calculated cx: ${cx}, cy: ${cy}, r: ${r}`);
-
-        // Update circle position
-        this.cursorCircle.setAttribute("cx", cx.toFixed(2));
-        this.cursorCircle.setAttribute("cy", cy.toFixed(2));
-        this.cursorCircle.setAttribute("r", r.toFixed(2));
-
-        if (!emitPosition) {
+        if (!this.overlaySvg) {
             return;
         }
 
-        const contentX =
-            glyphRect.left -
-            previewRect.left +
-            this.previewElement.scrollLeft +
-            glyphRect.width / 2;
-        const contentY =
-            glyphRect.top -
-            previewRect.top +
-            this.previewElement.scrollTop +
-            glyphRect.height / 2;
-        window.$tmEventBus.emit(tmEvents.PreviewCursorPosition, {
-            contentX,
-            contentY,
-            width: glyphRect.width,
-            height: glyphRect.height,
-        });
+        this.pruneStaleCursors();
+
+        for (const [tabKey, state] of this.cursorStates) {
+            const textNode = document.querySelector(state.params.textSelector);
+            if (!textNode) {
+                continue;
+            }
+
+            const glyphNode = textNode.querySelector(
+                `:nth-child(${state.params.charIndex} of use,path)`,
+            ) as SVGGraphicsElement | null;
+            if (!glyphNode) {
+                continue;
+            }
+
+            if (!state.circle) {
+                state.circle = this.createCursorCircle(this.getCursorColor(tabKey));
+                this.overlaySvg.appendChild(state.circle);
+            }
+
+            const glyphRect = glyphNode.getBoundingClientRect();
+            const overlayRect = this.overlaySvg.getBoundingClientRect();
+            const previewRect = this.previewElement.getBoundingClientRect();
+
+            const cx = glyphRect.left - overlayRect.left + glyphRect.width / 2;
+            const cy = glyphRect.top - overlayRect.top + glyphRect.height / 2;
+            const r = Math.min(
+                30,
+                Math.max(15, Math.max(glyphRect.width, glyphRect.height) / 2),
+            );
+
+            state.circle.setAttribute("cx", cx.toFixed(2));
+            state.circle.setAttribute("cy", cy.toFixed(2));
+            state.circle.setAttribute("r", r.toFixed(2));
+
+            if (!emitOwnerPosition || !this.isOwnerTab(tabKey)) {
+                continue;
+            }
+
+            const contentX =
+                glyphRect.left -
+                previewRect.left +
+                this.previewElement.scrollLeft +
+                glyphRect.width / 2;
+            const contentY =
+                glyphRect.top -
+                previewRect.top +
+                this.previewElement.scrollTop +
+                glyphRect.height / 2;
+            window.$tmEventBus.emit(tmEvents.PreviewCursorPosition, {
+                contentX,
+                contentY,
+                width: glyphRect.width,
+                height: glyphRect.height,
+            });
+        }
     }
 
     private hideCursor(): void {
-        if (!this.cursorCircle) {
-            return;
+        for (const [tabKey, state] of this.cursorStates) {
+            state.circle?.remove();
+            this.cursorStates.set(tabKey, {
+                ...state,
+                circle: null,
+            });
         }
-        this.cursorCircle.remove();
-        this.cursorCircle = null;
     }
 
     destroy() {
         this.hideCursor();
 
-        this.cursorCircle?.remove();
+        for (const tabKey of Array.from(this.cursorStates.keys())) {
+            this.removeTabCursor(tabKey);
+        }
         this.overlaySvg?.remove();
         this.overlayElement?.remove();
         this.overlayElement = null;
         this.overlaySvg = null;
-        this.cursorCircle = null;
+        this.cursorStates.clear();
 
         this.previewElement?.removeEventListener(
             "scroll",

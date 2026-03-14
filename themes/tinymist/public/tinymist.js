@@ -2695,6 +2695,7 @@ var tmEvents = {
   LspSemanticTokensDelta: "lsp-semantic-tokens-delta",
   PreviewConnect: "preview-connect",
   PreviewControlMessage: "preview-control-message",
+  PreviewCursorRequest: "preview-cursor-request",
   PreviewCursorPosition: "preview-cursor-position",
   PreviewDataMessage: "preview-data-message",
   PreviewDisconnect: "preview-disconnect",
@@ -3568,15 +3569,17 @@ var PreviewBridgeClient = class extends TinymistWebSocketClient {
 // themes/tinymist/resources/js/tinymist/preview/control-plane.ts
 var _PreviewControlPlane = class _PreviewControlPlane {
   constructor() {
+    // 1 minute
     __publicField(this, "cursorSpotlightEnabled", true);
     __publicField(this, "pendingRenders", []);
     __publicField(this, "currentRender", null);
+    __publicField(this, "confirmedRenderVersion", 0);
     __publicField(this, "pendingCursorRequests", /* @__PURE__ */ new Map());
     this.sendControlMessage = this.sendControlMessage.bind(this);
     this.handleControlMessage = this.handleControlMessage.bind(this);
     this.trackRenderVersion = this.trackRenderVersion.bind(this);
     this.shiftPendingRenders = this.shiftPendingRenders.bind(this);
-    this.unshiftCursorBlankDiff = this.unshiftCursorBlankDiff.bind(this);
+    this.pushCursorBlankDiff = this.pushCursorBlankDiff.bind(this);
     this.clarifyRenderVersion = this.clarifyRenderVersion.bind(this);
     this.addPendingCursorRequest = this.addPendingCursorRequest.bind(this);
     this.prunePendingRenders = this.prunePendingRenders.bind(this);
@@ -3614,14 +3617,14 @@ var _PreviewControlPlane = class _PreviewControlPlane {
     window.$tmEventBus.listen(
       tmEvents.RenderVersion,
       ({ version }) => {
-        console.log(`Render version: ${version}`);
         this.prunePendingRenders(version);
         this.pruneCursorRequests(version);
+        this.confirmedRenderVersion = version;
       }
     );
   }
   addPendingCursorRequest(payload) {
-    if (this.currentRender && payload.docVersion <= this.currentRender.docVersion) {
+    if (this.confirmedRenderVersion >= payload.docVersion || this.currentRender && payload.docVersion <= this.currentRender.docVersion) {
       this.sendControlMessage(payload.request);
       return;
     }
@@ -3656,7 +3659,6 @@ var _PreviewControlPlane = class _PreviewControlPlane {
       pending.docVersion
     );
     if (pendingCursor) {
-      this.unshiftCursorBlankDiff(pending.docVersion);
       this.sendControlMessage(pendingCursor.request);
       this.pruneCursorRequests(pending.docVersion);
     }
@@ -3664,7 +3666,7 @@ var _PreviewControlPlane = class _PreviewControlPlane {
   // for maintaining balance in the queue (diff-v1 after cursor paths)
   // Cursor path are not provided all all nodes, if they are: outline, cursorPaths, diff-v1
   // but the message still will trigger: outline, diff-v1
-  unshiftCursorBlankDiff(docVersion) {
+  pushCursorBlankDiff(docVersion) {
     this.pendingRenders.push({
       type: "merge",
       timestamp: Date.now(),
@@ -3674,14 +3676,14 @@ var _PreviewControlPlane = class _PreviewControlPlane {
   }
   pruneCursorRequests(olderThan) {
     for (const [docVersion, request] of this.pendingCursorRequests) {
-      if (request.docVersion <= olderThan) {
+      if (request.docVersion <= olderThan || Date.now() - request.timestamp > _PreviewControlPlane.maxWaitForRenderMs) {
         this.pendingCursorRequests.delete(docVersion);
       }
     }
   }
   prunePendingRenders(renderVersion) {
     this.pendingRenders = this.pendingRenders.filter(
-      (pending) => !pending.docVersion || pending.docVersion > renderVersion
+      (pending) => (!pending.docVersion || pending.docVersion > renderVersion) && (!pending.timestamp || Date.now() - pending.timestamp <= _PreviewControlPlane.maxWaitForRenderMs)
     );
   }
   clarifyRenderVersion(payload) {
@@ -3693,7 +3695,6 @@ var _PreviewControlPlane = class _PreviewControlPlane {
       return;
     }
     this.pendingRenders[this.pendingRenders.length - 1].docVersion = payload.docVersion;
-    this.pendingRenders[this.pendingRenders.length - 1].timestamp = Date.now();
   }
   trackRenderVersion(payload) {
     console.debug(
@@ -3741,6 +3742,16 @@ var _PreviewControlPlane = class _PreviewControlPlane {
             `\x1B[31m[Preview Control:current]\x1B[0m`,
             this.pendingRenders
           );
+        }
+        if (msg.status === "cursor-requested") {
+          window.$tmEventBus.emit(tmEvents.PreviewCursorRequest, {
+            uniqueTabId: msg.details?.uniqueTabId
+          });
+          console.log(
+            `[Preview Control:in] Cursor position requested by ${msg.details.uniqueTabId}`,
+            msg
+          );
+          this.pushCursorBlankDiff(this.confirmedRenderVersion);
         }
       } else {
         console.warn(`[Preview Control:in] Unknown message: ${raw}`);
@@ -3853,6 +3864,7 @@ var _PreviewControlPlane = class _PreviewControlPlane {
   }
 };
 __publicField(_PreviewControlPlane, "FILEPATH_PLACEHOLDER", "__TINYMIST_FILE__");
+__publicField(_PreviewControlPlane, "maxWaitForRenderMs", 6e4);
 var PreviewControlPlane = _PreviewControlPlane;
 
 // themes/tinymist/resources/js/tinymist/preview/data-plane.ts
@@ -33715,6 +33727,7 @@ ${selectedCode}
     const line = state.doc.lineAt(pos);
     window.$tmEventBus.emit(tmEvents.VersionedCursorRequest, {
       docVersion: this.getOrCreateFileState(this.entryFileName).docVersion,
+      timestamp: Date.now(),
       request: {
         event: "changeCursorPosition",
         fileName: this.entryFileName,
@@ -36538,19 +36551,32 @@ var wasmBinary = Uint8Array.from(atob(wasmBase64), (c) => c.charCodeAt(0));
 var typst_ts_renderer_bg_default = wasmBinary;
 
 // themes/tinymist/resources/js/tinymist/preview/cursor.ts
+var CURSOR_STALE_MS = 6e4;
+var UNKNOWN_TAB_KEY = "__unknown__";
+var OWNER_CURSOR_COLOR = "#66bab7";
+var UNKNOWN_CURSOR_COLOR = "#9ca3af";
+var REMOTE_CURSOR_COLORS = [
+  "#60a5fa",
+  "#f59e0b",
+  "#a78bfa",
+  "#f472b6",
+  "#34d399",
+  "#f87171",
+  "#06b6d4",
+  "#eab308"
+];
 var PreviewCursor = class {
-  constructor(previewElement) {
+  constructor(previewElement, uniqueTabId) {
     __publicField(this, "previewElement");
     __publicField(this, "overlayElement", null);
     __publicField(this, "overlaySvg", null);
-    __publicField(this, "cursorCircle", null);
-    __publicField(this, "cursorParams", {
-      textSelector: "svg.typst-doc>g.typst-group",
-      charIndex: 0
-    });
+    __publicField(this, "latestCursorRequesterTabId", "");
+    __publicField(this, "cursorStates", /* @__PURE__ */ new Map());
     __publicField(this, "onViewportChange");
     __publicField(this, "spotlightEnabled", true);
+    __publicField(this, "uniqueTabId");
     this.previewElement = previewElement;
+    this.uniqueTabId = uniqueTabId || "";
     this.destroy = this.destroy.bind(this);
     this.pathToSelector = this.pathToSelector.bind(this);
     this.showCursor = this.showCursor.bind(this);
@@ -36558,6 +36584,12 @@ var PreviewCursor = class {
     window.$tmEventBus.listen(
       tmEvents.DataCursorPaths,
       this.pathToSelector
+    );
+    window.$tmEventBus.listen(
+      tmEvents.PreviewCursorRequest,
+      ({ uniqueTabId: uniqueTabId2 }) => {
+        this.latestCursorRequesterTabId = uniqueTabId2 || "";
+      }
     );
     window.$tmEventBus.listen(tmEvents.DataCursorShow, this.showCursor);
     window.$tmEventBus.listen(
@@ -36601,6 +36633,54 @@ var PreviewCursor = class {
     this.overlaySvg.style.overflow = "visible";
     this.overlayElement.appendChild(this.overlaySvg);
     this.previewElement.appendChild(this.overlayElement);
+  }
+  getTabKey(uniqueTabId) {
+    return uniqueTabId && uniqueTabId.length > 0 ? uniqueTabId : UNKNOWN_TAB_KEY;
+  }
+  isOwnerTab(tabKey) {
+    return tabKey !== UNKNOWN_TAB_KEY && this.uniqueTabId.length > 0 && tabKey === this.uniqueTabId;
+  }
+  getCursorColor(tabKey) {
+    if (tabKey === UNKNOWN_TAB_KEY) {
+      return UNKNOWN_CURSOR_COLOR;
+    }
+    if (this.isOwnerTab(tabKey)) {
+      return OWNER_CURSOR_COLOR;
+    }
+    let hash3 = 0;
+    for (let index = 0; index < tabKey.length; index++) {
+      hash3 = hash3 * 31 + tabKey.charCodeAt(index) >>> 0;
+    }
+    return REMOTE_CURSOR_COLORS[hash3 % REMOTE_CURSOR_COLORS.length];
+  }
+  createCursorCircle(color) {
+    const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circle.setAttribute("fill", color);
+    circle.setAttribute("fill-opacity", "0.25");
+    circle.setAttribute("stroke", color);
+    circle.setAttribute("stroke-opacity", "0.65");
+    circle.setAttribute("stroke-width", "1.5");
+    circle.dataset.cursorIndicator = "true";
+    circle.style.pointerEvents = "none";
+    circle.style.transition = "cx 0.1s ease, cy 0.1s ease, r 0.1s ease";
+    return circle;
+  }
+  removeTabCursor(tabKey) {
+    const state = this.cursorStates.get(tabKey);
+    if (!state) {
+      return;
+    }
+    state.circle?.remove();
+    this.cursorStates.delete(tabKey);
+  }
+  pruneStaleCursors() {
+    const now = Date.now();
+    for (const [tabKey, state] of this.cursorStates) {
+      if (now - state.updatedAt > CURSOR_STALE_MS) {
+        state.circle?.remove();
+        this.cursorStates.delete(tabKey);
+      }
+    }
   }
   /**
    * * * * * CssClassToType
@@ -36666,9 +36746,12 @@ var PreviewCursor = class {
           const loc = session.getSourceLoc(path);
           console.debug(loc); // e.g. "1f2a3b4c" (span id as hex) or undefined
       */
-  pathToSelector(paths) {
+  resolveCursorParams(paths) {
+    if (!Array.isArray(paths)) {
+      return null;
+    }
     if (!this.spotlightEnabled) {
-      return;
+      return null;
     }
     const kindMap = {
       0: ".typst-text",
@@ -36684,7 +36767,7 @@ var PreviewCursor = class {
       5: "use"
       // theoretically .tsel, but actually "use" tag
     };
-    this.cursorParams = paths.reduce(
+    const result = paths.reduce(
       (cursorMax, steps) => {
         const pairs = steps.map((step) => [
           kindMap[Number(step.kind)] ?? "???",
@@ -36722,85 +36805,110 @@ var PreviewCursor = class {
         return { textSelector, charIndex: charStep[1] };
       },
       {
-        textSelector: this.cursorParams.textSelector,
+        textSelector: "svg.typst-doc>g.typst-group",
         charIndex: 0
       }
     );
-    this.showCursor();
+    if (!result.textSelector || result.charIndex <= 0) {
+      return null;
+    }
+    return result;
+  }
+  pathToSelector(paths) {
+    if (!this.spotlightEnabled) {
+      return;
+    }
+    const tabKey = this.getTabKey(this.latestCursorRequesterTabId);
+    const params = this.resolveCursorParams(paths);
+    if (!params) {
+      return;
+    }
+    const prev = this.cursorStates.get(tabKey);
+    this.cursorStates.set(tabKey, {
+      params,
+      updatedAt: Date.now(),
+      circle: prev?.circle ?? null
+    });
+    this.showAllCursors(this.isOwnerTab(tabKey));
   }
   showCursorWithoutEmit() {
-    this.showCursor(false);
+    this.showAllCursors(false);
   }
   /**
    * Show cursor circle at the specified glyph position
    */
   showCursor(emitPosition = true) {
+    this.showAllCursors(emitPosition);
+  }
+  showAllCursors(emitOwnerPosition = true) {
     if (!this.spotlightEnabled) {
       this.hideCursor();
       return;
     }
-    const textNode = document.querySelector(this.cursorParams.textSelector);
-    if (!textNode) return;
-    const glyphNode = textNode.querySelector(
-      `:nth-child(${this.cursorParams.charIndex} of use,path)`
-    );
-    if (!glyphNode) return;
     this.ensureOverlay();
-    if (!this.overlaySvg) return;
-    if (!this.cursorCircle) {
-      this.cursorCircle = document.createElementNS(
-        "http://www.w3.org/2000/svg",
-        "circle"
-      );
-      this.cursorCircle.setAttribute("fill", "#66bab7");
-      this.cursorCircle.setAttribute("fill-opacity", "0.25");
-      this.cursorCircle.setAttribute("stroke", "#66bab7");
-      this.cursorCircle.setAttribute("stroke-opacity", "0.65");
-      this.cursorCircle.setAttribute("stroke-width", "1.5");
-      this.cursorCircle.dataset.cursorIndicator = "true";
-      this.cursorCircle.style.pointerEvents = "none";
-      this.cursorCircle.style.transition = "cx 0.1s ease, cy 0.1s ease, r 0.1s ease";
-      this.overlaySvg.appendChild(this.cursorCircle);
-    }
-    const glyphRect = glyphNode.getBoundingClientRect();
-    const overlayRect = this.overlaySvg.getBoundingClientRect();
-    const previewRect = this.previewElement.getBoundingClientRect();
-    const cx = glyphRect.left - overlayRect.left + glyphRect.width / 2;
-    const cy = glyphRect.top - overlayRect.top + glyphRect.height / 2;
-    const r = Math.min(
-      30,
-      Math.max(15, Math.max(glyphRect.width, glyphRect.height) / 2)
-    );
-    this.cursorCircle.setAttribute("cx", cx.toFixed(2));
-    this.cursorCircle.setAttribute("cy", cy.toFixed(2));
-    this.cursorCircle.setAttribute("r", r.toFixed(2));
-    if (!emitPosition) {
+    if (!this.overlaySvg) {
       return;
     }
-    const contentX = glyphRect.left - previewRect.left + this.previewElement.scrollLeft + glyphRect.width / 2;
-    const contentY = glyphRect.top - previewRect.top + this.previewElement.scrollTop + glyphRect.height / 2;
-    window.$tmEventBus.emit(tmEvents.PreviewCursorPosition, {
-      contentX,
-      contentY,
-      width: glyphRect.width,
-      height: glyphRect.height
-    });
+    this.pruneStaleCursors();
+    for (const [tabKey, state] of this.cursorStates) {
+      const textNode = document.querySelector(state.params.textSelector);
+      if (!textNode) {
+        continue;
+      }
+      const glyphNode = textNode.querySelector(
+        `:nth-child(${state.params.charIndex} of use,path)`
+      );
+      if (!glyphNode) {
+        continue;
+      }
+      if (!state.circle) {
+        state.circle = this.createCursorCircle(this.getCursorColor(tabKey));
+        this.overlaySvg.appendChild(state.circle);
+      }
+      const glyphRect = glyphNode.getBoundingClientRect();
+      const overlayRect = this.overlaySvg.getBoundingClientRect();
+      const previewRect = this.previewElement.getBoundingClientRect();
+      const cx = glyphRect.left - overlayRect.left + glyphRect.width / 2;
+      const cy = glyphRect.top - overlayRect.top + glyphRect.height / 2;
+      const r = Math.min(
+        30,
+        Math.max(15, Math.max(glyphRect.width, glyphRect.height) / 2)
+      );
+      state.circle.setAttribute("cx", cx.toFixed(2));
+      state.circle.setAttribute("cy", cy.toFixed(2));
+      state.circle.setAttribute("r", r.toFixed(2));
+      if (!emitOwnerPosition || !this.isOwnerTab(tabKey)) {
+        continue;
+      }
+      const contentX = glyphRect.left - previewRect.left + this.previewElement.scrollLeft + glyphRect.width / 2;
+      const contentY = glyphRect.top - previewRect.top + this.previewElement.scrollTop + glyphRect.height / 2;
+      window.$tmEventBus.emit(tmEvents.PreviewCursorPosition, {
+        contentX,
+        contentY,
+        width: glyphRect.width,
+        height: glyphRect.height
+      });
+    }
   }
   hideCursor() {
-    if (!this.cursorCircle) {
-      return;
+    for (const [tabKey, state] of this.cursorStates) {
+      state.circle?.remove();
+      this.cursorStates.set(tabKey, {
+        ...state,
+        circle: null
+      });
     }
-    this.cursorCircle.remove();
-    this.cursorCircle = null;
   }
   destroy() {
     this.hideCursor();
-    this.cursorCircle?.remove();
+    for (const tabKey of Array.from(this.cursorStates.keys())) {
+      this.removeTabCursor(tabKey);
+    }
     this.overlaySvg?.remove();
     this.overlayElement?.remove();
     this.overlayElement = null;
     this.overlaySvg = null;
-    this.cursorCircle = null;
+    this.cursorStates.clear();
     this.previewElement?.removeEventListener(
       "scroll",
       this.onViewportChange
@@ -36812,7 +36920,7 @@ var PreviewCursor = class {
 
 // themes/tinymist/resources/js/tinymist/preview/render.ts
 var PreviewRenderer = class {
-  constructor() {
+  constructor(uniqueTabId) {
     __publicField(this, "paneSelector");
     __publicField(this, "previewElement");
     __publicField(this, "renderer", null);
@@ -36841,7 +36949,7 @@ var PreviewRenderer = class {
     __publicField(this, "scrollIntoViewUserEnabled", true);
     this.paneSelector = `${tmSelectors.Root} ${tmSelectors.PreviewPane}`;
     this.previewElement = document.querySelector(`${tmSelectors.Root} ${tmSelectors.PreviewContent}`);
-    new PreviewCursor(this.previewElement);
+    new PreviewCursor(this.previewElement, uniqueTabId);
     this.handleSyncInit = this.handleSyncInit.bind(this);
     this.dispose = this.dispose.bind(this);
     this.updateSVG = this.updateSVG.bind(this);
@@ -36998,7 +37106,7 @@ var PreviewRenderer = class {
     } catch (e) {
       console.error(`[Preview WASM] Rendering failed:`, e);
       this.previewElement.innerHTML = `
-                <div style="padding: 20px; color: #721c24; background-color: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px;">
+                <div class="${tmClassNames.PreviewError}">
                     <h4>Preview Rendering Failed</h4>
                     <p><strong>Command:</strong> ${command2}</p>
                     <p><strong>Payload size:</strong> ${payload.length} bytes</p>
@@ -37290,6 +37398,7 @@ var PreviewRenderer = class {
         type: "success",
         message: "[Preview WASM] Renderer session restarted"
       });
+      window.$tmEventBus.emit(tmEvents.PreviewSendData, "current");
     } catch (restartError) {
       console.error("[Preview WASM] Recovery failed:", restartError);
       window.$tmEventBus.emit(tmEvents.ConsoleLog, {
@@ -37389,7 +37498,7 @@ var TinymistApp = class {
     });
     connectionsManager.start();
     try {
-      new PreviewRenderer();
+      new PreviewRenderer(this.uniqueTabId);
       window.$tmEventBus.emit(tmEvents.WasmInit);
     } catch (error) {
       console.error("[Tinymist App] renderer setup failed:", error);

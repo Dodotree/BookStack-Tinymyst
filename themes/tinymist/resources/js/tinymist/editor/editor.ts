@@ -597,6 +597,7 @@ export class TinymistEditorUI {
         const line = state.doc.lineAt(pos);
         window.$tmEventBus.emit(tmEvents.VersionedCursorRequest, {
             docVersion: this.getOrCreateFileState(this.entryFileName).docVersion,
+            timestamp: Date.now(),
             request: {
                 event: "changeCursorPosition",
                 fileName: this.entryFileName,
