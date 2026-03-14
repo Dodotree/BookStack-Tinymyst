@@ -35,6 +35,11 @@ export class PreviewRenderer {
 
     private recovering: boolean = false;
     private recoveryAttempts: number = 0;
+
+    // Poor mans Exponential Moving Weighted Average counted per tick counted as 0.4*collected +0.6*incoming
+    private pmewmaNew: number = 0;
+    private pmewmaDiff: number = 0;
+
     private zoomLevel = 1;
     private readonly zoomStep = 0.1;
     private readonly zoomMin = 0.25;
@@ -210,24 +215,33 @@ export class PreviewRenderer {
         }
 
         try {
-            const isDiff = command === "diff-v1";
             let action: "reset" | "merge" =
                 command === "new" ? "reset" : "merge"; // 'merge' or 'reset'
 
             const session = await this.ensureSession();
 
-            if (isDiff && !this.hasInitialDocument) {
+            if (!this.hasInitialDocument) {
                 console.warn(
                     "[Preview WASM] Treating first diff as full reset",
                 );
                 action = "reset";
             }
 
+            // If average diff size in bigger than whole doc size ('new')
+            // If new and diff sizes are noticeably different
+            // If incoming diff is 5 times bigger than average diff size
+            // We will bet on 'reset' instead of 'merge'
+            // But it still leaves out huge copy-paste and similar, which can be improved on and tracked separately if needed
+            const diffVsNewRatio = this.pmewmaDiff / Math.max(1, this.pmewmaNew);
+            if( action === "merge" && diffVsNewRatio > 0.7 && diffVsNewRatio < 1 && payload.length / Math.max(1, this.pmewmaNew) > diffVsNewRatio * 5) {
+                action = "reset";
+            }
+
             console.log(
                 `[Preview WASM] Applying "${command}" action "${action}" with ${payload.length} bytes`,
             );
-            // same as session.manipulateData
-            const diffResult = this.renderer!.manipulateData({
+
+            this.renderer!.manipulateData({
                 renderSession: session,
                 action,
                 data: payload,
@@ -249,6 +263,12 @@ export class PreviewRenderer {
             });
 
             this.updateSVG(svg);
+
+            if (command === "diff-v1") {
+                this.pmewmaDiff = 0.4 * this.pmewmaDiff + 0.6 * payload.length;
+            } else {
+                this.pmewmaNew = 0.4 * this.pmewmaNew + 0.6 * payload.length;
+            }
 
             console.log(`[Preview WASM] Render "${command}" action "${action}" complete`);
             window.$tmEventBus.emit(tmEvents.DataCursorShow); // reinsert cursor if possible

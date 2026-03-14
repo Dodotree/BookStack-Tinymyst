@@ -36932,6 +36932,9 @@ var PreviewRenderer = class {
     __publicField(this, "processingQueue", Promise.resolve());
     __publicField(this, "recovering", false);
     __publicField(this, "recoveryAttempts", 0);
+    // Poor mans Exponential Moving Weighted Average counted per tick counted as 0.4*collected +0.6*incoming
+    __publicField(this, "pmewmaNew", 0);
+    __publicField(this, "pmewmaDiff", 0);
     __publicField(this, "zoomLevel", 1);
     __publicField(this, "zoomStep", 0.1);
     __publicField(this, "zoomMin", 0.25);
@@ -37072,19 +37075,22 @@ var PreviewRenderer = class {
       return;
     }
     try {
-      const isDiff = command2 === "diff-v1";
       let action = command2 === "new" ? "reset" : "merge";
       const session = await this.ensureSession();
-      if (isDiff && !this.hasInitialDocument) {
+      if (!this.hasInitialDocument) {
         console.warn(
           "[Preview WASM] Treating first diff as full reset"
         );
         action = "reset";
       }
+      const diffVsNewRatio = this.pmewmaDiff / Math.max(1, this.pmewmaNew);
+      if (action === "merge" && diffVsNewRatio > 0.7 && diffVsNewRatio < 1 && payload.length / Math.max(1, this.pmewmaNew) > diffVsNewRatio * 5) {
+        action = "reset";
+      }
       console.log(
         `[Preview WASM] Applying "${command2}" action "${action}" with ${payload.length} bytes`
       );
-      const diffResult = this.renderer.manipulateData({
+      this.renderer.manipulateData({
         renderSession: session,
         action,
         data: payload
@@ -37101,6 +37107,11 @@ var PreviewRenderer = class {
         }
       });
       this.updateSVG(svg2);
+      if (command2 === "diff-v1") {
+        this.pmewmaDiff = 0.4 * this.pmewmaDiff + 0.6 * payload.length;
+      } else {
+        this.pmewmaNew = 0.4 * this.pmewmaNew + 0.6 * payload.length;
+      }
       console.log(`[Preview WASM] Render "${command2}" action "${action}" complete`);
       window.$tmEventBus.emit(tmEvents.DataCursorShow);
     } catch (e) {
