@@ -227,7 +227,7 @@ export class PreviewRenderer {
                 action = "reset";
             }
 
-            // If average diff size in bigger than whole doc size ('new')
+            // If average diff size in smaller than whole doc size ('new')
             // If new and diff sizes are noticeably different
             // If incoming diff is 5 times bigger than average diff size
             // We will bet on 'reset' instead of 'merge'
