@@ -542,7 +542,9 @@ export class PreviewRenderer {
     }
 
     private applyZoomToSvg(): void {
-        const svg = this.previewElement.querySelector("svg") as SVGElement | null;
+        const svg = this.previewElement.querySelector(
+            `${tmSelectors.PreviewDocumentHost} > svg`,
+        ) as SVGElement | null;
         if (!svg) {
             return;
         }
