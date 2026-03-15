@@ -23,6 +23,7 @@ import {
     LanguageDescription,
     LanguageSupport,
     StreamLanguage,
+    bracketMatching,
     defaultHighlightStyle,
     syntaxHighlighting,
 } from "@codemirror/language";
@@ -40,6 +41,7 @@ import { toml } from "@codemirror/legacy-modes/mode/toml";
 
 import { SemanticTokenProcessor, highlightField } from "./semantic-tokens";
 import { DiagnosticsProcessor } from "./diagnostics";
+import { TinymistSearchReplace } from "./search-replace";
 
 import { ENTRY_FILE_NAME, tmEvents, tmSelectors } from "../constants";
 
@@ -82,6 +84,7 @@ export class TinymistEditorUI {
     private readonly dirtyStateDebounceMs = 300;
     private readonly fallbackDebounceMs = 800;
     private readonly collabClientId = `tinymist-${crypto.randomUUID()}`; // formality to distinguish local vs remote changes in rebase
+    private readonly searchReplace: TinymistSearchReplace;
 
     private fallbackEnabled = false;
 
@@ -121,6 +124,7 @@ export class TinymistEditorUI {
         this.destroy = this.destroy.bind(this);
 
         this.setupCodeMirror();
+        this.searchReplace = new TinymistSearchReplace(() => this.editorView);
         this.setupListeners();
 
         const diagnosticsProcessor = new DiagnosticsProcessor();
@@ -147,6 +151,7 @@ export class TinymistEditorUI {
             const startState = EditorState.create({
                 doc: this.editor.value,
                 extensions: [
+                    EditorView.lineWrapping,
                     lineNumbers(), // Enable line numbers
                     highlightActiveLineGutter(), // Highlight current line number in gutter
                     highlightActiveLine(), // Highlight current line
@@ -154,6 +159,7 @@ export class TinymistEditorUI {
                         this.getLanguageExtensionForFile(this.activeFileName),
                     ),
                     this.highlightCompartment.of(this.getHighlightExtension()),
+                    bracketMatching(),
                     highlightField, // Add custom highlighting support
                     history(),
                     keymap.of([...historyKeymap, ...defaultKeymap]),
@@ -419,6 +425,9 @@ export class TinymistEditorUI {
             case "changeCodeMirrorSettings":
                 window.$tmEventBus.emit(tmEvents.ThemeSettingsOpen);
                 break;
+            case "openSearchReplace":
+                this.searchReplace.open(false);
+                break;
             default:
                 console.warn(`[Editor]Unknown button action: ${action}`);
         }
@@ -555,6 +564,7 @@ export class TinymistEditorUI {
         this.flushPendingChanges(this.activeFileName);
 
         this.activeFileName = fileName;
+        this.searchReplace.close();
         if (this.isImageFile(fileName)) {
             this.showImagePreview(fileName, url);
             return;
@@ -577,6 +587,7 @@ export class TinymistEditorUI {
         if (update.docChanged) {
             this.onInput();
             this.onDocumentChange(update.transactions);
+            this.searchReplace.refreshMatchCount();
         }
         // Track cursor position changes
         if (update.selectionSet) {
@@ -1158,6 +1169,7 @@ export class TinymistEditorUI {
             this.editorView.destroy();
             this.editorView = null;
         }
+        this.searchReplace.destroy();
         // dereference editor to release DOM reference, but don't remove
         this.editor = null as any;
     }

@@ -68,9 +68,31 @@
                     <button class="text-button" type="button" data-action="insertCodeBlock" title="Code Block">
                         @icon('editor/code-block')
                     </button>
+                    <button class="text-button" type="button" data-action="openSearchReplace" title="Search & Replace">
+                        @icon('search')
+                    </button>
                     <button class="text-button" type="button" data-action="changeCodeMirrorSettings" title="Editor Settings">
                         @icon('settings')
                     </button>
+                </div>
+            </div>
+
+            <div class="tinymist-search-panel" hidden>
+                <button class="text-button tinymist-search-toggle" type="button" data-tm-search-action="toggleReplace" title="Toggle replace" aria-expanded="false" aria-label="Toggle replace">
+                    <span class="when-collapsed">@icon('chevron-right')</span>
+                    <span class="when-expanded">@icon('chevron-down')</span>
+                </button>
+                <button class="text-button tinymist-search-close-button" type="button" data-tm-search-action="close" title="Close search" aria-label="Close search">@icon('close')</button>
+                <div class="tinymist-search-row tinymist-search-main-row">
+                    <input type="text" data-tm-search="query" placeholder="Find" aria-label="Find">
+                    <span class="tinymist-search-count text-small text-muted">0 / 0</span>
+                    <button class="text-button" type="button" data-tm-search-action="previous" title="Previous match" aria-label="Previous match">@icon('sort-up')</button>
+                    <button class="text-button" type="button" data-tm-search-action="next" title="Next match" aria-label="Next match">@icon('sort-down')</button>
+                </div>
+                <div class="tinymist-search-row tinymist-search-replace-row" hidden>
+                    <input type="text" data-tm-search="replace" placeholder="Replace" aria-label="Replace">
+                    <button class="text-button" type="button" data-tm-search-action="replace" title="Replace next" aria-label="Replace next">@icon('editor/replace')</button>
+                    <button class="text-button" type="button" data-tm-search-action="replaceAll" title="Replace all" aria-label="Replace all">@icon('editor/replace-all')</button>
                 </div>
             </div>
 

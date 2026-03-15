@@ -24,6 +24,7 @@ export class TinymistConnectionsManager {
     private bridgeConnected: boolean = false;
     private fileSyncConnected: boolean = false;
     private fallbackMode: boolean = false;
+    private previewPaused: boolean = false;
     private restartAllowed: boolean = true;
 
     constructor(options: TinymistConnectionsManagerOptions) {

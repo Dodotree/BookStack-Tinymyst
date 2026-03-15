@@ -195,6 +195,130 @@ html.dark-mode #tinymist-editor .tinymist-editor-pane .ͼ2 .cm-tooltip {
 html.dark-mode #tinymist-editor .tinymist-editor-pane .ͼ2 .cm-tooltip {
   color: #d4d4d4;
 }
+#tinymist-editor .tinymist-editor-pane .tinymist-search-panel {
+  position: absolute;
+  top: 36px;
+  right: 16px;
+  z-index: 4;
+  min-width: min(560px, 100% - 2 * 16px);
+  max-width: calc(100% - 2 * 16px);
+  display: none;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 6px;
+  row-gap: 6px;
+  padding: 6px;
+  padding-right: calc(16px + 2.2em);
+  border: 1px solid;
+  border-radius: 6px;
+  box-shadow: 0 1px 6px 1px rgba(22, 22, 22, 0.2);
+  border-color: #d0d7de;
+}
+html.dark-mode #tinymist-editor .tinymist-editor-pane .tinymist-search-panel {
+  border-color: #3e3e42;
+}
+#tinymist-editor .tinymist-editor-pane .tinymist-search-panel {
+  background-color: #fff;
+}
+html.dark-mode #tinymist-editor .tinymist-editor-pane .tinymist-search-panel {
+  background-color: #1f1f1f;
+}
+#tinymist-editor .tinymist-editor-pane .tinymist-search-panel .text-button {
+  font-size: 0.9rem;
+}
+#tinymist-editor .tinymist-editor-pane .tinymist-search-panel.is-visible {
+  display: grid;
+}
+#tinymist-editor .tinymist-editor-pane .tinymist-search-panel .tinymist-search-toggle {
+  grid-column: 1;
+  grid-row: 1/span 2;
+  align-self: stretch;
+  padding: 0 0 0 6px;
+  font-size: 1.2rem;
+}
+#tinymist-editor .tinymist-editor-pane .tinymist-search-panel .tinymist-search-toggle .when-expanded {
+  display: none;
+}
+#tinymist-editor .tinymist-editor-pane .tinymist-search-panel .tinymist-search-toggle[aria-expanded=true] .when-collapsed {
+  display: none;
+}
+#tinymist-editor .tinymist-editor-pane .tinymist-search-panel .tinymist-search-toggle[aria-expanded=true] .when-expanded {
+  display: inline-block;
+}
+#tinymist-editor .tinymist-editor-pane .tinymist-search-panel .tinymist-search-row {
+  grid-column: 2;
+  display: grid;
+  align-items: center;
+  gap: 6px;
+  justify-items: start;
+  grid-template-columns: minmax(220px, 320px) auto auto auto;
+  justify-content: start;
+}
+#tinymist-editor .tinymist-editor-pane .tinymist-search-panel .tinymist-search-row input {
+  min-width: 0;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid;
+  border-radius: 4px;
+  border-color: #d0d7de;
+}
+html.dark-mode #tinymist-editor .tinymist-editor-pane .tinymist-search-panel .tinymist-search-row input {
+  border-color: #3e3e42;
+}
+#tinymist-editor .tinymist-editor-pane .tinymist-search-panel .tinymist-search-row input {
+  background-color: #fff;
+}
+html.dark-mode #tinymist-editor .tinymist-editor-pane .tinymist-search-panel .tinymist-search-row input {
+  background-color: #1e1e1e;
+}
+#tinymist-editor .tinymist-editor-pane .tinymist-search-panel .tinymist-search-row input {
+  color: #24292f;
+}
+html.dark-mode #tinymist-editor .tinymist-editor-pane .tinymist-search-panel .tinymist-search-row input {
+  color: #d4d4d4;
+}
+#tinymist-editor .tinymist-editor-pane .tinymist-search-panel .tinymist-search-row input:focus {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -1px;
+}
+#tinymist-editor .tinymist-editor-pane .tinymist-search-panel .tinymist-search-row .tinymist-search-count {
+  min-width: 56px;
+  text-align: left;
+  justify-self: start;
+  white-space: nowrap;
+}
+#tinymist-editor .tinymist-editor-pane .tinymist-search-panel .tinymist-search-close-button {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  padding: 0;
+  line-height: 1;
+}
+#tinymist-editor .tinymist-editor-pane .tinymist-search-panel .tinymist-search-replace-row {
+  grid-template-columns: minmax(220px, 320px) auto auto;
+  justify-content: start;
+}
+#tinymist-editor .tinymist-editor-pane .tinymist-search-panel .tinymist-search-replace-row button {
+  justify-self: start;
+}
+@media screen and (max-width: 600px) {
+  #tinymist-editor .tinymist-editor-pane .tinymist-search-panel {
+    min-width: calc(100% - 2 * 16px);
+  }
+  #tinymist-editor .tinymist-editor-pane .tinymist-search-panel .tinymist-search-row {
+    justify-items: start;
+    grid-template-columns: minmax(140px, 1fr) auto auto auto;
+  }
+  #tinymist-editor .tinymist-editor-pane .tinymist-search-panel .tinymist-search-row .tinymist-search-count {
+    grid-column: 1/span 3;
+    text-align: left;
+  }
+  #tinymist-editor .tinymist-editor-pane .tinymist-search-panel .tinymist-search-replace-row {
+    grid-template-columns: minmax(140px, 1fr) auto;
+  }
+  #tinymist-editor .tinymist-editor-pane .tinymist-search-panel .tinymist-search-replace-row button[data-tm-search-action=replaceAll] {
+    grid-column: span 2;
+  }
+}
 #tinymist-editor .tinymist-console-panel {
   border-top: 1px solid;
   border-bottom: 1px solid;
@@ -749,6 +873,7 @@ html.dark-mode .tinymist-error {
   color: #e85c5b;
 }
 .tinymist-error {
+  /* Pink slip background-color: #f8d7da; border-color: #f5c6cb; color: #721c24; */
   border: 1px solid;
   border-radius: 4px;
   margin: 16px 0;

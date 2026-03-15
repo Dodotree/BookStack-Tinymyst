@@ -124,6 +124,128 @@
       @include mixins.lightDark(background-color, #fff, #1e1e1e);
       @include mixins.lightDark(color, #24292f, #d4d4d4);
     }
+
+    .tinymist-search-panel {
+      position: absolute;
+      top: 36px;
+      right: vars.$m;
+      z-index: 4;
+      min-width: min(560px, calc(100% - 2 * #{vars.$m}));
+      max-width: calc(100% - 2 * #{vars.$m});
+      display: none;
+      grid-template-columns: auto minmax(0, 1fr);
+      column-gap: vars.$xs;
+      row-gap: vars.$xs;
+      padding: vars.$xs;
+      padding-right: calc(#{vars.$m} + 2.2em);
+      border: 1px solid;
+      border-radius: 6px;
+      box-shadow: vars.$bs-large;
+      @include mixins.lightDark(border-color, #d0d7de, #3e3e42);
+      @include mixins.lightDark(background-color, #fff, #1f1f1f);
+
+      .text-button{
+        font-size: 0.9rem;
+      }
+      &.is-visible {
+        display: grid;
+      }
+
+      .tinymist-search-toggle {
+        grid-column: 1;
+        grid-row: 1 / span 2;
+        align-self: stretch;
+        padding: 0 0 0 vars.$xs;
+        font-size: 1.2rem;
+
+        .when-expanded {
+          display: none;
+        }
+
+        &[aria-expanded="true"] {
+          .when-collapsed {
+            display: none;
+          }
+
+          .when-expanded {
+            display: inline-block;
+          }
+        }
+      }
+
+      .tinymist-search-row {
+        grid-column: 2;
+        display: grid;
+        align-items: center;
+        gap: vars.$xs;
+        justify-items: start;
+        grid-template-columns: minmax(220px, 320px) auto auto auto;
+        justify-content: start;
+
+        input {
+          min-width: 0;
+          height: 28px;
+          padding: 0 vars.$s;
+          border: 1px solid;
+          border-radius: 4px;
+          @include mixins.lightDark(border-color, #d0d7de, #3e3e42);
+          @include mixins.lightDark(background-color, #fff, #1e1e1e);
+          @include mixins.lightDark(color, #24292f, #d4d4d4);
+
+          &:focus {
+            outline: 2px solid var(--color-primary);
+            outline-offset: -1px;
+          }
+        }
+
+        .tinymist-search-count {
+          min-width: 56px;
+          text-align: left;
+          justify-self: start;
+          white-space: nowrap;
+        }
+
+      }
+
+      .tinymist-search-close-button {
+        position: absolute;
+        top: vars.$xs;
+        right: vars.$xs;
+        padding: 0;
+        line-height: 1;
+      }
+
+      .tinymist-search-replace-row {
+        grid-template-columns: minmax(220px, 320px) auto auto;
+        justify-content: start;
+
+        button {
+          justify-self: start;
+        }
+      }
+
+      @include mixins.smaller-than(vars.$bp-s) {
+        min-width: calc(100% - 2 * #{vars.$m});
+
+        .tinymist-search-row {
+          justify-items: start;
+          grid-template-columns: minmax(140px, 1fr) auto auto auto;
+
+          .tinymist-search-count {
+            grid-column: 1 / span 3;
+            text-align: left;
+          }
+        }
+
+        .tinymist-search-replace-row {
+          grid-template-columns: minmax(140px, 1fr) auto;
+
+          button[data-tm-search-action="replaceAll"] {
+            grid-column: span 2;
+          }
+        }
+      }
+    }
   }
 
   .tinymist-console-panel {

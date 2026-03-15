@@ -26,6 +26,13 @@ export const tmSelectors: Record<string, string> = {
 	ThemeFontProbes: ".font-probes",
 	ThemeEditorLineOrGutter: ".cm-editor .cm-line, .cm-editor .cm-gutter",
 
+	SearchPanel: ".tinymist-search-panel",
+	SearchInput: 'input[data-tm-search="query"]',
+	SearchReplaceInput: 'input[data-tm-search="replace"]',
+	SearchMatchCount: ".tinymist-search-count",
+	SearchReplaceRow: ".tinymist-search-replace-row",
+	SearchReplaceToggle: 'button[data-tm-search-action="toggleReplace"]',
+
 	PreviewPane: ".tinymist-preview-pane",
     PreviewContent: ".tinymist-preview-content",
 	PreviewMutedMessage: ".text-muted.p-m",
@@ -65,6 +72,8 @@ export const tmClassNames: Record<string, string> = {
 	ThemeFontStatus: "font-status",
 	ThemeFontPreview: "font-preview",
 	ThemeFontProbes: "font-probes",
+    SearchPanel: "tinymist-search-panel",
+    SearchVisible: "is-visible",
     ProbeGroup: "probe-group",
     ProbeTitle: "probe-title",
     ProbeList: "probe-list",
