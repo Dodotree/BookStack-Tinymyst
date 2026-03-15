@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 // Tinymist/Typst routes
 Route::post('/ajax/tinymist/compile', [TinymistController::class, 'compile']);
 Route::post('/ajax/tinymist/check', [TinymistController::class, 'check']);
+Route::post('/ajax/tinymist/convert-to-typst', [TinymistController::class, 'convertToTypst']);
 Route::get('/ajax/tinymist/status', [TinymistController::class, 'status']);
 Route::post('/ajax/tinymist/renew-ws-token', [TinymistController::class, 'renewWsToken']);
 

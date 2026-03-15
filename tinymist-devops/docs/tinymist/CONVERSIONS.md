@@ -6,6 +6,11 @@
 Good when your source is Markdown/HTML/Docx/LaTeX and you want Typst output.
 Typical usage: pandoc input.html -t typst -o output.typ.
 
+BookStack setup note:
+
+- `npm install` now downloads a platform-matching Pandoc binary into `vendor/bin`.
+- Override CLI discovery with `PANDOC_CLI_PATH` when using a system/global install.
+
 - LaTeX/TeX-math converters (for math-heavy content):
 Tools in this space (e.g. texmath-based workflows, mitex ecosystem) can help convert formulas to Typst math syntax.
 

@@ -77,6 +77,16 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Pandoc CLI Path
+    |--------------------------------------------------------------------------
+    |
+    | Path to pandoc CLI executable (for document conversion workflows).
+    |
+    */
+    'pandoc_cli_path' => $resolveExecutablePath(env('PANDOC_CLI_PATH'), 'vendor/bin/pandoc' . $defaultExecutableExtension),
+
+    /*
+    |--------------------------------------------------------------------------
     | Typst Package Path
     |--------------------------------------------------------------------------
     |

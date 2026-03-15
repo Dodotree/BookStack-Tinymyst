@@ -23,6 +23,13 @@ return [
 
     'pages_edit_switch_to_tinymist' => 'Switch to Tinymist Editor',
     'pages_edit_switch_to_tinymist_desc' => '(Typst Documents)',
+    'pages_edit_convert_to_tinymist' => 'Convert to Typst Document',
+    'pages_edit_convert_to_tinymist_desc' => '(via Pandoc and open Tinymist editor)',
+
+    'tinymist_convert_failed' => 'Failed to convert content to Typst.',
+    'tinymist_convert_invalid_source' => 'Unsupported conversion source format.',
+    'tinymist_convert_empty_output' => 'Conversion succeeded but produced empty Typst output.',
+    'tinymist_convert_too_large' => 'Content is too large to convert.',
 
     'pages_tinymist_editor' => 'Typst Editor',
     'pages_tinymist_preview' => 'Live Preview',

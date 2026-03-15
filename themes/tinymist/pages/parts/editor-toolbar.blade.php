@@ -1,3 +1,7 @@
+@push('body-end')
+<script type="module" src="{{ url('/theme/tinymist/tinymist-convert.js') }}" nonce="{{ $cspNonce }}"></script>
+@endpush
+
 <div class="toolbar page-edit-toolbar py-xs">
 
     <div>
@@ -98,6 +102,21 @@
                                     <small>{{ trans('entities.pages_edit_switch_to_tinymist_desc') }}</small>
                                 </div>
                             </a>
+                            <button
+                                type="button"
+                                role="menuitem"
+                                class="icon-item text-left"
+                                data-tm-convert-to-tinymist="true"
+                                data-page-id="{{ $model->id }}"
+                                data-target-url="{{ $model->getUrl($isDraft ? '' : '/edit') }}?editor=tinymist"
+                            >
+                                @icon('swap-horizontal')
+                                <div>
+                                    {{ trans('entities.pages_edit_convert_to_tinymist') }}
+                                    <br>
+                                    <small>{{ trans('entities.pages_edit_convert_to_tinymist_desc') }}</small>
+                                </div>
+                            </button>
                         @endif
                     </li>
                 @endif

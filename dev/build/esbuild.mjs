@@ -30,6 +30,10 @@ const tinymistEntryPoints = {
         __dirname,
         "../../themes/tinymist/resources/js/tinymist-bookstack.ts",
     ),
+    "tinymist-convert": path.join(
+        __dirname,
+        "../../themes/tinymist/resources/js/tinymist-convert.ts",
+    ),
 };
 
 // Watch styles so we can reload on change
