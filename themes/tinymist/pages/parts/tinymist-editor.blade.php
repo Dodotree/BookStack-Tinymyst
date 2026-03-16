@@ -147,6 +147,9 @@
                 <span>{{ trans('entities.pages_tinymist_preview') ?? 'Live Preview' }}</span>
             </div>
             <div class="buttons flex-container-row items-stretch">
+                <button class="text-button" type="button" data-action="previewConnectionToggle" title="connecting" aria-label="Preview connection toggle" disabled>
+                    connecting
+                </button>
                 <button class="text-button" type="button" data-action="previewZoomOut" title="Zoom Out">
                     @icon('zoom-out')
                 </button>

@@ -34,9 +34,15 @@ export class TinymistConnectionsManager {
 
         this.updateStatus = this.updateStatus.bind(this);
         this.updateToken = this.updateToken.bind(this);
+        this.handlePreviewConnectionToggle =
+            this.handlePreviewConnectionToggle.bind(this);
         this.destroy = this.destroy.bind(this);
         window.$tmEventBus.listen(tmEvents.Status, this.updateStatus);
         window.$tmEventBus.listen(tmEvents.TokenRenewed, this.updateToken);
+        window.$tmEventBus.listen(
+            tmEvents.PreviewConnectionToggle,
+            this.handlePreviewConnectionToggle,
+        );
         window.$tmEventBus.listen(tmEvents.Destroy, this.destroy);
 
         this.tokenManager = new TinymistTokenManager(this.pageId, this.wsToken);
@@ -47,8 +53,8 @@ export class TinymistConnectionsManager {
             window.$tmEventBus.emit(tmEvents.InvalidToken);
             return;
         }
-        void this.setupPreviewSockets();
-        void this.setupFileSyncLSP();
+        this.setupPreviewSockets();
+        this.setupFileSyncLSP();
     }
 
     updateToken(newToken: string): void {
@@ -73,9 +79,11 @@ export class TinymistConnectionsManager {
                 this.previewControlPlane = new PreviewControlPlane();
                 new PreviewDataPlane();
             }
-
+            // initial "connecting"
+            this.setPreviewConnectionState();
             window.$tmEventBus.emit(tmEvents.PreviewConnect);
         } catch (error) {
+            this.setPreviewConnectionState();
             window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                 type: "error",
                 message: "Failed to initialize preview sockets",
@@ -103,6 +111,34 @@ export class TinymistConnectionsManager {
         }
     }
 
+    private handlePreviewConnectionToggle(): void {
+        if (this.previewPaused) {
+            this.previewPaused = false;
+            window.$tmEventBus.emit(tmEvents.ReconnectAllowed);
+            this.setupPreviewSockets();
+            return;
+        }
+
+        this.previewPaused = true;
+        this.previewBridgeClient?.disconnect();
+        window.$tmEventBus.emit(tmEvents.ConsoleLog, {
+            type: "info",
+            message: "[WS manager] Preview connection paused",
+        });
+    }
+
+    private setPreviewConnectionState(): void {
+        const label = this.previewPaused
+            ? "run"
+            : !this.bridgeConnected
+              ? "connecting"
+              : "pause";
+
+        window.$tmEventBus.emit(tmEvents.PreviewConnectionState, {
+            label
+        });
+    }
+
     private updateStatus(status: { what: string; connected: boolean }): void {
         switch (status.what) {
             case "file-lsp-ws":
@@ -113,13 +149,15 @@ export class TinymistConnectionsManager {
                 if (status.connected) {
                     window.$tmEventBus.emit(tmEvents.PreviewSendData, "current");
                 }
+                this.setPreviewConnectionState();
                 break;
         }
         this.checkConnectionHealth();
     }
 
     private checkConnectionHealth(): void {
-        if (!this.bridgeConnected || !this.fileSyncConnected) {
+        const previewHealthy = this.previewPaused || this.bridgeConnected;
+        if (!previewHealthy || !this.fileSyncConnected) {
             if (this.fallbackMode) {
                 return;
             }

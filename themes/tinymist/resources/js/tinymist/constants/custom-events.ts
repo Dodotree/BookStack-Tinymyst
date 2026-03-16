@@ -23,6 +23,8 @@ export const tmEvents = {
     LspSemanticTokens: "lsp-semantic-tokens",
     LspSemanticTokensDelta: "lsp-semantic-tokens-delta",
     PreviewConnect: "preview-connect",
+    PreviewConnectionState: "preview-connection-state",
+    PreviewConnectionToggle: "preview-connection-toggle",
     PreviewControlMessage: "preview-control-message",
     PreviewCursorRequest: "preview-cursor-request",
     PreviewCursorPosition: "preview-cursor-position",
@@ -31,6 +33,7 @@ export const tmEvents = {
     PreviewSendControl: "preview-send-control",
     PreviewSendData: "preview-send-data",
     PruneSnapshots: "prune-snapshots",
+    ReconnectAllowed: "reconnect-allowed",
     RenderVersion: "render-version",
     ResetFile: "reset-file",
     SyncRemoteChanges: "sync-remote-changes",
@@ -81,6 +84,8 @@ export type TinymistEventPayloads = {
     [tmEvents.LspSemanticTokens]: { fileName: string; tokens: number[]; resultId?: string; docVersion: number };
     [tmEvents.LspSemanticTokensDelta]: { fileName: string; edits: any[]; resultId?: string; previousResultId?: string; docVersion: number };
     [tmEvents.PreviewConnect]: undefined;
+    [tmEvents.PreviewConnectionState]: { label: "pause" | "run" | "connecting" };
+    [tmEvents.PreviewConnectionToggle]: undefined;
     [tmEvents.PreviewControlMessage]: string;
     [tmEvents.PreviewCursorRequest]: { uniqueTabId?: string };
     [tmEvents.PreviewCursorPosition]: { contentX: number; contentY: number; width: number; height: number };
@@ -89,6 +94,7 @@ export type TinymistEventPayloads = {
     [tmEvents.PreviewSendControl]: string;
     [tmEvents.PreviewSendData]: string | Uint8Array;
     [tmEvents.PruneSnapshots]: { fileName: string; docVersion: number };
+    [tmEvents.ReconnectAllowed]: undefined;
     [tmEvents.RenderVersion]: {type: string;timestamp: number;fileName: string;docVersion: number;};
     [tmEvents.ResetFile]: { fileName?: string };
     [tmEvents.SyncRemoteChanges]: { timestamp: number; fileName: string; docVersion: number; changes: any };

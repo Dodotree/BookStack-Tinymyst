@@ -38,6 +38,7 @@ export const tmSelectors: Record<string, string> = {
 	PreviewMutedMessage: ".text-muted.p-m",
 	PreviewError: ".tinymist-error",
 	PreviewDocumentHost: ".tinymist-document",
+	PreviewConnectionToggle: 'button[data-action="previewConnectionToggle"]',
 	PreviewPan: 'button[data-action="previewPanToggle"]',
 	PreviewCursorSpotlight:
 		'button[data-action="previewCursorSpotlightToggle"]',

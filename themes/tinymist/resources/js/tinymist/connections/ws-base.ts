@@ -57,6 +57,9 @@ export abstract class TinymistWebSocketClient {
         window.$tmEventBus.listen(this.config.disconnectEvent, this.disconnect);
         window.$tmEventBus.listen(tmEvents.AllDisconnect, this.disconnect);
         window.$tmEventBus.listen(tmEvents.Destroy, this.disconnect);
+        window.$tmEventBus.listen(tmEvents.ReconnectAllowed, () => {
+            this.reconnectAllowed = true;
+        });
     }
 
     protected async handleSyncConnect(): Promise<void> {
@@ -350,6 +353,10 @@ export abstract class TinymistWebSocketClient {
                 connected: false,
             });
         }
+    }
+
+    public dispose(): void {
+        this.disconnect();
     }
 
     protected onOpen(): void {

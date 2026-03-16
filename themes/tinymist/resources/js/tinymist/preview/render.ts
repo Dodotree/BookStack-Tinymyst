@@ -75,6 +75,8 @@ export class PreviewRenderer {
         this.handlePanMouseMove = this.handlePanMouseMove.bind(this);
         this.handlePanMouseUp = this.handlePanMouseUp.bind(this);
         this.handleCursorPosition = this.handleCursorPosition.bind(this);
+        this.handlePreviewConnectionState =
+            this.handlePreviewConnectionState.bind(this);
 
         window.$tmEventBus.listen(tmEvents.WasmInit, this.handleSyncInit);
         window.$tmEventBus.listen(tmEvents.WasmDispose, this.dispose);
@@ -88,6 +90,10 @@ export class PreviewRenderer {
         window.$tmEventBus.listen(
             tmEvents.PreviewCursorPosition,
             this.handleCursorPosition,
+        );
+        window.$tmEventBus.listen(
+            tmEvents.PreviewConnectionState,
+            this.handlePreviewConnectionState,
         );
 
         window.$tmEventBus.listen(
@@ -103,6 +109,7 @@ export class PreviewRenderer {
         this.applyCursorSpotlightState();
         this.applyScrollIntoViewState();
         this.applyPanButtonState();
+        this.handlePreviewConnectionState({label: "connecting"});
     }
 
     private addRemoveListeners(adding: boolean = true): void {
@@ -380,9 +387,27 @@ export class PreviewRenderer {
                     !this.cursorSpotlightUserEnabled;
                 this.applyCursorSpotlightState();
                 break;
+            case "previewConnectionToggle":
+                window.$tmEventBus.emit(tmEvents.PreviewConnectionToggle);
+                break;
             default:
                 break;
         }
+    }
+
+    private handlePreviewConnectionState(payload: {
+        label: "pause" | "run" | "connecting";
+    }): void {
+        const button = document.querySelector(
+            `${this.paneSelector} ${tmSelectors.PreviewConnectionToggle}`,
+        ) as HTMLButtonElement | null;
+        if (!button) {
+            return;
+        }
+
+        button.disabled = (payload.label === "connecting");
+        button.textContent = payload.label;
+        button.setAttribute("title", payload.label);
     }
 
     private applyPanButtonState(): void {
