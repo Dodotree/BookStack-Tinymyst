@@ -2,6 +2,7 @@ export const tmEvents = {
     ActiveFileChange: "active-file-change",
     AllDisconnect: "all-disconnect",
     ConsoleLog: "console-log",
+    ConsoleJumpToLocation: "console-jump-to-location",
     ConsoleToggle: "console-toggle",
     Control: "control",
     CursorScrollIntoViewToggle: "cursor-scroll-into-view-toggle",
@@ -51,6 +52,14 @@ export const tmEvents = {
     WasmInit: "wasm-init",
 } as const;
 
+export type TinymistConsoleLocation = {
+    fileName?: string;
+    line: number;
+    character: number;
+    endLine?: number;
+    endCharacter?: number;
+};
+
 export type TinymistControlEventPayload =
     | { event: "UpdateMemoryFiles" | "SyncMemoryFiles"; filepath: string; content: string }
     | { event: "removeMemoryFiles"; filepath: string }
@@ -62,7 +71,8 @@ export type TinymistControlEventPayload =
 export type TinymistEventPayloads = {
     [tmEvents.ActiveFileChange]: { fileName: string; url: string };
     [tmEvents.AllDisconnect]: undefined;
-    [tmEvents.ConsoleLog]: { type: "error" | "warning" | "info" | "success" | "hint"; message: string; details?: unknown };
+    [tmEvents.ConsoleLog]: { type: "error" | "warning" | "info" | "success" | "hint"; message: string; details?: unknown; location?: TinymistConsoleLocation };
+    [tmEvents.ConsoleJumpToLocation]: TinymistConsoleLocation;
     [tmEvents.ConsoleToggle]: boolean;
     [tmEvents.Control]: TinymistControlEventPayload;
     [tmEvents.CursorScrollIntoViewToggle]: { enabled: boolean; activeFile: string; userEnabled: boolean };

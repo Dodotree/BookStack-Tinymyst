@@ -5,6 +5,13 @@ type TinymistConsoleMessage = {
     type: "error" | "warning" | "info" | "success" | "hint";
     message: string;
     details?: unknown;
+    location?: {
+        fileName?: string;
+        line: number;
+        character: number;
+        endLine?: number;
+        endCharacter?: number;
+    };
 };
 
 type TinymistConsoleEntry = {
@@ -67,6 +74,22 @@ export class TinymistConsole {
             case "clearConsole":
                 this.clearConsole();
                 break;
+            case "goToDiagnostic": {
+                const line = Number.parseInt(button.getAttribute("data-line") || "", 10);
+                const character = Number.parseInt(button.getAttribute("data-character") || "", 10);
+
+                if (!Number.isFinite(line) || !Number.isFinite(character)) {
+                    return;
+                }
+
+                const fileName = button.getAttribute("data-file-name") || undefined;
+                window.$tmEventBus.emit(tmEvents.ConsoleJumpToLocation, {
+                    fileName,
+                    line,
+                    character,
+                });
+                break;
+            }
             default:
                 break;
         }
@@ -89,7 +112,7 @@ export class TinymistConsole {
         );
     }
 
-    logMessage({type, message, details}: TinymistConsoleMessage) {
+    logMessage({type, message, details, location}: TinymistConsoleMessage) {
         const consoleEl = document.querySelector(`${this.panelSelector} ${this.consoleSelector}`);
         if (!consoleEl) {
             console.warn("Console element not found for logging message:", message);
@@ -97,7 +120,7 @@ export class TinymistConsole {
         }
 
         const detailsHtml = this.getErrorDetails(details);
-        const signature = JSON.stringify([type, message, detailsHtml]);
+        const signature = JSON.stringify([type, message, detailsHtml, location ?? null]);
         const timestampMs = Date.now();
         const existingEntry = this.findLatestEntry(signature);
 
@@ -114,7 +137,7 @@ export class TinymistConsole {
                     signature,
                     timestampMs,
                     repeatCount: existingEntry.repeatCount + 1,
-                    element: this.buildMessageElement(type, message, detailsHtml, timestampMs, existingEntry.repeatCount + 1),
+                    element: this.buildMessageElement(type, message, detailsHtml, timestampMs, existingEntry.repeatCount + 1, location),
                 });
                 return;
             }
@@ -124,7 +147,7 @@ export class TinymistConsole {
             signature,
             timestampMs,
             repeatCount: 1,
-            element: this.buildMessageElement(type, message, detailsHtml, timestampMs, 1),
+            element: this.buildMessageElement(type, message, detailsHtml, timestampMs, 1, location),
         });
     }
 
@@ -134,6 +157,7 @@ export class TinymistConsole {
         detailsHtml: string,
         timestampMs: number,
         repeatCount: number,
+        location?: TinymistConsoleMessage["location"],
     ): HTMLDivElement {
         const timestamp = new Date(timestampMs).toLocaleTimeString();
         const messageDiv = document.createElement("div");
@@ -143,6 +167,10 @@ export class TinymistConsole {
             ? `<span class="tinymist-console-message-badge" aria-label="Repeated ${repeatCount} times">(${repeatCount})</span>`
             : "";
 
+        const locationHtml = location
+            ? `<button type="button" class="tinymist-console-location" data-action="goToDiagnostic" data-file-name="${this.escapeHtml(location.fileName || "")}" data-line="${location.line}" data-character="${location.character}" title="Go to line ${location.line}, position ${location.character}">L${location.line}:C${location.character}</button>`
+            : "";
+
         const detailsBlock = detailsHtml !== "" ? `<div class="tinymist-console-message-details">${detailsHtml}</div>` : "";
 
         messageDiv.innerHTML =
@@ -150,6 +178,7 @@ export class TinymistConsole {
             `<span class="text-muted tinymist-console-message-meta">[${timestamp}]</span>` +
             `${badgeHtml}` +
             `<span class="tinymist-console-message-body">${this.escapeHtml(message)}</span>` +
+            `${locationHtml}` +
             `</div>` +
             detailsBlock;
 

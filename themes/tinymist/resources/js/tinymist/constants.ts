@@ -1,4 +1,4 @@
-export { tmEvents } from "./constants/custom-events";
+export { tmEvents, TinymistConsoleLocation } from "./constants/custom-events";
 
 export {
 	THEME_SETTINGS_STORAGE_KEY,

@@ -118,6 +118,7 @@ export class TinymistEditorUI {
         this.onInput = this.onInput.bind(this);
         this.buttonsListener = this.buttonsListener.bind(this);
         this.insertFromEditorEvent = this.insertFromEditorEvent.bind(this);
+        this.jumpToConsoleLocation = this.jumpToConsoleLocation.bind(this);
         this.resetAttachmentFileFromServer =
             this.resetAttachmentFileFromServer.bind(this);
         this.setActiveFile = this.setActiveFile.bind(this);
@@ -373,6 +374,10 @@ export class TinymistEditorUI {
             tmEvents.ResetFile,
             this.resetAttachmentFileFromServer,
         );
+        window.$tmEventBus.listen(
+            tmEvents.ConsoleJumpToLocation,
+            this.jumpToConsoleLocation,
+        );
 
         // Button actions, it counts on event bubbling to the container
         this.editor
@@ -392,6 +397,39 @@ export class TinymistEditorUI {
         if (this.activeFileName === this.entryFileName) {
             window.$tmEventBus.emit(tmEvents.TextChange, "");
         }
+    }
+
+    private jumpToConsoleLocation(payload: {
+        fileName?: string;
+        line: number;
+        character: number;
+    }): void {
+        if (!this.editorView) {
+            return;
+        }
+
+        if (payload.fileName && payload.fileName !== this.activeFileName) {
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
+                type: "warning",
+                message: `[Editor] Open ${payload.fileName} to navigate to this diagnostic`,
+            });
+            return;
+        }
+
+        const state = this.editorView.state;
+        const safeLineNumber = Math.min(
+            Math.max(1, Math.trunc(payload.line || 1)),
+            state.doc.lines,
+        );
+        const line = state.doc.line(safeLineNumber);
+        const safeCharacter = Math.max(1, Math.trunc(payload.character || 1));
+        const targetPos = Math.min(line.from + safeCharacter - 1, line.to);
+
+        this.editorView.dispatch({
+            selection: { anchor: targetPos },
+            scrollIntoView: true,
+        });
+        this.editorView.focus();
     }
 
     buttonsListener(event: Event) {

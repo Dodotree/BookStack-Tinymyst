@@ -7,7 +7,9 @@
 import { EditorView } from "@codemirror/view";
 import { Diagnostic, setDiagnostics } from "@codemirror/lint";
 import { ChangeSet } from "@codemirror/state";
-import { ENTRY_FILE_NAME, tmEvents } from "../constants";
+import { ENTRY_FILE_NAME, tmEvents, TinymistConsoleLocation } from "../constants";
+
+type DiagnosticLocationMap = Map<number, TinymistConsoleLocation>;
 
 export class DiagnosticsProcessor {
     private editorView: EditorView | null;
@@ -109,7 +111,10 @@ export class DiagnosticsProcessor {
 
         const currentDoc = this.editorView.state.doc;
 
-        const mappedDiagnostics = payload.diagnostics.map((diag) => {
+        const mappedDiagnostics: Diagnostic[] = [];
+        const diagnosticLocations: DiagnosticLocationMap = new Map();
+
+        payload.diagnostics.forEach((diag, index) => {
             const range = diag.range || {};
             const start = range.start || {};
             const end = range.end || {};
@@ -147,32 +152,56 @@ export class DiagnosticsProcessor {
                 toLine.to,
             );
 
-            return {
+            const line = fromLine.number;
+            const character = Math.max(1, from - fromLine.from + 1);
+            const endLineNumber = toLine.number;
+            const endCharacter = Math.max(1, to - toLine.from + 1);
+
+            mappedDiagnostics.push({
                 from,
                 to: Math.max(from + 1, to), // Ensure at least 1 character is underlined
                 severity: this.mapLspSeverity(diag.severity),
                 message: diag.message || "LSP diagnostic",
-            };
+            });
+
+            diagnosticLocations.set(index, {
+                fileName,
+                line,
+                character,
+                endLine: endLineNumber,
+                endCharacter,
+            });
         });
 
-        this.triggerLinting(mappedDiagnostics);
+        this.triggerLinting(mappedDiagnostics, diagnosticLocations);
     };
 
-    triggerLinting(newDiagnostics: Diagnostic[]): void {
+    triggerLinting(
+        newDiagnostics: Diagnostic[],
+        diagnosticLocations?: DiagnosticLocationMap,
+    ): void {
         if (this.editorView) {
             this.editorView.dispatch(
                 setDiagnostics(this.editorView.state, newDiagnostics),
             );
         }
-        this.logToConsole(newDiagnostics);
+        this.logToConsole(newDiagnostics, diagnosticLocations);
     }
 
-    logToConsole(diagnostics: Diagnostic[]): void {
-        diagnostics.forEach((diag) => {
-            const logMessage = `[Diagnostic] ${diag.message} ${diag.severity} (from ${diag.from}, to ${diag.to})`;
+    logToConsole(
+        diagnostics: Diagnostic[],
+        diagnosticLocations?: DiagnosticLocationMap,
+    ): void {
+        diagnostics.forEach((diag, index) => {
+            const location = diagnosticLocations?.get(index);
+            const locationLabel = location
+                ? ` (line ${location.line}, position ${location.character})`
+                : "";
+            const logMessage = `[Diagnostic] ${diag.message} ${diag.severity}${locationLabel}`;
             window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                 type: diag.severity,
                 message: logMessage,
+                ...(location ? { location } : {}),
             });
         });
     }
