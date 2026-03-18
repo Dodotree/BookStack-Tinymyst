@@ -21,6 +21,7 @@ import {
     tmEvents,
     tmSelectors,
 } from "../constants";
+import { c } from "@codemirror/legacy-modes/mode/clike";
 
 export class PreviewRenderer {
     private paneSelector: string;
@@ -59,7 +60,9 @@ export class PreviewRenderer {
 
     constructor(uniqueTabId?: string) {
         this.paneSelector = `${tmSelectors.Root} ${tmSelectors.PreviewPane}`;
-        this.previewElement = document.querySelector(`${tmSelectors.Root} ${tmSelectors.PreviewContent}`) as HTMLElement;
+        this.previewElement = document.querySelector(
+            `${tmSelectors.Root} ${tmSelectors.PreviewContent}`,
+        ) as HTMLElement;
 
         new PreviewCursor(this.previewElement, uniqueTabId);
 
@@ -109,13 +112,14 @@ export class PreviewRenderer {
         this.applyCursorSpotlightState();
         this.applyScrollIntoViewState();
         this.applyPanButtonState();
-        this.handlePreviewConnectionState({label: "connecting"});
+        this.handlePreviewConnectionState({ label: "connecting" });
     }
 
     private addRemoveListeners(adding: boolean = true): void {
         const method = adding ? "addEventListener" : "removeEventListener";
 
-        document.querySelector(this.paneSelector)
+        document
+            .querySelector(this.paneSelector)
             ?.[method]("click", this.handlePreviewPaneClick);
 
         this.previewElement[method]("mousedown", this.handlePanMouseDown);
@@ -221,10 +225,11 @@ export class PreviewRenderer {
             return;
         }
 
-        try {
-            let action: "reset" | "merge" =
-                command === "new" ? "reset" : "merge"; // 'merge' or 'reset'
+        let svgText: string = "";
+        let action: "reset" | "merge" =
+            command === "new" ? "reset" : "merge"; // 'merge' or 'reset'
 
+        try {
             const session = await this.ensureSession();
 
             if (!this.hasInitialDocument) {
@@ -239,8 +244,15 @@ export class PreviewRenderer {
             // If incoming diff is 5 times bigger than average diff size
             // We will bet on 'reset' instead of 'merge'
             // But it still leaves out huge copy-paste and similar, which can be improved on and tracked separately if needed
-            const diffVsNewRatio = this.pmewmaDiff / Math.max(1, this.pmewmaNew);
-            if( action === "merge" && diffVsNewRatio > 0.7 && diffVsNewRatio < 1 && payload.length / Math.max(1, this.pmewmaNew) > diffVsNewRatio * 5) {
+            const diffVsNewRatio =
+                this.pmewmaDiff / Math.max(1, this.pmewmaNew);
+            if (
+                action === "merge" &&
+                diffVsNewRatio > 0.7 &&
+                diffVsNewRatio < 1 &&
+                payload.length / Math.max(1, this.pmewmaNew) >
+                    diffVsNewRatio * 5
+            ) {
                 action = "reset";
             }
 
@@ -260,7 +272,23 @@ export class PreviewRenderer {
 
             // defaults are all true, right now have no use for inline helper script
             // could be simple session.renderSvg({});
-            const svg = await session.renderSvg({
+            // let svgText
+            // if (action === "reset") {
+            //     console.log(`[Preview WASM] Rendering full document to SVG...`);
+            //     svgText = await session.renderSvg({
+            //         data_selection: {
+            //             body: true,
+            //             defs: true,
+            //             css: false,
+            //             js: false,
+            //         },
+            //     });
+            //     console.log(`[Preview WASM] full SVG generated ${svgText.length} chars`);
+            // }
+            console.log(`[Preview WASM] Rendering diff to SVG DIFF...`);
+            // Since Incremental SVG state starts empty inside renderer and gets empty on reset
+            // and gives full document on first render, we can count on it to cover both reset and merge actions and give us correct diff or full svg when needed without extra checks
+            svgText = session.renderSvgDiff({
                 data_selection: {
                     body: true,
                     defs: true,
@@ -268,28 +296,15 @@ export class PreviewRenderer {
                     js: false,
                 },
             });
-
-            this.updateSVG(svg);
-            console.log(`[Preview WASM] Render "${command}" action "${action}" complete`);
+            console.log(
+                `[Preview WASM] SVG DIFF generated ${svgText.length} chars`,
+            );
 
             if (command === "diff-v1") {
                 this.pmewmaDiff = 0.4 * this.pmewmaDiff + 0.6 * payload.length;
             } else {
                 this.pmewmaNew = 0.4 * this.pmewmaNew + 0.6 * payload.length;
             }
-
-            const marker = this.previewElement.querySelector('[data-typst-label^="doc-version-"]');
-            const version = marker?.getAttribute('data-typst-label')?.slice('doc-version-'.length) as number | undefined;
-            if (version) {
-                window.$tmEventBus.emit(tmEvents.RenderVersion, {
-                    type: command,
-                    timestamp: Date.now(),
-                    fileName: this.activeFileName,
-                    docVersion: version
-                });
-            }
-
-            window.$tmEventBus.emit(tmEvents.DataCursorShow); // reinsert cursor if possible
 
         } catch (e: any) {
             console.error(`[Preview WASM] Rendering failed:`, e);
@@ -307,17 +322,52 @@ export class PreviewRenderer {
             `;
 
             await this.recoverRenderer(e);
+            return;
+        }
+
+        // Separate UI try/catch from WASM processing try/catch (don't need rendered recovery)
+        try {
+            if(action === "merge") {
+                this.patchSVG(svgText);
+            } else {
+                this.updateSVG(svgText);
+            }
+            console.log(
+                `[Preview WASM] Render "${command}" action "${action}" complete`,
+            );
+
+            const marker = this.previewElement.querySelector(
+                '[data-typst-label^="doc-version-"]',
+            );
+            const version = marker
+                ?.getAttribute("data-typst-label")
+                ?.slice("doc-version-".length) as number | undefined;
+            if (version) {
+                window.$tmEventBus.emit(tmEvents.RenderVersion, {
+                    type: command,
+                    timestamp: Date.now(),
+                    fileName: this.activeFileName,
+                    docVersion: version,
+                });
+            }
+
+            window.$tmEventBus.emit(tmEvents.DataCursorShow); // reinsert cursor if possible
+
+        } catch (e: any) {
+            console.error(`[Preview WASM] Failed to apply SVG:`, e);
         }
     }
 
     updateSVG(svg: string, docVersion?: number) {
         // Remove "Loading..." and error messages
-        this.previewElement.querySelector(tmSelectors.PreviewMutedMessage)
+        this.previewElement
+            .querySelector(tmSelectors.PreviewMutedMessage)
             ?.remove();
-        this.previewElement.querySelector(tmSelectors.PreviewError)
-            ?.remove();
+        this.previewElement.querySelector(tmSelectors.PreviewError)?.remove();
 
-        let svgHost = this.previewElement.querySelector(tmSelectors.PreviewDocumentHost,) as HTMLElement | null;
+        let svgHost = this.previewElement.querySelector(
+            tmSelectors.PreviewDocumentHost,
+        ) as HTMLElement | null;
         if (!svgHost) {
             svgHost = document.createElement("div");
             svgHost.className = tmClassNames.PreviewDocumentHost;
@@ -328,6 +378,219 @@ export class PreviewRenderer {
         this.baseSvgWidth = null;
         this.baseSvgHeight = null;
         this.applyZoomToSvg();
+
+        console.log(
+            `[Preview WASM] Page with not empty content is ${svgHost.querySelectorAll("g.typst-page:has(*)").length} and total ${svgHost.querySelectorAll("g.typst-page").length}`,
+        );
+    }
+
+    private patchSVG(svgDiff: string) {
+        let svgHost = this.previewElement.querySelector(
+            tmSelectors.PreviewDocumentHost,
+        ) as HTMLElement | null;
+        if (!svgHost) {
+            return;
+        }
+
+        // Detached container to parse incoming diff, diffs are smaller and manipulating detached DOM is usually faster
+        const tempContainer = document.createElement("div");
+        tempContainer.innerHTML = svgDiff;
+
+        const prev = svgHost.querySelector("svg");
+        const next = tempContainer.querySelector("svg");
+        if (!prev || !next) {
+            return;
+        }
+
+        this.patchAttributes(prev, next);
+        this.patchSvgHeader(prev, next);
+        this.patchSvgChildren(prev, next);
+    }
+
+    private patchSvgHeader(prev: SVGElement, next: SVGElement) {
+        for (let i = 0; i < 3; i++) {
+            // 3 because we only have glyph defs, clip-path defs and style
+            const prevChild = prev.children[i];
+            const nextChild = next.children[i];
+
+            if (prevChild.tagName === "defs") {
+                if (prevChild.getAttribute("class") === "glyph") {
+                    prevChild.append(...nextChild.children);
+                } else if (prevChild.getAttribute("class") === "clip-path") {
+                    prevChild.append(...nextChild.children);
+                }
+            } else if (
+                prevChild.tagName === "style" &&
+                nextChild.getAttribute("data-reuse") !== "1"
+            ) {
+                // Hopefully styles are not what was changing, look into it later
+            }
+        }
+    }
+
+    // apply attribute patches to the `prev <svg or g>` element
+    private patchAttributes(prev: Element, next: Element) {
+        const prevAttrsSet = new Set(prev.attributes);
+        const nextAttrsSet = new Set(next.attributes);
+        const diffAttrsSet = prevAttrsSet.difference(nextAttrsSet);
+
+        // Check if nothing changed: same size, same attrs, same values
+        if (
+            prevAttrsSet.size === nextAttrsSet.size &&
+            diffAttrsSet.size === 0 &&
+            Array.from(prevAttrsSet).every(
+                (attr) => next.getAttribute(attr.name) === attr.value,
+            )
+        ) {
+            return;
+        }
+
+        // Do changes to prev to match next, assuming we have to clear old ones
+        for (let attr of diffAttrsSet) {
+            prev.removeAttribute(attr.name);
+        }
+        for (let attr of nextAttrsSet) {
+            prev.setAttribute(attr.name, attr.value);
+        }
+    }
+
+    private patchSvgChildren(oldBranch: SVGElement, newBranch: SVGElement) {
+
+        if ( !newBranch.hasChildNodes() ) {
+            return; // reuse without changes placeholder
+        }
+
+        const oldNodes = Array.from(oldBranch.childNodes);
+        const isSvgRoot = oldBranch.tagName.toLowerCase() === "svg";
+
+        const reuseTids = Array.from(
+            newBranch.querySelectorAll("g[data-reuse-from]"),
+        ).map((n) => n.getAttribute("data-reuse-from") || "");
+
+        // Old nodes: leave in DOM only <g> with data-tid from reuse pool of a diffSvg branch,
+        // make array of tids while you are at it
+        // SVG header has <defs> and <style> are not removable, patched separately
+        const oldTids: string[] = [];
+        const oldMap = new Map<string, Element>();
+        for (const node of oldNodes) {
+            const tid = (node as Element).getAttribute("data-tid");
+            const tagName = (node as Element).tagName.toLowerCase();
+            if (isSvgRoot && (tagName === "defs" || tagName === "style")) {
+                continue;
+            }
+            if (
+                node.nodeType !== Node.ELEMENT_NODE ||
+                tagName !== "g" ||
+                !tid ||
+                reuseTids.indexOf(tid) === -1
+            ) {
+                node.remove();
+                continue;
+            }
+            oldTids.push(tid);
+            oldMap.set(tid, node as Element);
+        }
+
+        function getInsertFn(pinnedTid: string) {
+            const pinnedNode = oldMap.get(pinnedTid) || null;
+            return !pinnedNode
+                ? (node: Node) => oldBranch.appendChild(node)
+                : (node: Node) => oldBranch.insertBefore(node, pinnedNode);
+        }
+
+        // List of old tids that will not be moved (but still might need some patching)
+        const preserve = this.esoteric(oldTids, reuseTids);
+        let currentTid = preserve.shift();
+        let insertFn = getInsertFn(currentTid || "");
+
+        let newNodes = Array.from(newBranch.childNodes);
+        if (isSvgRoot) {
+            newNodes = newNodes.slice(3); // skip header, it is patched separately
+        }
+
+        // not preserved old nodes will be reattached, we have to make sure though
+        // that if the old node is reused more than once, it's cloned and not moved
+        const checkTids = new Set(oldTids);
+        for (const newNode of newNodes) {
+            const reuseFrom = (newNode as Element).getAttribute(
+                "data-reuse-from",
+            ) || '';
+            if (!reuseFrom) {
+                insertFn(newNode);
+                continue;
+            }
+            if (currentTid && reuseFrom === currentTid) {
+                checkTids.delete(currentTid);
+                currentTid = preserve.shift();
+                insertFn = getInsertFn(currentTid || "");
+
+                const oldNode = oldMap.get(reuseFrom)!;
+                this.patchAttributes(oldNode, newNode as Element,);
+                this.patchSvgChildren(oldNode as SVGElement, newNode as SVGElement,);
+                continue;
+            }
+
+            const oldNode = checkTids.has(reuseFrom)
+                ? oldMap.get(reuseFrom)
+                : oldMap.get(reuseFrom)?.cloneNode(true);
+            checkTids.delete(reuseFrom);
+            insertFn(oldNode!);
+
+            this.patchAttributes(oldNode! as Element, newNode as Element);
+            this.patchSvgChildren(oldNode! as SVGElement, newNode as SVGElement);
+        }
+    }
+
+    // Finds longest common sparse subsequence, allowing to preserve maximum number of nodes without cloning or moving
+    private esoteric(oldHashes: string[], newHashes: string[]) {
+        let paths = oldHashes.map((n, i) => ({
+            next: i,
+            trail: [] as number[],
+        }));
+
+        newHashes.forEach((n, i) => {
+            let expected_next: number[] = [];
+            let removes: number[] = [];
+            for (var j = 0; j < paths.length; j++) {
+                if (n !== oldHashes[paths[j].next]) {
+                    continue;
+                }
+
+                if (paths[j].trail.length === 0) {
+                    // means that longer trail is at the same place waiting for the same node
+                    if (expected_next.indexOf(paths[j].next) !== -1) {
+                        removes.push(j);
+                        continue;
+                    }
+                    // Copy the longest trail of preceding nodes
+                    // Usually it means there was a missed node from sequence, like AB DE
+                    // AB is waiting for C, you make ABD and go forward from there
+                    const trl =
+                        paths
+                            .filter(
+                                (p) =>
+                                    p.trail[p.trail.length - 1] < paths[j].next,
+                            )
+                            .toSorted(
+                                (a, b) => b?.trail.length - a?.trail.length,
+                            )[0]?.trail || [];
+                    paths[j].trail = Array.from(trl); // clone, not to tint the source trail
+                }
+
+                paths[j].trail.push(paths[j].next);
+                expected_next.push(paths[j].next);
+                paths[j].next++;
+            }
+            // Logically just one, but just in case
+            for (let rm = removes.length - 1; rm > -1; rm--) {
+                paths.splice(removes[rm], 1);
+            }
+        });
+
+        const longest = paths.sort((a, b) => b.trail.length - a.trail.length)[0]
+            ?.trail || [];
+
+        return longest.map((t) => oldHashes[t]);
     }
 
     private handleZoomIn(): void {
@@ -405,7 +668,7 @@ export class PreviewRenderer {
             return;
         }
 
-        button.disabled = (payload.label === "connecting");
+        button.disabled = payload.label === "connecting";
         button.textContent = payload.label;
         button.setAttribute("title", payload.label);
     }
@@ -508,7 +771,6 @@ export class PreviewRenderer {
         width: number,
         height: number,
     ): void {
-
         const viewportWidth = this.previewElement.clientWidth;
         const viewportHeight = this.previewElement.clientHeight;
         if (viewportWidth <= 0 || viewportHeight <= 0) {
@@ -519,9 +781,11 @@ export class PreviewRenderer {
         const marginY = Math.max(24, Math.min(120, viewportHeight * 0.1));
 
         const minVisibleX = this.previewElement.scrollLeft + marginX;
-        const maxVisibleX = this.previewElement.scrollLeft + viewportWidth - marginX;
+        const maxVisibleX =
+            this.previewElement.scrollLeft + viewportWidth - marginX;
         const minVisibleY = this.previewElement.scrollTop + marginY;
-        const maxVisibleY = this.previewElement.scrollTop + viewportHeight - marginY;
+        const maxVisibleY =
+            this.previewElement.scrollTop + viewportHeight - marginY;
 
         const cursorLeft = contentX - width / 2;
         const cursorRight = contentX + width / 2;

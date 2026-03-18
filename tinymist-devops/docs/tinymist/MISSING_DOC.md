@@ -403,6 +403,12 @@ WASM provides high-performance operations:
 
   // Works but needs a morphing library to be useful
   // comes as SVG string with data-reuse-from="data-tid hash" attributes as replacement/morphing hooks
+  // "At most time, the data-tid is exactly their content hash. A disambiguation suffix is added when the content hash is not unique."
+  //The data-reuse=(data-tid of reused element)
+
+  // The idea apparently is that svg-diff will mostly come with pages without content. Page node with empty content usually have hashes tid===reuse-from means reuse itself : the page should stay and it's content is not changed. (removed if they are not in the list). That alone should dramatically reduce overhaul for small changes in large documents.
+  // Esoteric function in render.ts is minimizing node movements during the patch. So far patching allows to avoid freezing while editing 1K lines doc full of formulas.
+
   const svgDiff = session.renderSvgDiff({data_selection: { body: true, defs: true, css: false, js: false }});
 
   // Default render appends css and js on every render. It's always the same. CSS will work if appended.
@@ -654,6 +660,8 @@ A: Yes—when updates are frequent or SVGs are large. renderSvgDiff + patchRoot 
 ```ts
 import { createTypstRenderer } from 'typst';
 import { patchRoot } from 'typst/render/svg/patch.mjs';
+// in typst.ts\packages\typst.ts\src\render\svg\patch.mts
+
 
 const mount = document.getElementById('preview')!;
 
@@ -800,7 +808,6 @@ My text
 #include "styles.typ" runs the top‑level #set and also makes heading available.
 #import "styles.typ": heading only brings in heading; it does not run the top‑level #set line.
 ```
-
 
 ### LSP initiation
 
