@@ -115,53 +115,50 @@ const options = {
     },
 };
 
-Promise.all([
-    esbuild.build({
-        ...options,
-        entryPoints,
-        outdir
-    }),
-    esbuild.build({
-        ...options,
-        entryPoints: tinymistEntryPoints,
-        outdir: tinymistOutDir,
-    }),
-])
-    .then(([coreResult, tinymistResult]) => {
-        fs.writeFileSync(
-            "esbuild-meta.json",
-            JSON.stringify({
-                core: coreResult.metafile,
-                tinymist: tinymistResult.metafile,
-            }),
-        );
-    })
-    .catch(() => process.exit(1));
-
 if (mode === "watch") {
     options.inject = [path.join(__dirname, "./livereload.js")];
 }
 
-const ctx = await esbuild.context(options);
-
 if (mode === "watch") {
+    const ctx = await esbuild.context(options);
+
     // Watch for changes and rebuild on change
-    ctx.watch({});
-    let {hosts, port} = await ctx.serve({
+    await ctx.watch();
+    await ctx.serve({
         servedir: path.join(__dirname, "../../public"),
         cors: {
             origin: "*",
         },
     });
 } else {
-    // Build with meta output for analysis
-    const result = await ctx.rebuild();
-    const outputs = result.metafile.outputs;
-    const files = Object.keys(outputs);
-    for (const file of files) {
-        const output = outputs[file];
+    const [coreResult, tinymistResult] = await Promise.all([
+        esbuild.build({
+            ...options,
+            entryPoints,
+            outdir,
+        }),
+        esbuild.build({
+            ...options,
+            entryPoints: tinymistEntryPoints,
+            outdir: tinymistOutDir,
+        }),
+    ]);
+
+    const allOutputs = {
+        ...coreResult.metafile.outputs,
+        ...tinymistResult.metafile.outputs,
+    };
+
+    for (const file of Object.keys(allOutputs)) {
+        const output = allOutputs[file];
         console.log(`Written: ${file} @ ${Math.round(output.bytes / 1000)}kB`);
     }
-    fs.writeFileSync("esbuild-meta.json", JSON.stringify(result.metafile));
-    process.exit(0);
+
+    fs.writeFileSync(
+        "esbuild-meta.json",
+        JSON.stringify({
+            core: coreResult.metafile,
+            tinymist: tinymistResult.metafile,
+        }),
+    );
 }
