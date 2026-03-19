@@ -6,6 +6,7 @@ use BookStack\Entities\Models\Page;
 use BookStack\Extensions\Tinymist\Tools\TinymistPandocService;
 use BookStack\Extensions\Tinymist\Tools\TinymistPreviewManager;
 use BookStack\Extensions\Tinymist\Tools\TinymistService;
+use BookStack\Uploads\Attachment;
 use BookStack\Http\Controller;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -253,12 +254,14 @@ class TinymistController extends Controller
 
     protected function rewriteTypstAttachmentUrls(string $typst, Page $page): string
     {
+        /** @var \Illuminate\Support\Collection<int, Attachment> $attachments */
         $attachments = $page->attachments()->get();
         if ($attachments->isEmpty()) {
             return $typst;
         }
 
         $fileNameById = [];
+        /** @var Attachment $attachment */
         foreach ($attachments as $attachment) {
             if ($attachment->external) {
                 continue;

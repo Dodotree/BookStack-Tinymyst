@@ -2,6 +2,54 @@
 
 ## To Typst
 
+### KaTeX / Notion pre-clean before Pandoc
+
+Pre-cleaning helps a lot. Main rule: **before Pandoc, normalize to LaTeX-like math**, not Typst syntax.
+If you inject Typst (`#text`, `#box`, `#h`) too early, Pandoc math parsing often degrades.
+
+Recommended pipeline:
+
+1. Extract/target only math regions (`$...$`, `$$...$$`, `\(...\)`, `\[...\]`).
+2. Apply KaTeX/Notion normalization rules.
+3. Run Pandoc to Typst.
+4. Optional post-pass for Typst-only styling constructs.
+
+Good **pre-Pandoc** normalizations (LaTeX-safe):
+
+- Double-escaped line breaks from exports:
+  - `s/\\\\/ /g`
+- HTML entities in math:
+  - `s/&lt;/</g`
+  - `s/&gt;/>/g`
+  - `s/&amp;/&/g`
+- KaTeX wrappers:
+  - `s/\\html(?:Class|Id|Style|Data)\{[^}]*\}\{([^}]*)\}/$1/g`
+- Style switches that usually do not carry semantic meaning:
+  - `s/\\(?:display|text|script|scriptscript)style\b//g`
+- Remove visual-only labels that break conversion:
+  - `s/\\tag\*?\{[^}]*\}//g`
+- Normalize spacing commands:
+  - `s/\\kern\{([^}]*)\}/\\hspace{$1}/g`
+
+Useful additional normalizations:
+
+- Strip scalable delimiters when they cause parser issues:
+  - `s/\\left\s*//g`
+  - `s/\\right\s*//g`
+- Convert `\operatorname*` to `\operatorname` when star form breaks output:
+  - `s/\\operatorname\*/\\operatorname/g`
+
+Keep these as **post-Pandoc Typst pass** (do not do before Pandoc):
+
+- `\\textcolor{c}{x}` -> Typst `text(fill: ...)[...]`
+- `\\boxed{x}` -> Typst `box(...)`
+- `\\cancel{x}`, `\\sout{x}` -> Typst equivalents/macros
+- Any `#...` Typst constructs
+
+Practical tip: run regex cleanup only inside math spans. Applying globally can damage prose/backslashes.
+
+If conversion still leaves commented math, the next step is usually a tiny AST/Lua filter in Pandoc to rewrite problematic math nodes before Typst emission.
+
 - [Pandoc](https://pandoc.org/): best general-purpose pipeline tool.
 Good when your source is Markdown/HTML/Docx/LaTeX and you want Typst output.
 Typical usage: pandoc input.html -t typst -o output.typ.

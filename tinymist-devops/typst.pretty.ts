@@ -1,4 +1,8 @@
 // reconstruction of typst.svg.js which WASM appends to rendered SVG by default
+// original code is available at "packages\enhanced-typst-svg"
+// the SVG foreignObject content is primarily a source scaffold; this script turns it into a dedicated HTML interaction layer on top of the rendered SVG
+// it autoruns at first but after svg update window.typstProcessSvg(docRoot) can be called, but it will add an overlay each time.
+// prepares hidden/semantic text layers and hints so existing mechanisms (like browser Ctrl+F or host app search) can work better against SVG content. The script focuses on selection/copy/link behavior plus location jump handling
 
 const ignoredEvent = function () {
   const history: Record<string, number> = {};
