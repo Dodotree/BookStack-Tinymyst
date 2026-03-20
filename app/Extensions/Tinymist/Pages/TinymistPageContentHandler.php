@@ -22,6 +22,12 @@ class TinymistPageContentHandler
     {
         $page->markdown = $source;
 
+        if ($page->draft) {
+            $page->html = '';
+            $page->text = $this->toPlainTextFromTypst($source);
+            return;
+        }
+
         $result = $this->tinymistService->compileToSvg($source, ['pageId' => $page->id]);
 
         if ($result['success']) {

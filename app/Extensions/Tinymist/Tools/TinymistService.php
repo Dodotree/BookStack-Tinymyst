@@ -37,6 +37,7 @@ class TinymistService
     {
         $pageId = isset($options['pageId']) ? (int)$options['pageId'] : 0;
         $useStorage = $pageId > 0;
+        $commandId = uniqid('typst_', true);
 
         if ($useStorage) {
             $inputFile = $this->writeSourceToStorage($pageId, $source);
@@ -66,9 +67,31 @@ class TinymistService
             // www-data ALL=(tinymist) NOPASSWD: /var/www/bookstack/vendor/bin/typst
             $command = DIRECTORY_SEPARATOR === '\\' ?  $command : "sudo -n -u tinymist -- " . $command;
 
+            $startedAt = microtime(true);
+            $this->logTypstCommand([
+                'event' => 'start',
+                'command_id' => $commandId,
+                'page_id' => $pageId,
+                'input_file' => $inputFile,
+                'output_template' => $outputTemplate,
+                'command' => $command,
+            ]);
+
             exec($command, $output, $returnCode);
+            $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
 
             $svgFiles = glob($outputGlob) ?: [];
+
+            $this->logTypstCommand([
+                'event' => 'finish',
+                'command_id' => $commandId,
+                'page_id' => $pageId,
+                'return_code' => $returnCode,
+                'duration_ms' => $durationMs,
+                'svg_file_count' => count($svgFiles),
+                'output_line_count' => count($output),
+                'output_tail' => $this->tailOutput($output),
+            ]);
 
             if ($returnCode !== 0 || count($svgFiles) === 0) {
                 // Parse errors from short diagnostic format
@@ -118,6 +141,13 @@ class TinymistService
                 'source_length' => strlen($source),
             ]);
 
+            $this->logTypstCommand([
+                'event' => 'exception',
+                'command_id' => $commandId,
+                'page_id' => $pageId,
+                'error' => $e->getMessage(),
+            ]);
+
             // Cleanup on error
             if (!$useStorage) {
                 @unlink($inputFile);
@@ -133,6 +163,29 @@ class TinymistService
                 'diagnostics' => [],
             ];
         }
+    }
+
+    protected function logTypstCommand(array $payload): void
+    {
+        try {
+            $logFile = storage_path('logs/tinymist-php-typst.log');
+            $line = '[' . date('Y-m-d H:i:s') . '] ' . json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . PHP_EOL;
+            @file_put_contents($logFile, $line, FILE_APPEND | LOCK_EX);
+        } catch (\Throwable $logError) {
+            Log::warning('Failed to write tinymist php typst log', [
+                'error' => $logError->getMessage(),
+            ]);
+        }
+    }
+
+    protected function tailOutput(array $output, int $maxLines = 20): array
+    {
+        $lines = array_values($output);
+        if (count($lines) <= $maxLines) {
+            return $lines;
+        }
+
+        return array_slice($lines, -$maxLines);
     }
 
     /**
