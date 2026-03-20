@@ -28,10 +28,12 @@ class CleanupRuntimeFilesCommand extends Command
     public function handle(): int
     {
         $clockworkDeleted = $this->cleanupClockwork();
+        $tinymistLogsDeleted = $this->cleanupTinymistLogs();
         $logsDeleted = $this->cleanupLogs();
         [$previewFilesDeleted, $previewDirsDeleted] = $this->cleanupTinymistPreviewStorage();
 
         $this->comment("Deleted {$clockworkDeleted} old clockwork file(s)");
+        $this->comment("Deleted {$tinymistLogsDeleted} old Tinymist log file(s)");
         $this->comment("Deleted {$logsDeleted} old log file(s)");
         $this->comment("Deleted {$previewFilesDeleted} old preview file(s) and {$previewDirsDeleted} idle preview directory(ies)");
 
@@ -52,8 +54,65 @@ class CleanupRuntimeFilesCommand extends Command
         $cutoff = time() - (60 * 60 * 24);
 
         return $this->deleteFilesOlderThan($path, $cutoff, function (SplFileInfo $file): bool {
-            return $file->getBasename() !== '.gitignore';
+            $basename = $file->getBasename();
+
+            if ($basename === '.gitignore') {
+                return false;
+            }
+
+            if ($basename === 'tinymist-php-typst.log') {
+                return false;
+            }
+
+            if ($basename === 'tinymist-lsp-unhandled-notifications.log') {
+                return false;
+            }
+
+            if (str_starts_with($basename, 'tinymist-lsp-')) {
+                return false;
+            }
+
+            return true;
         });
+    }
+
+    protected function cleanupTinymistLogs(): int
+    {
+        $path = storage_path('logs');
+        $cutoff = time() - (60 * 60 * 24);
+
+        if (!is_dir($path)) {
+            return 0;
+        }
+
+        $patterns = [
+            'tinymist-php-typst.log',
+            'tinymist-lsp-unhandled-notifications.log',
+            'tinymist-lsp-*.log',
+        ];
+
+        $targets = [];
+        foreach ($patterns as $pattern) {
+            foreach (File::glob($path . DIRECTORY_SEPARATOR . $pattern) as $filePath) {
+                if (is_file($filePath)) {
+                    $targets[$filePath] = true;
+                }
+            }
+        }
+
+        $deleted = 0;
+        foreach (array_keys($targets) as $filePath) {
+            $fileMtime = $this->safeFileMtime($filePath);
+            if (is_null($fileMtime) || $fileMtime >= $cutoff) {
+                continue;
+            }
+
+            if (@unlink($filePath)) {
+                $deleted++;
+            }
+        }
+
+        return $deleted;
     }
 
     /**

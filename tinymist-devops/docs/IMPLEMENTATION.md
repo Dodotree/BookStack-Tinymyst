@@ -71,6 +71,7 @@ Installed into project `vendor/bin` with platform-specific executable naming.
   - main source file: `entry.typ`
 - Compiled viewer HTML: `storage/app/tinymist/preview/page_{id}.html`
 - Typst command log (PHP side): `storage/logs/tinymist-php-typst.log`
+- Unhandled LSP notifications log (Node file-sync): `storage/logs/tinymist-lsp-unhandled-notifications.log`
 
 ---
 

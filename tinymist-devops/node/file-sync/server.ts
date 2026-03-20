@@ -2,6 +2,7 @@ import { config } from "dotenv";
 import { WebSocketServer, WebSocket, RawData } from "ws";
 import { createServer, IncomingMessage } from "http";
 import { join } from "path";
+import { appendFileSync, mkdirSync } from "fs";
 import { FileManager, LspContentChange } from "./file-manager";
 import { LSPClient } from "./lsp-client";
 import { verifyRequestToken, verifyNewToken, AuthToken } from "../token-helper";
@@ -101,6 +102,12 @@ const HEARTBEAT_INTERVAL_MS = 20_000;
 const STALE_TIMEOUT_MS = 45_000;
 const IDLE_TIMEOUT_MS = 5 * 60_000; // 5 minutes
 const SEMANTIC_TOKEN_DEBOUNCE_MS = 300;
+const UNHANDLED_LSP_LOG_FILE = join(
+    process.cwd(),
+    "storage",
+    "logs",
+    "tinymist-lsp-unhandled-notifications.log",
+);
 
 // LSP client globals
 const connections = new Map<WebSocket, ConnectionContext>();
@@ -134,6 +141,25 @@ function notifyAllLspStatus(status: "down" | "restarting", details?: unknown): v
         code,
         message: details ? `${message}: ${String(details)}` : message,
     });
+}
+
+function logUnhandledLspNotification(method: string, params: unknown, reason: string): void {
+    try {
+        mkdirSync(join(process.cwd(), "storage", "logs"), { recursive: true });
+        const payload = {
+            ts: new Date().toISOString(),
+            reason,
+            method,
+            params,
+        };
+        appendFileSync(
+            UNHANDLED_LSP_LOG_FILE,
+            `${JSON.stringify(payload)}\n`,
+            "utf8",
+        );
+    } catch (error) {
+        console.error("[LSP] Failed to write unhandled notification log:", error);
+    }
 }
 
 function getSession(pageId: number): PageSession {
@@ -322,7 +348,7 @@ class PageSession {
         }
     }
 
-    handleLspNotification(method: string, params: any, fileName: string): void {
+    handleLspNotification(method: string, params: any, fileName: string): boolean {
         if (method === "textDocument/publishDiagnostics") {
             console.log(
                 "[LSP] Diagnostics:",
@@ -334,7 +360,10 @@ class PageSession {
                 fileName,
                 Array.isArray(params.diagnostics) ? params.diagnostics : []
             );
+            return true;
         }
+
+        return false;
     }
 
     handleTokenUpdate( // Token renewal from single browser
@@ -825,7 +854,14 @@ async function initializeLSPClient(): Promise<void> {
         stderrLogFile: logFile,
         onNotification: (method, params) => {
             const resolved = findNotificationSession(params);
-            resolved?.session.handleLspNotification(method, params, resolved.fileName);
+            if (!resolved) {
+                logUnhandledLspNotification(method, params, "unresolved-session");
+            } else {
+                const handled = resolved.session.handleLspNotification(method, params, resolved.fileName);
+                if (!handled) {
+                    logUnhandledLspNotification(method, params, "unhandled-method");
+                }
+            }
             console.log(`[LSP] Notification: ${method}, filename: ${resolved?.fileName}`);
         },
         onError: (error) => {

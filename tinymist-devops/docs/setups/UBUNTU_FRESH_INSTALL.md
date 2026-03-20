@@ -628,6 +628,11 @@ git gc --aggressive --prune=now
 # Clean old logs
 find storage/logs -name "*.log" -mtime +30 -delete
 
+# Tinymist-specific logs are also under storage/logs and cleaned by the line above,
+# including:
+# - tinymist-php-typst.log
+# - tinymist-lsp-unhandled-notifications.log
+
 # Clean Laravel caches
 php artisan cache:clear
 php artisan view:clear
