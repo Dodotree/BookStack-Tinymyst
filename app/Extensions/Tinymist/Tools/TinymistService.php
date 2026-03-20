@@ -38,16 +38,18 @@ class TinymistService
         $pageId = isset($options['pageId']) ? (int)$options['pageId'] : 0;
         $useStorage = $pageId > 0;
         $commandId = uniqid('typst_', true);
+        $outputDir = null;
 
         if ($useStorage) {
             $inputFile = $this->writeSourceToStorage($pageId, $source);
-            $outputTemplate = dirname($inputFile) . DIRECTORY_SEPARATOR . 'render-{p}.svg';
+            $outputDir = $this->createTempDirectory('tinymist_svg_' . $pageId . '_');
+            $outputTemplate = $outputDir . DIRECTORY_SEPARATOR . 'render-{p}.svg';
         } else {
             $inputFile = $this->createTempFile($source, '.typ');
             $outputTemplate = $inputFile . '-{p}.svg';
         }
         $outputGlob = $useStorage
-            ? (dirname($inputFile) . DIRECTORY_SEPARATOR . 'render-*.svg')
+            ? ($outputDir . DIRECTORY_SEPARATOR . 'render-*.svg')
             : ($inputFile . '-*.svg');
 
         try {
@@ -128,6 +130,9 @@ class TinymistService
             foreach ($svgFiles as $svgFile) {
                 @unlink($svgFile);
             }
+            if ($outputDir && is_dir($outputDir)) {
+                @rmdir($outputDir);
+            }
 
             return [
                 'success' => true,
@@ -154,6 +159,9 @@ class TinymistService
             }
             foreach (glob($outputGlob) ?: [] as $svgFile) {
                 @unlink($svgFile);
+            }
+            if ($outputDir && is_dir($outputDir)) {
+                @rmdir($outputDir);
             }
 
             return [
@@ -211,6 +219,21 @@ class TinymistService
         $tempFile = tempnam($this->tempDir, 'tinymist_') . $extension;
         file_put_contents($tempFile, $content);
         return $tempFile;
+    }
+
+    protected function createTempDirectory(string $prefix = 'tinymist_'): string
+    {
+        $tempBase = tempnam($this->tempDir, $prefix);
+        if ($tempBase === false) {
+            throw new \RuntimeException('Failed to create temporary directory path');
+        }
+
+        @unlink($tempBase);
+        if (!mkdir($tempBase, 0755, true) && !is_dir($tempBase)) {
+            throw new \RuntimeException('Failed to create temporary directory');
+        }
+
+        return $tempBase;
     }
 
     protected function writeSourceToStorage(int $pageId, string $content): string
