@@ -229,9 +229,10 @@ class TinymistService
         }
 
         @unlink($tempBase);
-        if (!mkdir($tempBase, 0755, true) && !is_dir($tempBase)) {
+        if (!mkdir($tempBase, 0777, true) && !is_dir($tempBase)) {
             throw new \RuntimeException('Failed to create temporary directory');
         }
+        @chmod($tempBase, 0777);
 
         return $tempBase;
     }
