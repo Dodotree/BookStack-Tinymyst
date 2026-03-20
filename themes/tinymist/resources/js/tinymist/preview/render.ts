@@ -21,7 +21,6 @@ import {
     tmEvents,
     tmSelectors,
 } from "../constants";
-import { c } from "@codemirror/legacy-modes/mode/clike";
 
 export class PreviewRenderer {
     private paneSelector: string;

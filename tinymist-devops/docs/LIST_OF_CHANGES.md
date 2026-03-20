@@ -48,7 +48,7 @@ see MERGE.md***
 ### Core backend
 
 - `app/Config/app.php` (provider registration reference only)
-- `app/Entities/Controllers/PageController.php` (add tinymist to list of inputs)
+- `app/Entities/Controllers/PageController.php` (add tinymist to list of inputs and remove from navigation outline)
 - `app/Entities/Repos/PageRepo.php` (Tinymist save/draft bridge calls)
 - `app/Entities/Tools/PageContent.php` (`setNewTinymist(...)`)
 - `app/Entities/Tools/PageEditorType.php` (Tinymist enum case)

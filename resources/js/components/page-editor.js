@@ -45,7 +45,18 @@ export class PageEditor extends Component {
             frequency: 30000,
             last: 0,
             pendingChange: false,
+            inProgress: false,
+            failCount: 0,
+            blockedUntil: 0,
+            lastErrorAt: 0,
         };
+        this.network = {
+            online: typeof navigator !== 'undefined' ? navigator.onLine !== false : true,
+            lastOfflineNoticeAt: 0,
+        };
+        this.offlineNoticeIntervalMs = 60000;
+        this.onNetworkOnline = this.onNetworkOnline.bind(this);
+        this.onNetworkOffline = this.onNetworkOffline.bind(this);
         this.shownWarningsCache = new Set();
 
         if (this.pageId !== 0 && this.draftsEnabled) {
@@ -90,6 +101,29 @@ export class PageEditor extends Component {
 
         // Change editor controls
         onSelect(this.changeEditorButtons, this.changeEditor.bind(this));
+
+        window.addEventListener('online', this.onNetworkOnline);
+        window.addEventListener('offline', this.onNetworkOffline);
+    }
+
+    onNetworkOnline() {
+        this.network.online = true;
+        this.autoSave.blockedUntil = 0;
+    }
+
+    onNetworkOffline() {
+        this.network.online = false;
+        this.notifyOfflineStatus();
+    }
+
+    notifyOfflineStatus() {
+        const now = Date.now();
+        if (now - this.network.lastOfflineNoticeAt < this.offlineNoticeIntervalMs) {
+            return;
+        }
+
+        window.$events.emit('warning', 'Offline: draft autosave is temporarily unavailable. Changes stay in this browser until connection returns.');
+        this.network.lastOfflineNoticeAt = now;
     }
 
     setInitialFocus() {
@@ -108,6 +142,19 @@ export class PageEditor extends Component {
     }
 
     runAutoSave() {
+        if (!this.network.online) {
+            this.notifyOfflineStatus();
+            return;
+        }
+
+        if (this.autoSave.inProgress) {
+            return;
+        }
+
+        if (Date.now() < this.autoSave.blockedUntil) {
+            return;
+        }
+
         // Stop if manually saved recently to prevent bombarding the server
         const savedRecently = (Date.now() - this.autoSave.last < (this.autoSave.frequency) / 2);
         if (savedRecently || !this.autoSave.pendingChange) {
@@ -122,6 +169,20 @@ export class PageEditor extends Component {
     }
 
     async saveDraft() {
+        if (!this.network.online) {
+            this.persistFailedDraft({
+                name: this.titleElem.value.trim(),
+                ...(await this.getEditorComponent().getContent()),
+            });
+            this.notifyOfflineStatus();
+            return false;
+        }
+
+        if (this.autoSave.inProgress) {
+            return false;
+        }
+
+        this.autoSave.inProgress = true;
         const data = {name: this.titleElem.value.trim()};
 
         const editorContent = await this.getEditorComponent().getContent();
@@ -144,19 +205,85 @@ export class PageEditor extends Component {
 
             didSave = true;
             this.autoSave.pendingChange = false;
+            this.autoSave.failCount = 0;
+            this.autoSave.blockedUntil = 0;
         } catch {
-            // Save the editor content in LocalStorage as a last resort, just in case.
-            try {
-                const saveKey = `draft-save-fail-${(new Date()).toISOString()}`;
-                window.localStorage.setItem(saveKey, JSON.stringify(data));
-            } catch (lsErr) {
-                console.error(lsErr);
-            }
+            this.autoSave.failCount += 1;
+            const backoffMs = Math.min(300000, Math.max(this.autoSave.frequency, 10000)
+                * this.autoSave.failCount);
+            this.autoSave.blockedUntil = Date.now() + backoffMs;
 
-            window.$events.emit('error', this.autosaveFailText);
+            // Save the editor content in LocalStorage as a last resort, just in case.
+            this.persistFailedDraft(data);
+
+            const now = Date.now();
+            const notifyIntervalMs = 60000;
+            if (now - this.autoSave.lastErrorAt >= notifyIntervalMs) {
+                window.$events.emit('error', this.autosaveFailText);
+                this.autoSave.lastErrorAt = now;
+            }
+        } finally {
+            this.autoSave.inProgress = false;
         }
 
         return didSave;
+    }
+
+    persistFailedDraft(data) {
+        const saveKey = `draft-save-fail-page-${this.pageId}`;
+
+        try {
+            const payload = this.buildDraftRecoveryPayload(data);
+            window.localStorage.setItem(saveKey, JSON.stringify(payload));
+            return;
+        } catch (error) {
+            if (!(error instanceof DOMException) || error.name !== 'QuotaExceededError') {
+                console.error(error);
+                return;
+            }
+        }
+
+        try {
+            this.clearLegacyFailedDraftEntries();
+            const payload = this.buildDraftRecoveryPayload(data, 200000);
+            window.localStorage.setItem(saveKey, JSON.stringify(payload));
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    clearLegacyFailedDraftEntries() {
+        const keysToDelete = [];
+        for (let i = 0; i < window.localStorage.length; i++) {
+            const key = window.localStorage.key(i);
+            if (typeof key === 'string' && key.startsWith('draft-save-fail-')) {
+                keysToDelete.push(key);
+            }
+        }
+
+        for (const key of keysToDelete) {
+            window.localStorage.removeItem(key);
+        }
+    }
+
+    buildDraftRecoveryPayload(data, perFieldLimit = 0) {
+        const sanitizedData = {};
+
+        for (const [key, value] of Object.entries(data)) {
+            if (typeof value === 'string' && perFieldLimit > 0 && value.length > perFieldLimit) {
+                sanitizedData[key] = value.slice(0, perFieldLimit);
+            } else {
+                sanitizedData[key] = value;
+            }
+        }
+
+        return {
+            savedAt: new Date().toISOString(),
+            pageId: this.pageId,
+            editorType: this.editorType,
+            data: sanitizedData,
+            truncated: perFieldLimit > 0,
+        };
     }
 
     draftNotifyChange(text) {
@@ -248,6 +375,11 @@ export class PageEditor extends Component {
             || window.$components.first('markdown-editor')
             || window.$components.first('wysiwyg-editor')
             || window.$components.first('wysiwyg-editor-tinymce');
+    }
+
+    destroy() {
+        window.removeEventListener('online', this.onNetworkOnline);
+        window.removeEventListener('offline', this.onNetworkOffline);
     }
 
 }

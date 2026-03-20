@@ -14,9 +14,11 @@ add Tinymist provider, 1 line:
 - `app/Entities/Controllers/PageController.php`
 
 ```php
-    $page->html = $pageContent->renderForView(); // instead of render()
-
     $this->pageRepo->updatePageDraft($page, $request->only(['name', 'html', 'markdown', 'tinymist']));
+
+    $pageNav = $page->editor === PageEditorType::Tinymist->value
+        ? []
+        : $pageContent->getNavigation($page->html); // memory sink if parsing large files
 ```
 
 - `app/Entities/Repos/PageRepo.php`
@@ -204,6 +206,17 @@ bookstack updated so watch out for their changes too
 - `resources/js/components/page-editor.js` for autosave support
 
 ```ts
+// preventing pileup of autosaves when server slows down
+// those variables and everything related to them
+            inProgress: false,
+            failCount: 0,
+            blockedUntil: 0,
+            lastErrorAt: 0,
+
+// Also prevention of QuotaExceededError: Failed to execute 'setItem' on 'Storage':
+// Limiting how many failed autosaves can be pushed into local storage
+
+
 73>         window.$events.listen('editor-tinymist-change', onContentChange);
 
     /**

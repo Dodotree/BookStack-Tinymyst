@@ -87,6 +87,15 @@ export class TinymistEditorUI {
     private readonly searchReplace: TinymistSearchReplace;
 
     private fallbackEnabled = false;
+    private isOffline =
+        typeof navigator !== "undefined" ? navigator.onLine === false : false;
+    private readonly onBrowserOnline = () => {
+        this.isOffline = false;
+        this.flushAllPendingChanges();
+    };
+    private readonly onBrowserOffline = () => {
+        this.isOffline = true;
+    };
 
     private getCurrentEditorText(): string {
         if (this.editorView) {
@@ -352,6 +361,9 @@ export class TinymistEditorUI {
     }
 
     setupListeners() {
+        window.addEventListener("online", this.onBrowserOnline);
+        window.addEventListener("offline", this.onBrowserOffline);
+
         window.$tmEventBus.listen(
             tmEvents.SyncFullState,
             this.syncFullStateFromServer,
@@ -638,6 +650,10 @@ export class TinymistEditorUI {
     }
 
     onCursorPositionChange(state: any) {
+        if (this.isOffline) {
+            return;
+        }
+
         if (this.activeFileName !== this.entryFileName) {
             return;
         }
@@ -851,6 +867,10 @@ export class TinymistEditorUI {
             return;
         }
 
+        if (this.isOffline) {
+            return;
+        }
+
         state.docVersion += 1;
 
         // After applying changes back end will be at current docVersion with current content
@@ -878,6 +898,12 @@ export class TinymistEditorUI {
         });
         if (state.snapshots.length > this.maxSnapshots) {
             state.snapshots = state.snapshots.slice(-this.maxSnapshots);
+        }
+    }
+
+    private flushAllPendingChanges(): void {
+        for (const fileName of this.fileStates.keys()) {
+            this.flushPendingChanges(fileName);
         }
     }
 
@@ -1192,6 +1218,9 @@ export class TinymistEditorUI {
     }
 
     destroy() {
+        window.removeEventListener("online", this.onBrowserOnline);
+        window.removeEventListener("offline", this.onBrowserOffline);
+
         for (const fileState of this.fileStates.values()) {
             if (fileState.pendingSendTimer) {
                 clearTimeout(fileState.pendingSendTimer);
