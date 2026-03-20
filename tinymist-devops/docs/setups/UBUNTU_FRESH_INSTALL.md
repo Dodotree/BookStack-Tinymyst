@@ -697,3 +697,37 @@ npm run build
 php artisan optimize:clear
 php artisan queue:restart
 systemctl restart php8.3-fpm.service
+
+## Fonts
+
+sudo apt update
+
+# Try distro packages first
+
+```bash
+sudo apt install -y \
+  fonts-libertinus \
+  fonts-stix \
+  fonts-texgyre \
+  fonts-texgyre-math \
+  fonts-asana-math \
+  fonts-new-computer-modern || true
+
+# Some fonts might need universe repository
+sudo add-apt-repository -y universe
+sudo apt update
+# this will install tons of fonts usually provides the missing math families (including Asana and Libertinus/NewCM variants depending on release).
+sudo apt install -y fonts-stix fonts-texgyre fonts-texgyre-math texlive-fonts-extra
+
+# Refresh font cache
+sudo fc-cache -f -v
+
+fc-list | grep -Ei 'Libertinus|STIX|TeX Gyre|Asana|Computer Modern|New Computer Modern'
+
+# Restart pm2 services
+sudo -u tinymist -H pm2 restart tinymist-ws tinymist-preview
+
+#verify tinymist/typst user can see the fonts
+
+sudo -u tinymist -H /var/www/bookstack/vendor/bin/typst fonts | grep -Ei 'libertine|biolinum'
+```
