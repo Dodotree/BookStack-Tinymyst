@@ -204,7 +204,7 @@ return [
     |
     */
     'ws_token_secret' => env('TINYMIST_WS_SECRET'),
-    'ws_token_ttl' => env('TINYMIST_WS_TOKEN_TTL', 900),
+    'ws_token_ttl' => env('TINYMIST_WS_TOKEN_TTL', 1800),
 
     /*
     |--------------------------------------------------------------------------

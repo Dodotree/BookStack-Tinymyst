@@ -26,24 +26,19 @@ export function verifyRequestToken(request: IncomingMessage): AuthToken {
     );
     const tokenParam =
         url.searchParams.get("token") || request.headers["sec-websocket-protocol"];
-    console.log("Connection attempt:", {
-        url: request.url,
-        hasToken: !!tokenParam,
-    });
 
     if (!tokenParam) {
-        console.error("No token provided");
+        console.warn("[Auth] Missing token in websocket handshake");
         throw new Error("MISSING_TOKEN");
     }
 
     const token = Array.isArray(tokenParam) ? tokenParam[0] : tokenParam;
-    console.log("Extracted token:", token.substring(0, 30) + "...");
 
     let payload: AuthToken;
     try {
         payload = verifyToken(token);
     } catch (err) {
-        console.error("Invalid token during connection", err);
+        console.warn("[Auth] Invalid token in websocket handshake");
         throw new Error("INVALID_TOKEN", { cause: err });
     }
 
@@ -65,7 +60,7 @@ export function verifyNewToken(token: string, pageId: number): AuthToken {
             });
         }
     } catch (err) {
-        console.error("Invalid token during connection", err);
+        console.warn("[Auth] Invalid token update");
         throw new Error("INVALID_TOKEN", { cause: err });
     }
     return payload;
@@ -73,23 +68,14 @@ export function verifyNewToken(token: string, pageId: number): AuthToken {
 
 function verifyToken(token: string): AuthToken {
     try {
-        console.log("Verifying token:", {
-            token: token.substring(0, 20) + "...",
-            secretLength: JWT_SECRET.length,
-        });
         const decoded = jwt.verify(token, JWT_SECRET) as AuthToken;
-        console.log("Token verified successfully:", {
-            user_id: decoded.user_id,
-            page_id: decoded.page_id,
-            exp: decoded.exp,
-        });
         return {
             user_id: Number(decoded.user_id), // "as AuthToken" still returns strings occasionally
             page_id: Number(decoded.page_id),
             exp: decoded.exp,
         };
     } catch (err) {
-        console.error("Token verification failed:", err);
+        console.warn("[Auth] Token verification failed");
         throw new Error("INVALID_TOKEN", { cause: err });
     }
 }

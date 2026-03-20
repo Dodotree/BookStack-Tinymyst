@@ -30,6 +30,7 @@ export abstract class TinymistWebSocketClient {
 
     private reconnectAllowed: boolean = true;
     private reconnectAttempts: number = 0;
+    private waitingForTokenRenewal: boolean = false;
 
     constructor(
         pageId: number,
@@ -85,6 +86,14 @@ export abstract class TinymistWebSocketClient {
                 );
                 return;
             }
+            if (
+                this.socket &&
+                (this.socket.readyState === WebSocket.OPEN ||
+                    this.socket.readyState === WebSocket.CONNECTING)
+            ) {
+                resolve();
+                return;
+            }
             if (!this.token) {
                 reject(new Error(`[${this.config.name}] No token available`));
                 return;
@@ -113,6 +122,7 @@ export abstract class TinymistWebSocketClient {
                 this.socket.onopen = () => {
                     settled = true;
                     this.reconnectAttempts = 0;
+                    this.waitingForTokenRenewal = false;
                     this.clearConnectionTimeout();
                     this.startHeartbeat();
 
@@ -176,10 +186,12 @@ export abstract class TinymistWebSocketClient {
                         console.warn(
                             `[${this.config.name}] Invalid token, requesting renewal`,
                         );
+                        this.waitingForTokenRenewal = true;
+                        this.clearReconnectTimeout();
                         window.$tmEventBus.emit(tmEvents.InvalidToken);
                     }
 
-                    if (event.code !== 1000) {
+                    if (event.code !== 1000 && !this.waitingForTokenRenewal) {
                         this.scheduleReconnect();
                     }
 
@@ -243,6 +255,10 @@ export abstract class TinymistWebSocketClient {
 
     protected scheduleReconnect(): void {
         if (this.reconnectTimeout) {
+            return;
+        }
+
+        if (this.waitingForTokenRenewal) {
             return;
         }
 
@@ -315,6 +331,8 @@ export abstract class TinymistWebSocketClient {
             return;
         }
         this.token = token;
+        this.waitingForTokenRenewal = false;
+        this.reconnectAttempts = 0;
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
             console.log(
                 `[${this.config.name}] Sending token update to node server`,
@@ -322,6 +340,18 @@ export abstract class TinymistWebSocketClient {
             this.sendJson({
                 type: "updateToken",
                 token: token,
+            });
+            return;
+        }
+
+        if (this.reconnectAllowed) {
+            this.clearReconnectTimeout();
+            void this.connect().catch((err) => {
+                console.warn(
+                    `[${this.config.name}] Reconnect after token renewal failed:`,
+                    err,
+                );
+                this.scheduleReconnect();
             });
         }
     }

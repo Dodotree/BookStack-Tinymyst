@@ -13,7 +13,7 @@ class TinymistPreviewManager
     {
         $userId = user()?->id;
         $secret = config('tinymist.ws_token_secret');
-        $ttl = (int) config('tinymist.ws_token_ttl', 900);
+        $ttl = (int) config('tinymist.ws_token_ttl', 1800);
         $issuedAt = time();
 
         if (!$userId) {
