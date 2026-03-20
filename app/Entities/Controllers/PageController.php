@@ -16,6 +16,7 @@ use BookStack\Entities\Tools\NextPreviousContentLocator;
 use BookStack\Entities\Tools\PageContent;
 use BookStack\Entities\Tools\PageEditActivity;
 use BookStack\Entities\Tools\PageEditorData;
+use BookStack\Entities\Tools\PageEditorType;
 use BookStack\Exceptions\NotFoundException;
 use BookStack\Exceptions\PermissionsException;
 use BookStack\Http\Controller;
@@ -151,7 +152,9 @@ class PageController extends Controller
 
         $pageContent = (new PageContent($page));
         $page->html = $pageContent->render();
-        $pageNav = $pageContent->getNavigation($page->html);
+        $pageNav = $page->editor === PageEditorType::Tinymist->value
+            ? []
+            : $pageContent->getNavigation($page->html);
 
         $sidebarTree = (new BookContents($page->book))->getTree();
         $commentTree = (new CommentTree($page));
