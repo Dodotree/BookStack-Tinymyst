@@ -31,11 +31,12 @@ class TinymistService
      *
      * @param string $source Typst source code
      * @param array $options Compilation options
-     * @return array{success: bool, svg: string|null, errors: array}
+     * @return array{success: bool, svg: string|null, errors: array, diagnostics: array, svg_files?: array, artifacts?: array}
      */
     public function compileToSvg(string $source, array $options = []): array
     {
         $pageId = isset($options['pageId']) ? (int)$options['pageId'] : 0;
+        $returnSvgFiles = !empty($options['returnSvgFiles']);
         $useStorage = $pageId > 0;
         $commandId = uniqid('typst_', true);
         $outputDir = null;
@@ -113,6 +114,24 @@ class TinymistService
                 return $pageA <=> $pageB;
             });
 
+            if ($returnSvgFiles) {
+                if (!$useStorage) {
+                    @unlink($inputFile);
+                }
+
+                return [
+                    'success' => true,
+                    'svg' => null,
+                    'errors' => [],
+                    'diagnostics' => [],
+                    'svg_files' => $svgFiles,
+                    'artifacts' => [
+                        'use_storage' => $useStorage,
+                        'output_dir' => $outputDir,
+                    ],
+                ];
+            }
+
             $svgParts = [];
             foreach ($svgFiles as $svgFile) {
                 $svgContent = file_get_contents($svgFile);
@@ -170,6 +189,19 @@ class TinymistService
                 'errors' => [$e->getMessage()],
                 'diagnostics' => [],
             ];
+        }
+    }
+
+    public function cleanupCompileArtifacts(array $result): void
+    {
+        $svgFiles = $result['svg_files'] ?? [];
+        foreach ($svgFiles as $svgFile) {
+            @unlink((string) $svgFile);
+        }
+
+        $outputDir = $result['artifacts']['output_dir'] ?? null;
+        if (is_string($outputDir) && is_dir($outputDir)) {
+            @rmdir($outputDir);
         }
     }
 

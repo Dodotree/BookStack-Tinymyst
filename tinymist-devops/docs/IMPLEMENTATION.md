@@ -1,257 +1,139 @@
 # Tinymist Editor Integration
 
----
+## Overview
 
-## 📦 Installation
+Tinymist integration in this repo is **WebSocket-first** for editing/preview, with a reliable HTTP fallback compile endpoint.
 
-### Binaries Installed
+Current persistence model for Tinymist pages:
 
-Both binaries are automatically installed via `npm install` (postinstall hook):
+- `pages.markdown` → Typst source
+- `pages.text` → searchable plain text extracted from Typst source
+- `pages.html` → intentionally blank for Tinymist saves
+- Rendered page HTML is stored as file in `storage/app/tinymist/preview/page_{id}.html`
 
-1. **Typst CLI v0.12.0**
-   - Location: `vendor/bin/typst.exe`
-   - Size: ~15.5 MB
-   - Purpose: Compiles `.typ` source to SVG
-
-2. **Tinymist v0.13.28**
-   - Location: `vendor/bin/tinymist.exe`
-   - Size: ~47.9 MB
-   - Purpose: Language Server Protocol for Typst (autocomplete, diagnostics)
-   - Note: Currently using Typst CLI only; Tinymist LSP features available for future enhancements
-
-### Installation Scripts
-
-- **`dev/build/download-typst.js`** - Downloads Typst CLI from GitHub releases
-- **`dev/build/download-tinymist.js`** - Downloads Tinymist from GitHub releases
-  - Platform detection
-  - Progress bar during download
-  - Automatic extraction
-  - Installation verification
-
-- **`package.json`** - Updated with: `"postinstall": "node dev/build/download-typst.js && node dev/build/download-tinymist.js"`
-
-Platform support: Windows (x64/ARM64), Linux (x64/ARM64), macOS (x64/ARM64)
+This avoids storing large SVG/HTML blobs in DB and reduces save-time memory pressure.
 
 ---
 
-## Architecture for the fallback without sockets
+## Binaries and Install
 
-### Design Decisions
+Binaries are downloaded during `npm install` via `postinstall` in `package.json`:
 
-1. **Compilation Strategy**: Full document recompilation (simple, reliable)
-2. **Preview Method**: HTTP polling via AJAX
-3. **Database**:
-   - `pages.markdown` → Typst source code
-   - `pages.html` → Compiled SVG output
-   - `pages.text` → Searchable plain text
-   - `pages.editor` → `'tinymist'`
+- `tinymist-devops/download-typst.js`
+- `tinymist-devops/download-tinymist.js`
+- `tinymist-devops/download-pandoc.js`
 
-4. **Technology Stack**:
-   - Backend: PHP Laravel (TinymistService wraps Typst CLI)
-   - Frontend: TypeScript Component + Blade view
-   - Compilation: Typst CLI via PHP `exec()`
+Installed into project `vendor/bin` with platform-specific executable naming.
 
 ---
 
-## 🔄 Workflow
+## Runtime Architecture
 
-### Draft Save (Auto-save every 30s)
+### Editor and Preview
 
-1. User types in CodeMirror editor
-2. `onInput()` fires → emits `'editor-tinymist-change'` event
-3. Page editor's `onContentChange()` sets `pendingChange = true`
-4. Auto-save timer triggers `saveDraft()`
-5. Calls `getContent()` → syncs to textarea → returns `{tinymist: content}`
-6. POSTs to `/ajax/page/{id}/save-draft` with tinymist field
-7. PageRepo's `updatePageDraft()` stores in revision's markdown field
+- Frontend editor uses Tinymist-specific components under `themes/tinymist/resources/js`.
+- WebSocket services run from `tinymist-devops/node`:
+  - file sync + LSP bridge
+  - preview bridge
+- HTTP fallback compile endpoint remains available at `/ajax/tinymist/compile`.
 
-### Full Page Save (User clicks Save)
+### Save Paths
 
-1. User clicks Save button
-2. Page editor calls `savePage()` → triggers form submit
-3. Form submit event fires → `syncContentToTextarea()` runs
-4. CodeMirror content copied to `<textarea name="tinymist">`
-5. Form submits with correct tinymist value and editor type
-6. PageRepo's `updateTemplateStatusAndContentFromInput()` processes:
-   - Checks `!empty($input['tinymist'])`
-   - Sets editor to `PageEditorType::Tinymist`
-   - Calls `$pageContent->setNewTinymist($input['tinymist'], user())`
-7. Content saved to database with correct editor type
+#### Draft Save (`/ajax/page/{id}/save-draft`)
 
-### Creating a New Tinymist Page
+- Stores Tinymist source into draft markdown field (`PageRevision.markdown` for non-draft pages, page markdown for draft pages).
+- Does not perform full publish-save flow.
 
-1. User navigates to "Create Page"
-2. System creates page with default editor (or user selects Tinymist)
-3. Tinymist editor loads with:
-   - Left pane: Typst source textarea
-   - Right pane: Live SVG preview
+#### Full Page Save (form submit)
 
-### Editing Fallback Flow
+1. Page save submits `tinymist` source.
+2. `PageRepo` routes Tinymist input to `PageContent::setNewTinymist()`.
+3. `TinymistPageContentHandler` compiles via Typst CLI.
+4. Multi-page SVG output is streamed into:
+   - `storage/app/tinymist/preview/page_{id}.html`
+5. DB fields updated:
+   - `pages.markdown` set to Typst source
+   - `pages.text` set to extracted plain text
+   - `pages.html` set to empty string
 
-1. User types Typst code in CodeMirror area
-2. After 800ms delay (debounce), frontend calls `/ajax/tinymist/compile`
-3. Backend:
-   - Creates temp file with Typst source
-   - Runs: `typst compile input.typ output.svg --format svg`
-   - Returns SVG or errors
-4. Frontend displays:
-   - Success: Rendered SVG in preview pane
-   - Error: Error messages in error container
+### Page View
 
-### Saving Flow
-
-1. User clicks "Save Page"
-2. `PageEditor.getContent()` calls `TinymistEditor.getContent()`
-3. Returns `{ tinymist: "source code" }`
-4. Backend `PageRepo`:
-   - Detects `input['tinymist']` exists
-   - Calls `PageContent.setNewTinymist()`
-   - Compiles to SVG
-   - Stores:
-     - `pages.markdown` = Typst source
-     - `pages.html` = SVG output (wrapped in `<div class="tinymist-document">`)
-     - `pages.text` = Plain text for search
-     - `pages.editor` = `'tinymist'` bypass the formatHtml(), the formatHtml() method was processing the SVG through PHP's DOMDocument HTML parser, which was stripping out the SVG `<defs>` section and the xlink:href attributes because the HTML5 parser doesn't properly handle SVG namespaces.
-
-### Viewing Flow
-
-1. User views page
-2. `pages.html` contains SVG
-3. Browser renders SVG directly, Bypassed render() method for Tinymist pages to preserve SVG namespaces (since render() method was re-processing the HTML through HtmlDocument which uses DOMDocument->loadHTML(), and that was stripping the SVG namespaces (xlink:href and the `<defs>` section).)
-4. No frontend compilation needed
+- Page controller renders through `PageContent::render()`.
+- For Tinymist editor pages, render path reads HTML from
+  `storage/app/tinymist/preview/page_{id}.html` via Tinymist handler/store.
+- This avoids DOM reprocessing of SVG content and preserves SVG namespaces.
 
 ---
 
-## 🚀 Production Deployment
+## Storage Layout
 
-### Prerequisites
-
-1. **Server Requirements**:
-   - PHP 8.1+
-   - Node.js 16+ (for npm install)
-   - Write access to `vendor/bin/`
-
-2. **Installation**:
-
-   ```bash
-   cd /path/to/bookstack
-   npm install  # Auto-installs Typst & Tinymist
-   php artisan cache:clear
-   php artisan config:clear
-   ```
-
-3. **Configuration** (`.env`):
-
-   ```env
-   APP_THEME=tinymist
-   TINYMIST_ENABLED=true
-   TYPST_CLI_PATH=/path/to/bookstack/vendor/bin/typst.exe
-   TINYMIST_CLI_PATH=/path/to/bookstack/vendor/bin/tinymist.exe
-   TINYMIST_TIMEOUT=30
-   TINYMIST_MAX_SIZE=1024
-   TINYMIST_WS_SECRET=<random 64-hex string>
-   ```
-
-4. **Permissions**:
-
-   ```bash
-   chmod +x vendor/bin/typst.exe
-   chmod +x vendor/bin/tinymist.exe
-   ```
-
-5. **Build Frontend**:
-
-   ```bash
-   npm run production
-   ```
-
-### Path
-
-```php
-# Path Configuration:
-# Add to your `.env` file:
-TYPST_CLI_PATH="${APP_DIR}/vendor/bin/typst.exe"
-
-# or In PHP code
-$typstPath = PHP_OS_FAMILY === 'Windows'
-    ? base_path('vendor/bin/typst.exe')
-    : base_path('vendor/bin/typst');
-```
-
-## Part A: Fix Constructor Fallback for different OS
-
-```php
-// BEFORE (broken on Windows when config not loaded)
-$this->typstPath = config('tinymist.typst_cli_path', 'typst');
-
-// AFTER (uses full path as fallback)
-$this->typstPath = config('tinymist.typst_cli_path')
-    ?? base_path('vendor/bin/typst.exe');
-```
-
-## Part A: Fix Constructor Fallback
-
-```php
-// BEFORE (broken on Windows when config not loaded)
-$this->typstPath = config('tinymist.typst_cli_path', 'typst');
-
-// AFTER (uses full path as fallback)
-$this->typstPath = config('tinymist.typst_cli_path')
-    ?? base_path('vendor/bin/typst.exe');
-```
-
-### Part B: Fix Command Escaping
-
-```php
-// BEFORE (incorrect escaping on Windows)
-$typstCmd = escapeshellarg($this->typstPath);
-$command = sprintf('%s compile %s %s --format svg 2>&1', $typstCmd, ...);
-
-// AFTER (proper Windows path quoting)
-$command = sprintf(
-    '"%s" compile "%s" "%s" --format svg 2>&1',
-    str_replace('"', '\"', $this->typstPath),
-    str_replace('"', '\"', $inputFile),
-    str_replace('"', '\"', $outputFile)
-);
-```
-
-**Why This Works:**
-
-- `escapeshellarg()` was creating `'"path"'` (double-wrapped quotes)
-- Windows `cmd.exe` interpreted this as literal string `"typst"` instead of path
-- Direct double-quote wrapping with escape handling works correctly on Windows
-- `base_path()` ensures absolute path is always used
-
-### Potential Optimizations
-
-1. **Caching**: Cache compiled SVG with content hash
-2. **Incremental Compilation**: Use Tinymist LSP for partial recompilation
-3. **Web Workers**: Move compilation to background thread (if switching to WASM)
+- Typst source + attachments workspace: `storage/app/tinymist/page_{id}/...`
+  - main source file: `entry.typ`
+- Compiled viewer HTML: `storage/app/tinymist/preview/page_{id}.html`
+- Typst command log (PHP side): `storage/logs/tinymist-php-typst.log`
 
 ---
 
-## ✅ Implementation Status
+## Performance and Stability Notes
 
-| Component | Status | Files |
-| --------- | ------ | ------- |
-| **Installation Scripts** | ✅ Complete | `download-typst.js`, `download-tinymist.js` |
-| **Configuration** | ✅ Complete | `app/Config/tinymist.php` |
-| **Backend Enum** | ✅ Complete | `PageEditorType.php` |
-| **Backend Service** | ✅ Complete | `TinymistService.php` |
-| **Backend Content** | ✅ Complete | `PageContent.php`, `PageRepo.php` |
-| **Backend Controller** | ✅ Complete | `TinymistController.php` |
-| **Backend Routes** | ✅ Complete | `routes/web.php` |
-| **Frontend Component** | ✅ Complete | `tinymist-editor.ts` |
-| **Frontend View** | ✅ Complete | `tinymist-editor.blade.php` |
-| **Frontend Integration** | ✅ Complete | `index.ts`, `page-editor.js`, `form.blade.php` |
+### Memory behavior
 
-## Observed occasional problems
+The save path no longer concatenates full SVG into one big PHP string for page storage.
+It now composes output into the preview HTML file using streamed file operations.
 
-- The preview can stop watching the file. Since we do not terminate the session right away, the effect can persist until preview server discards the process
+### Compile execution
 
-### Needs to be done
+- Typst CLI is executed by `TinymistService`.
+- Linux deployments can run Typst under dedicated `tinymist` user (via sudo rule) for network isolation.
 
-- Write unit tests
-- Manual testing with various documents
-- Performance testing with large documents
+### Token/Auth
+
+WebSocket auth token validation supports standard payload claims used by this integration,
+including robust page-id parsing for runtime compatibility.
+
+---
+
+## Fallback HTTP Compile Flow
+
+`/ajax/tinymist/compile` remains useful for diagnostics/fallback:
+
+1. Accept Typst content (+ optional page id)
+2. Run Typst compile
+3. Return SVG/errors JSON for editor preview consumption
+
+This path is separate from full page save persistence behavior.
+
+---
+
+## Deployment Essentials
+
+Required env config (minimum):
+
+- `APP_THEME=tinymist`
+- `TINYMIST_ENABLED=true`
+- `TINYMIST_WS_SECRET=<random 64-hex string>`
+- `TYPST_CLI_PATH=...` (optional if default resolver works)
+- `TINYMIST_CLI_PATH=...` (optional if default resolver works)
+
+For production websocket services, use build/start scripts:
+
+- `npm run ws:build` + `npm run ws:start`
+- `npm run preview:build` + `npm run preview:start`
+
+---
+
+## Current Status
+
+- Tinymist editor integrated with BookStack page editor pipeline.
+- Draft + full save flows operational.
+- File-based viewer HTML persistence implemented.
+- DB `pages.html` no longer used for Tinymist rendered output.
+- WebSocket bridges and token renewal flow integrated.
+
+---
+
+## Remaining Work
+
+- Add targeted unit/integration tests for Tinymist save/view flows.
+- Add optional cleanup strategy for stale preview files.
+- Continue performance testing on large multi-page Typst documents.

@@ -30,16 +30,22 @@ class TinymistPageContentHandler
             return;
         }
 
-        $result = $this->tinymistService->compileToSvg($source, ['pageId' => $page->id]);
+        $result = $this->tinymistService->compileToSvg($source, [
+            'pageId' => $page->id,
+            'returnSvgFiles' => true,
+        ]);
 
-        $viewerHtml = '';
-        if ($result['success']) {
-            $viewerHtml = '<div class="tinymist-document">' . $result['svg'] . '</div>';
-        } else {
-            $viewerHtml = $this->buildErrorHtml($result['errors'] ?? []);
+        try {
+            if ($result['success']) {
+                $this->renderedHtmlStore->storePageHtmlFromSvgFiles($page, $result['svg_files'] ?? []);
+            } else {
+                $viewerHtml = $this->buildErrorHtml($result['errors'] ?? []);
+                $this->renderedHtmlStore->storePageHtml($page, $viewerHtml);
+            }
+        } finally {
+            $this->tinymistService->cleanupCompileArtifacts($result);
         }
 
-        $this->renderedHtmlStore->storePageHtml($page, $viewerHtml);
         $page->html = '';
 
         $page->text = $this->toPlainTextFromTypst($source);
