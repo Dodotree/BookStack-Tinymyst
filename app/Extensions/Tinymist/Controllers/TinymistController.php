@@ -27,7 +27,8 @@ class TinymistController extends Controller
     public function compile(Request $request)
     {
         $content = $request->input('content', '');
-        $pageId = (int)$request->input('page_id', 0);
+        $pageIdInput = $request->input('page_id', $request->input('pageId', 0));
+        $pageId = (int)$pageIdInput;
         $docVersion = $request->input('docVersion');
 
         // Validate content is not empty
