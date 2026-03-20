@@ -68,11 +68,27 @@ export function verifyNewToken(token: string, pageId: number): AuthToken {
 
 function verifyToken(token: string): AuthToken {
     try {
-        const decoded = jwt.verify(token, JWT_SECRET) as AuthToken;
+        const decoded = jwt.verify(token, JWT_SECRET) as Record<string, unknown>;
+        const userId = Number(decoded.user_id);
+        const pageId = Number(decoded.page_id ?? decoded.pageId);
+        const exp = Number(decoded.exp);
+
+        if (!Number.isFinite(userId) || userId <= 0) {
+            throw new Error("INVALID_USER_ID");
+        }
+
+        if (!Number.isFinite(pageId) || pageId <= 0) {
+            throw new Error("MISSING_PAGE_ID");
+        }
+
+        if (!Number.isFinite(exp) || exp <= 0) {
+            throw new Error("INVALID_EXP");
+        }
+
         return {
-            user_id: Number(decoded.user_id), // "as AuthToken" still returns strings occasionally
-            page_id: Number(decoded.page_id),
-            exp: decoded.exp,
+            user_id: userId,
+            page_id: pageId,
+            exp,
         };
     } catch (err) {
         console.warn("[Auth] Token verification failed");

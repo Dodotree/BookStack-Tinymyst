@@ -401,6 +401,75 @@ sudo systemctl restart tinymist-preview.service
 Other options are firejail or iptables owner match (block by user)
 Block outbound traffic for the Linux user that runs Tinymist.
 
+### Small-instance profile (1 GB RAM, prevents OOM/502)
+
+If your server has ~1 GB RAM (or less than 2 GB), use this profile to avoid
+`php-fpm` OOM kills during save/compile operations.
+
+```bash
+# 1) Add 2 GB swap (persist across reboot)
+sudo fallocate -l 2G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+
+# Keep swapping conservative
+echo 'vm.swappiness=10' | sudo tee /etc/sysctl.d/99-swap.conf
+sudo sysctl --system
+
+# Verify
+free -h
+swapon --show
+```
+
+```bash
+# 2) Tune PHP-FPM worker count for low memory
+sudo cp /etc/php/8.3/fpm/pool.d/www.conf /etc/php/8.3/fpm/pool.d/www.conf.bak
+sudo sed -i 's/^pm = .*/pm = dynamic/' /etc/php/8.3/fpm/pool.d/www.conf
+sudo sed -i 's/^pm.max_children = .*/pm.max_children = 2/' /etc/php/8.3/fpm/pool.d/www.conf
+sudo sed -i 's/^pm.start_servers = .*/pm.start_servers = 1/' /etc/php/8.3/fpm/pool.d/www.conf
+sudo sed -i 's/^pm.min_spare_servers = .*/pm.min_spare_servers = 1/' /etc/php/8.3/fpm/pool.d/www.conf
+sudo sed -i 's/^pm.max_spare_servers = .*/pm.max_spare_servers = 2/' /etc/php/8.3/fpm/pool.d/www.conf
+
+# Add if missing
+grep -q '^pm.max_requests' /etc/php/8.3/fpm/pool.d/www.conf \
+  && sudo sed -i 's/^pm.max_requests = .*/pm.max_requests = 200/' /etc/php/8.3/fpm/pool.d/www.conf \
+  || echo 'pm.max_requests = 200' | sudo tee -a /etc/php/8.3/fpm/pool.d/www.conf
+```
+
+```bash
+# 3) Cap PHP memory per request
+sudo cp /etc/php/8.3/fpm/php.ini /etc/php/8.3/fpm/php.ini.bak
+sudo sed -i 's/^memory_limit = .*/memory_limit = 192M/' /etc/php/8.3/fpm/php.ini
+```
+
+```bash
+# 4) Use production Node runtime (avoid dev watchers on small RAM)
+cd /var/www/bookstack
+npm run ws:build
+npm run preview:build
+
+sudo -u tinymist -H pm2 delete tinymist-ws-dev tinymist-preview-dev || true
+sudo -u tinymist -H pm2 start npm --name tinymist-ws -- run ws:start
+sudo -u tinymist -H pm2 start npm --name tinymist-preview -- run preview:start
+sudo -u tinymist -H pm2 save
+```
+
+```bash
+# 5) Restart services and verify
+sudo systemctl restart php8.3-fpm nginx mariadb
+sudo systemctl status php8.3-fpm --no-pager -l
+pm2 list
+```
+
+```bash
+# 6) OOM diagnostics (if 502 happens again)
+dmesg -T | grep -Ei 'oom|killed process|php-fpm|node' | tail -n 50
+sudo journalctl -u php8.3-fpm -n 200 --no-pager
+sudo tail -n 200 /var/log/nginx/error.log
+```
+
 ### Make builds
 
 ```bash

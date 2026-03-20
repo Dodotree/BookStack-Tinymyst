@@ -4,12 +4,14 @@ namespace BookStack\Extensions\Tinymist\Pages;
 
 use BookStack\Entities\Models\Page;
 use BookStack\Entities\Tools\PageEditorType;
+use BookStack\Extensions\Tinymist\Tools\TinymistRenderedHtmlStore;
 use BookStack\Extensions\Tinymist\Tools\TinymistService;
 
 class TinymistPageContentHandler
 {
     public function __construct(
         protected TinymistService $tinymistService,
+        protected TinymistRenderedHtmlStore $renderedHtmlStore,
     ) {
     }
 
@@ -30,13 +32,22 @@ class TinymistPageContentHandler
 
         $result = $this->tinymistService->compileToSvg($source, ['pageId' => $page->id]);
 
+        $viewerHtml = '';
         if ($result['success']) {
-            $page->html = '<div class="tinymist-document">' . $result['svg'] . '</div>';
+            $viewerHtml = '<div class="tinymist-document">' . $result['svg'] . '</div>';
         } else {
-            $page->html = $this->buildErrorHtml($result['errors'] ?? []);
+            $viewerHtml = $this->buildErrorHtml($result['errors'] ?? []);
         }
 
+        $this->renderedHtmlStore->storePageHtml($page, $viewerHtml);
+        $page->html = '';
+
         $page->text = $this->toPlainTextFromTypst($source);
+    }
+
+    public function getStoredViewHtml(Page $page): string
+    {
+        return $this->renderedHtmlStore->getPageHtml($page);
     }
 
     /**

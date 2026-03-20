@@ -74,18 +74,6 @@ use BookStack\Extensions\Tinymist\Pages\TinymistPageContentHandler;
     {
         $this->tinymistPageContentHandler->apply($this->page, $source);
     }
-
-
-    /**
-     * Render page content for public page view.
-     */
-    public function renderForView(): string
-    {
-        if ($this->tinymistPageContentHandler->shouldBypassDomRender($this->page)) {
-            return $this->page->html ?? '';
-        }
-        return $this->render();
-    }
 ```
 
 - `app/Entities/Tools/PageEditorData.php`

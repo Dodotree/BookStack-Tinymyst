@@ -323,6 +323,10 @@ class PageContent
      */
     public function render(bool $blankIncludes = false): string
     {
+        if ($this->tinymistPageContentHandler->shouldBypassDomRender($this->page)) {
+            return $this->handlePostRender($this->tinymistPageContentHandler->getStoredViewHtml($this->page));
+        }
+
         $html = $this->page->html ?? '';
 
         if (empty($html)) {
@@ -374,18 +378,6 @@ class PageContent
         $appVersion = AppVersion::get();
         $filterConfig = config('app.content_filtering') ?? '';
         return "page-content-cache::{$filterConfig}::{$appVersion}::{$contentId}::{$contentTime}::{$contentHash}";
-    }
-
-    /**
-     * Render page content for public page view.
-     */
-    public function renderForView(): string
-    {
-        if ($this->tinymistPageContentHandler->shouldBypassDomRender($this->page)) {
-            return $this->page->html ?? '';
-        }
-
-        return $this->render();
     }
 
     /**
