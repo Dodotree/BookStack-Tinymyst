@@ -17,6 +17,7 @@ Route::post('/ajax/tinymist/renew-ws-token', [TinymistController::class, 'renewW
 Route::get('/attachments/dirty/page/{pageId}', [TinymistAttachmentController::class, 'dirtyMapForPage']);
 Route::put('/attachments/{id}/save-from-preview', [TinymistAttachmentController::class, 'saveFromPreview']);
 Route::put('/attachments/{id}/undo-from-preview', [TinymistAttachmentController::class, 'undoFromPreview']);
+Route::post('/attachments/new-file', [TinymistAttachmentController::class, 'createBlankFile']);
 
 // Tinymist single-page import route
 Route::post('/ajax/tinymist/import/single', [TinymistImportController::class, 'uploadSingle']);
