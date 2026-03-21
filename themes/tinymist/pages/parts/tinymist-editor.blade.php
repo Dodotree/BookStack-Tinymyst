@@ -147,6 +147,15 @@
                 <span>{{ trans('entities.pages_tinymist_preview') ?? 'Live Preview' }}</span>
             </div>
             <div class="buttons flex-container-row items-stretch">
+                <select class="text-button text-small tinymist-preview-pdf-page-select"
+                        data-action="previewPdfPageSelect"
+                        title="PDF Page"
+                        aria-label="PDF Page">
+                    <option value="">PDF page...</option>
+                </select>
+                <button class="text-button" type="button" data-action="previewPdfClose" title="Back to Live Preview" hidden>
+                    @icon('close')
+                </button>
                 <button class="text-button" type="button" data-action="previewConnectionToggle" title="connecting" aria-label="Preview connection toggle" disabled>
                     connecting
                 </button>
@@ -173,6 +182,7 @@
 
         <div refs="tinymist-editor@preview"
             class="tinymist-preview-content flex flex-fill">
+            <iframe class="tinymist-preview-pdf-frame" title="Tinymist PDF Preview" hidden></iframe>
             @if(isset($model) && !empty($model->html))
             {!! $model->html !!}
             @else

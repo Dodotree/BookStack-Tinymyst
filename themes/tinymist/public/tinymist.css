@@ -708,6 +708,15 @@ html.dark-mode #tinymist-editor .tinymist-preview-pane .tinymist-theme-settings-
 html.dark-mode #tinymist-editor .tinymist-preview-content {
   background-color: #222;
 }
+#tinymist-editor .tinymist-preview-content .tinymist-preview-pdf-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background-color: #fff;
+}
+html.dark-mode #tinymist-editor .tinymist-preview-content .tinymist-preview-pdf-frame {
+  background-color: #222;
+}
 #tinymist-editor .tinymist-preview-content.loading {
   opacity: 0.6;
   pointer-events: none;
@@ -729,6 +738,9 @@ html.dark-mode #tinymist-editor .tinymist-preview-content svg {
 }
 html.dark-mode #tinymist-editor .tinymist-preview-content svg image {
   filter: invert(1) hue-rotate(180deg);
+}
+#tinymist-editor .tinymist-preview-pdf-page-select {
+  min-width: 110px;
 }
 #tinymist-editor .tinymist-console-content {
   flex: 1;

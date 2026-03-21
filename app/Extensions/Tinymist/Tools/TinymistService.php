@@ -205,6 +205,129 @@ class TinymistService
         }
     }
 
+    /**
+     * Compile an existing page preview entry.typ file to PDF.
+     *
+     * @return array{success: bool, pdf_file: string|null, errors: array, diagnostics: array}
+     */
+    public function compileStoredPageToPdf(int $pageId, string $pdfPage = 'all'): array
+    {
+        $inputFile = storage_path("app/tinymist/page_{$pageId}/entry.typ");
+        if (!file_exists($inputFile)) {
+            return [
+                'success' => false,
+                'pdf_file' => null,
+                'errors' => ['Tinymist entry.typ not found for this page'],
+                'diagnostics' => [],
+            ];
+        }
+
+        $outputFile = tempnam($this->tempDir, 'tinymist_pdf_');
+        if ($outputFile === false) {
+            return [
+                'success' => false,
+                'pdf_file' => null,
+                'errors' => ['Unable to allocate temporary PDF file path'],
+                'diagnostics' => [],
+            ];
+        }
+
+        $commandId = uniqid('typst_pdf_', true);
+        $normalizedPage = strtolower(trim($pdfPage));
+        $pagesArg = '';
+
+        if ($normalizedPage !== 'all') {
+            if (!preg_match('/^\d+$/', $normalizedPage)) {
+                @unlink($outputFile);
+                return [
+                    'success' => false,
+                    'pdf_file' => null,
+                    'errors' => ['Invalid PDF page selection'],
+                    'diagnostics' => [],
+                ];
+            }
+
+            $pagesArg = sprintf(' --pages "%s"', $normalizedPage);
+        }
+
+        try {
+            $command = sprintf(
+                '"%s" compile "%s" "%s" --format pdf --diagnostic-format short%s%s%s 2>&1',
+                str_replace('"', '\\"', $this->typstPath),
+                str_replace('"', '\\"', $inputFile),
+                str_replace('"', '\\"', $outputFile),
+                $this->buildPackagePathArgument(),
+                $pagesArg,
+                $this->buildRootArgument($pageId)
+            );
+
+            $command = DIRECTORY_SEPARATOR === '\\' ? $command : "sudo -n -u tinymist -- " . $command;
+
+            $startedAt = microtime(true);
+            $this->logTypstCommand([
+                'event' => 'start-pdf',
+                'command_id' => $commandId,
+                'page_id' => $pageId,
+                'input_file' => $inputFile,
+                'output_file' => $outputFile,
+                'pdf_page' => $normalizedPage,
+                'command' => $command,
+            ]);
+
+            exec($command, $output, $returnCode);
+            $durationMs = (int) round((microtime(true) - $startedAt) * 1000);
+
+            $fileSize = @filesize($outputFile) ?: 0;
+            $this->logTypstCommand([
+                'event' => 'finish-pdf',
+                'command_id' => $commandId,
+                'page_id' => $pageId,
+                'pdf_page' => $normalizedPage,
+                'return_code' => $returnCode,
+                'duration_ms' => $durationMs,
+                'output_size' => $fileSize,
+                'output_line_count' => count($output),
+                'output_tail' => $this->tailOutput($output),
+            ]);
+
+            if ($returnCode !== 0 || !file_exists($outputFile) || $fileSize <= 0) {
+                $diagnostics = $this->parseDiagnostics($output);
+                @unlink($outputFile);
+
+                return [
+                    'success' => false,
+                    'pdf_file' => null,
+                    'errors' => $output,
+                    'diagnostics' => $diagnostics,
+                ];
+            }
+
+            return [
+                'success' => true,
+                'pdf_file' => $outputFile,
+                'errors' => [],
+                'diagnostics' => [],
+            ];
+        } catch (\Throwable $exception) {
+            $this->logTypstCommand([
+                'event' => 'exception-pdf',
+                'command_id' => $commandId,
+                'page_id' => $pageId,
+                'pdf_page' => $normalizedPage,
+                'error' => $exception->getMessage(),
+            ]);
+
+            @unlink($outputFile);
+
+            return [
+                'success' => false,
+                'pdf_file' => null,
+                'errors' => [$exception->getMessage()],
+                'diagnostics' => [],
+            ];
+        }
+    }
+
     protected function logTypstCommand(array $payload): void
     {
         try {
@@ -444,6 +567,19 @@ class TinymistService
         return sprintf(
             ' --package-path "%s"',
             str_replace('"', '\\"', $this->packagePath)
+        );
+    }
+
+    protected function buildRootArgument(int $pageId): string
+    {
+        $directory = storage_path("app/tinymist/page_{$pageId}");
+        if (!is_dir($directory)) {
+            return '';
+        }
+
+        return sprintf(
+            ' --root "%s"',
+            str_replace('"', '\\"', $directory)
         );
     }
 }

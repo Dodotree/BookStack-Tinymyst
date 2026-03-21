@@ -39,6 +39,9 @@ export const tmSelectors: Record<string, string> = {
 	PreviewError: ".tinymist-error",
 	PreviewDocumentHost: ".tinymist-document",
 	PreviewConnectionToggle: 'button[data-action="previewConnectionToggle"]',
+	PreviewPdfPageSelect: 'select[data-action="previewPdfPageSelect"]',
+	PreviewPdfClose: 'button[data-action="previewPdfClose"]',
+	PreviewPdfFrame: '.tinymist-preview-pdf-frame',
 	PreviewPan: 'button[data-action="previewPanToggle"]',
 	PreviewCursorSpotlight:
 		'button[data-action="previewCursorSpotlightToggle"]',

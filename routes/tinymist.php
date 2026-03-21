@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Route;
 
 // Tinymist/Typst routes
 Route::post('/ajax/tinymist/compile', [TinymistController::class, 'compile']);
+Route::get('/ajax/tinymist/{pageId}/pdf/{pdfPage}', [TinymistController::class, 'previewPdf']);
 Route::post('/ajax/tinymist/check', [TinymistController::class, 'check']);
 Route::post('/ajax/tinymist/convert-to-typst', [TinymistController::class, 'convertToTypst']);
 Route::get('/ajax/tinymist/status', [TinymistController::class, 'status']);

@@ -25,6 +25,11 @@ import {
 export class PreviewRenderer {
     private paneSelector: string;
     private previewElement: HTMLElement;
+    private readonly pageId: number;
+    private pdfFrame: HTMLIFrameElement | null = null;
+    private pdfPageSelect: HTMLSelectElement | null = null;
+    private pdfCloseButton: HTMLButtonElement | null = null;
+    private pdfPreviewActive = false;
 
     private renderer: TypstRenderer | null = null;
     private session: RenderSession | null = null;
@@ -57,11 +62,21 @@ export class PreviewRenderer {
     private cursorSpotlightUserEnabled = true;
     private scrollIntoViewUserEnabled = true;
 
-    constructor(uniqueTabId?: string) {
+    constructor(uniqueTabId?: string, pageId: number = 0) {
+        this.pageId = pageId;
         this.paneSelector = `${tmSelectors.Root} ${tmSelectors.PreviewPane}`;
         this.previewElement = document.querySelector(
             `${tmSelectors.Root} ${tmSelectors.PreviewContent}`,
         ) as HTMLElement;
+        this.pdfFrame = document.querySelector(
+            `${tmSelectors.Root} ${tmSelectors.PreviewPdfFrame}`,
+        ) as HTMLIFrameElement | null;
+        this.pdfPageSelect = document.querySelector(
+            `${tmSelectors.Root} ${tmSelectors.PreviewPdfPageSelect}`,
+        ) as HTMLSelectElement | null;
+        this.pdfCloseButton = document.querySelector(
+            `${tmSelectors.Root} ${tmSelectors.PreviewPdfClose}`,
+        ) as HTMLButtonElement | null;
 
         new PreviewCursor(this.previewElement, uniqueTabId);
 
@@ -79,6 +94,7 @@ export class PreviewRenderer {
         this.handleCursorPosition = this.handleCursorPosition.bind(this);
         this.handlePreviewConnectionState =
             this.handlePreviewConnectionState.bind(this);
+        this.handlePreviewPaneChange = this.handlePreviewPaneChange.bind(this);
 
         window.$tmEventBus.listen(tmEvents.WasmInit, this.handleSyncInit);
         window.$tmEventBus.listen(tmEvents.WasmDispose, this.dispose);
@@ -112,6 +128,7 @@ export class PreviewRenderer {
         this.applyScrollIntoViewState();
         this.applyPanButtonState();
         this.handlePreviewConnectionState({ label: "connecting" });
+        this.refreshPdfPageOptions();
     }
 
     private addRemoveListeners(adding: boolean = true): void {
@@ -120,6 +137,10 @@ export class PreviewRenderer {
         document
             .querySelector(this.paneSelector)
             ?.[method]("click", this.handlePreviewPaneClick);
+
+        document
+            .querySelector(this.paneSelector)
+            ?.[method]("change", this.handlePreviewPaneChange);
 
         this.previewElement[method]("mousedown", this.handlePanMouseDown);
         this.previewElement[method]("mousemove", this.handlePanMouseMove);
@@ -381,6 +402,123 @@ export class PreviewRenderer {
         console.log(
             `[Preview WASM] Page with not empty content is ${svgHost.querySelectorAll("g.typst-page:has(*)").length} and total ${svgHost.querySelectorAll("g.typst-page").length}`,
         );
+
+        this.refreshPdfPageOptions();
+    }
+
+    private refreshPdfPageOptions(): void {
+        if (!this.pdfPageSelect) {
+            return;
+        }
+
+        const pageCount = this.previewElement.querySelectorAll("g.typst-page").length;
+        const previousValue = this.pdfPageSelect.value;
+
+        this.pdfPageSelect.innerHTML = '';
+
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'PDF page...';
+        this.pdfPageSelect.appendChild(placeholder);
+
+        for (let index = 1; index <= pageCount; index++) {
+            const option = document.createElement('option');
+            option.value = String(index);
+            option.textContent = `Page ${index}`;
+            this.pdfPageSelect.appendChild(option);
+        }
+
+        const downloadAll = document.createElement('option');
+        downloadAll.value = 'download-all';
+        downloadAll.textContent = 'Download all';
+        this.pdfPageSelect.appendChild(downloadAll);
+
+        if (previousValue && this.pdfPageSelect.querySelector(`option[value="${previousValue}"]`)) {
+            this.pdfPageSelect.value = previousValue;
+        } else {
+            this.pdfPageSelect.value = '';
+        }
+
+        this.pdfPageSelect.disabled = pageCount <= 0 || this.pageId <= 0;
+    }
+
+    private setLivePreviewVisibility(visible: boolean): void {
+        const svgHost = this.previewElement.querySelector(
+            tmSelectors.PreviewDocumentHost,
+        ) as HTMLElement | null;
+        const muted = this.previewElement.querySelector(
+            tmSelectors.PreviewMutedMessage,
+        ) as HTMLElement | null;
+        const error = this.previewElement.querySelector(
+            tmSelectors.PreviewError,
+        ) as HTMLElement | null;
+
+        if (svgHost) {
+            svgHost.style.display = visible ? '' : 'none';
+        }
+        if (muted) {
+            muted.style.display = visible ? '' : 'none';
+        }
+        if (error) {
+            error.style.display = visible ? '' : 'none';
+        }
+    }
+
+    private openPdfPreview(pdfPage: string): void {
+        if (!this.pdfFrame || this.pageId <= 0) {
+            return;
+        }
+
+        const safePage = encodeURIComponent(pdfPage);
+        this.pdfFrame.src = `/ajax/tinymist/${this.pageId}/pdf/${safePage}`;
+        this.pdfFrame.hidden = false;
+        this.pdfPreviewActive = true;
+        this.setLivePreviewVisibility(false);
+        if (this.pdfCloseButton) {
+            this.pdfCloseButton.hidden = false;
+        }
+    }
+
+    private closePdfPreview(): void {
+        if (!this.pdfFrame) {
+            return;
+        }
+
+        this.pdfFrame.hidden = true;
+        this.pdfFrame.src = 'about:blank';
+        this.pdfPreviewActive = false;
+        this.setLivePreviewVisibility(true);
+        if (this.pdfCloseButton) {
+            this.pdfCloseButton.hidden = true;
+        }
+        if (this.pdfPageSelect) {
+            this.pdfPageSelect.value = '';
+        }
+    }
+
+    private handlePreviewPaneChange(event: Event): void {
+        const select = (event.target as Element | null)?.closest(
+            tmSelectors.PreviewPdfPageSelect,
+        ) as HTMLSelectElement | null;
+        if (!select) {
+            return;
+        }
+
+        const value = (select.value || '').trim();
+        if (value === '') {
+            this.closePdfPreview();
+            return;
+        }
+
+        if (value === 'download-all') {
+            if (this.pageId > 0) {
+                window.location.assign(`/ajax/tinymist/${this.pageId}/pdf/download-all`);
+            }
+            select.value = '';
+            return;
+        }
+
+        this.openPdfPreview(value);
     }
 
     private patchSVG(svgDiff: string) {
@@ -651,6 +789,9 @@ export class PreviewRenderer {
                 break;
             case "previewConnectionToggle":
                 window.$tmEventBus.emit(tmEvents.PreviewConnectionToggle);
+                break;
+            case "previewPdfClose":
+                this.closePdfPreview();
                 break;
             default:
                 break;

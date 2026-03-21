@@ -64,6 +64,57 @@ class TinymistController extends Controller
     }
 
     /**
+     * Compile current Tinymist page source to a PDF stream.
+     * GET /ajax/tinymist/{pageId}/pdf/{pdfPage}
+     */
+    public function previewPdf(Request $request, int $pageId, string $pdfPage)
+    {
+        $page = Page::query()->findOrFail($pageId);
+        $this->checkOwnablePermission('page-view', $page);
+
+        $normalized = strtolower(trim($pdfPage));
+        $downloadAll = $normalized === 'download-all';
+        $renderTargetPage = $downloadAll ? 'all' : $normalized;
+
+        $result = $this->tinymist->compileStoredPageToPdf($page->id, $renderTargetPage);
+        if (!$result['success'] || empty($result['pdf_file'])) {
+            $errors = $result['errors'] ?? [];
+            $message = is_array($errors) && !empty($errors)
+                ? implode("\n", array_map('strval', array_slice($errors, 0, 10)))
+                : 'PDF generation failed';
+
+            return response()->json([
+                'success' => false,
+                'error' => $message,
+                'diagnostics' => $result['diagnostics'] ?? [],
+            ], 422);
+        }
+
+        $pdfFile = $result['pdf_file'];
+        $fileName = $downloadAll
+            ? ($page->slug . '.pdf')
+            : ($page->slug . '-page-' . $renderTargetPage . '.pdf');
+
+        if ($downloadAll) {
+            return $this->download()->streamedFileDirectly($pdfFile, $fileName, true);
+        }
+
+        $fileSize = filesize($pdfFile) ?: 0;
+        $stream = fopen($pdfFile, 'r');
+        if ($stream === false) {
+            @unlink($pdfFile);
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to open generated PDF file',
+            ], 500);
+        }
+
+        $this->registerDeleteOnShutdown($pdfFile);
+
+        return $this->download()->streamedInline($stream, $fileName, $fileSize);
+    }
+
+    /**
      * Check Typst content (AJAX endpoint).
      * POST /ajax/tinymist/check
      */
@@ -312,5 +363,17 @@ class TinymistController extends Controller
         }
 
         return is_string($rewritten) ? $rewritten : $typst;
+    }
+
+    protected function registerDeleteOnShutdown(string $filePath): void
+    {
+        $callback = function () use ($filePath) {
+            if (file_exists($filePath)) {
+                @unlink($filePath);
+            }
+        };
+
+        app()->terminating($callback);
+        register_shutdown_function($callback);
     }
 }
