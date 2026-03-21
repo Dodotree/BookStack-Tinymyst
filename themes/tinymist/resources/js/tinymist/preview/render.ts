@@ -10,10 +10,8 @@ import {
     RenderSession,
     TypstRenderer,
 } from "@myriaddreamin/typst.ts/dist/esm/renderer.mjs";
-
 // Import WASM binary to trigger esbuild plugin (embeds as base64)
 import renderModule from "@myriaddreamin/typst-ts-renderer/pkg/typst_ts_renderer_bg.wasm";
-import { PreviewCursor } from "./cursor";
 
 import {
     ENTRY_FILE_NAME,
@@ -22,14 +20,12 @@ import {
     tmSelectors,
 } from "../constants";
 
+import { PreviewToolbar } from "./preview-toolbar";
+import { PreviewCursor } from "./cursor";
+
 export class PreviewRenderer {
-    private paneSelector: string;
     private previewElement: HTMLElement;
     private readonly pageId: number;
-    private pdfFrame: HTMLIFrameElement | null = null;
-    private pdfPageSelect: HTMLSelectElement | null = null;
-    private pdfCloseButton: HTMLButtonElement | null = null;
-    private pdfPreviewActive = false;
 
     private renderer: TypstRenderer | null = null;
     private session: RenderSession | null = null;
@@ -45,56 +41,21 @@ export class PreviewRenderer {
     private pmewmaNew: number = 0;
     private pmewmaDiff: number = 0;
 
-    private zoomLevel = 1;
-    private readonly zoomStep = 0.1;
-    private readonly zoomMin = 0.25;
-    private readonly zoomMax = 3;
-    private baseSvgWidth: number | null = null;
-    private baseSvgHeight: number | null = null;
-    private panEnabled = false;
-    private isPanning = false;
-    private panStartX = 0;
-    private panStartY = 0;
-    private panStartScrollLeft = 0;
-    private panStartScrollTop = 0;
-
     private activeFileName = ENTRY_FILE_NAME;
-    private cursorSpotlightUserEnabled = true;
-    private scrollIntoViewUserEnabled = true;
 
     constructor(uniqueTabId?: string, pageId: number = 0) {
         this.pageId = pageId;
-        this.paneSelector = `${tmSelectors.Root} ${tmSelectors.PreviewPane}`;
         this.previewElement = document.querySelector(
             `${tmSelectors.Root} ${tmSelectors.PreviewContent}`,
         ) as HTMLElement;
-        this.pdfFrame = document.querySelector(
-            `${tmSelectors.Root} ${tmSelectors.PreviewPdfFrame}`,
-        ) as HTMLIFrameElement | null;
-        this.pdfPageSelect = document.querySelector(
-            `${tmSelectors.Root} ${tmSelectors.PreviewPdfPageSelect}`,
-        ) as HTMLSelectElement | null;
-        this.pdfCloseButton = document.querySelector(
-            `${tmSelectors.Root} ${tmSelectors.PreviewPdfClose}`,
-        ) as HTMLButtonElement | null;
 
+        new PreviewToolbar(this.previewElement, this.pageId);
         new PreviewCursor(this.previewElement, uniqueTabId);
 
         this.handleSyncInit = this.handleSyncInit.bind(this);
         this.dispose = this.dispose.bind(this);
         this.updateSVG = this.updateSVG.bind(this);
         this.handleSyncMessage = this.handleSyncMessage.bind(this);
-        this.handleZoomIn = this.handleZoomIn.bind(this);
-        this.handleZoomOut = this.handleZoomOut.bind(this);
-        this.handleZoomReset = this.handleZoomReset.bind(this);
-        this.handlePreviewPaneClick = this.handlePreviewPaneClick.bind(this);
-        this.handlePanMouseDown = this.handlePanMouseDown.bind(this);
-        this.handlePanMouseMove = this.handlePanMouseMove.bind(this);
-        this.handlePanMouseUp = this.handlePanMouseUp.bind(this);
-        this.handleCursorPosition = this.handleCursorPosition.bind(this);
-        this.handlePreviewConnectionState =
-            this.handlePreviewConnectionState.bind(this);
-        this.handlePreviewPaneChange = this.handlePreviewPaneChange.bind(this);
 
         window.$tmEventBus.listen(tmEvents.WasmInit, this.handleSyncInit);
         window.$tmEventBus.listen(tmEvents.WasmDispose, this.dispose);
@@ -103,49 +64,14 @@ export class PreviewRenderer {
             tmEvents.FallbackCompiledSvg,
             ({ svg, docVersion }) => this.updateSVG(svg),
         );
-
-        window.$tmEventBus.listen(tmEvents.DataBinary, this.handleSyncMessage);
-        window.$tmEventBus.listen(
-            tmEvents.PreviewCursorPosition,
-            this.handleCursorPosition,
-        );
-        window.$tmEventBus.listen(
-            tmEvents.PreviewConnectionState,
-            this.handlePreviewConnectionState,
-        );
-
         window.$tmEventBus.listen(
             tmEvents.ActiveFileChange,
             (payload: { fileName: string; url: string }) => {
                 this.activeFileName = payload.fileName || ENTRY_FILE_NAME;
-                this.applyCursorSpotlightState();
-                this.applyScrollIntoViewState();
             },
         );
 
-        this.addRemoveListeners(true);
-        this.applyCursorSpotlightState();
-        this.applyScrollIntoViewState();
-        this.applyPanButtonState();
-        this.handlePreviewConnectionState({ label: "connecting" });
-        this.refreshPdfPageOptions();
-    }
-
-    private addRemoveListeners(adding: boolean = true): void {
-        const method = adding ? "addEventListener" : "removeEventListener";
-
-        document
-            .querySelector(this.paneSelector)
-            ?.[method]("click", this.handlePreviewPaneClick);
-
-        document
-            .querySelector(this.paneSelector)
-            ?.[method]("change", this.handlePreviewPaneChange);
-
-        this.previewElement[method]("mousedown", this.handlePanMouseDown);
-        this.previewElement[method]("mousemove", this.handlePanMouseMove);
-        this.previewElement[method]("mouseup", this.handlePanMouseUp);
-        this.previewElement[method]("mouseleave", this.handlePanMouseUp);
+        window.$tmEventBus.listen(tmEvents.DataBinary, this.handleSyncMessage);
     }
 
     private async handleSyncInit(): Promise<void> {
@@ -395,130 +321,12 @@ export class PreviewRenderer {
         }
 
         svgHost.innerHTML = svg;
-        this.baseSvgWidth = null;
-        this.baseSvgHeight = null;
-        this.applyZoomToSvg();
 
         console.log(
             `[Preview WASM] Page with not empty content is ${svgHost.querySelectorAll("g.typst-page:has(*)").length} and total ${svgHost.querySelectorAll("g.typst-page").length}`,
         );
 
-        this.refreshPdfPageOptions();
-    }
-
-    private refreshPdfPageOptions(): void {
-        if (!this.pdfPageSelect) {
-            return;
-        }
-
-        const pageCount = this.previewElement.querySelectorAll("g.typst-page").length;
-        const previousValue = this.pdfPageSelect.value;
-
-        this.pdfPageSelect.innerHTML = '';
-
-        const placeholder = document.createElement('option');
-        placeholder.value = '';
-        placeholder.textContent = 'PDF page...';
-        this.pdfPageSelect.appendChild(placeholder);
-
-        for (let index = 1; index <= pageCount; index++) {
-            const option = document.createElement('option');
-            option.value = String(index);
-            option.textContent = `Page ${index}`;
-            this.pdfPageSelect.appendChild(option);
-        }
-
-        const downloadAll = document.createElement('option');
-        downloadAll.value = 'download-all';
-        downloadAll.textContent = 'Download all';
-        this.pdfPageSelect.appendChild(downloadAll);
-
-        if (previousValue && this.pdfPageSelect.querySelector(`option[value="${previousValue}"]`)) {
-            this.pdfPageSelect.value = previousValue;
-        } else {
-            this.pdfPageSelect.value = '';
-        }
-
-        this.pdfPageSelect.disabled = pageCount <= 0 || this.pageId <= 0;
-    }
-
-    private setLivePreviewVisibility(visible: boolean): void {
-        const svgHost = this.previewElement.querySelector(
-            tmSelectors.PreviewDocumentHost,
-        ) as HTMLElement | null;
-        const muted = this.previewElement.querySelector(
-            tmSelectors.PreviewMutedMessage,
-        ) as HTMLElement | null;
-        const error = this.previewElement.querySelector(
-            tmSelectors.PreviewError,
-        ) as HTMLElement | null;
-
-        if (svgHost) {
-            svgHost.style.display = visible ? '' : 'none';
-        }
-        if (muted) {
-            muted.style.display = visible ? '' : 'none';
-        }
-        if (error) {
-            error.style.display = visible ? '' : 'none';
-        }
-    }
-
-    private openPdfPreview(pdfPage: string): void {
-        if (!this.pdfFrame || this.pageId <= 0) {
-            return;
-        }
-
-        const safePage = encodeURIComponent(pdfPage);
-        this.pdfFrame.src = `/ajax/tinymist/${this.pageId}/pdf/${safePage}`;
-        this.pdfFrame.hidden = false;
-        this.pdfPreviewActive = true;
-        this.setLivePreviewVisibility(false);
-        if (this.pdfCloseButton) {
-            this.pdfCloseButton.hidden = false;
-        }
-    }
-
-    private closePdfPreview(): void {
-        if (!this.pdfFrame) {
-            return;
-        }
-
-        this.pdfFrame.hidden = true;
-        this.pdfFrame.src = 'about:blank';
-        this.pdfPreviewActive = false;
-        this.setLivePreviewVisibility(true);
-        if (this.pdfCloseButton) {
-            this.pdfCloseButton.hidden = true;
-        }
-        if (this.pdfPageSelect) {
-            this.pdfPageSelect.value = '';
-        }
-    }
-
-    private handlePreviewPaneChange(event: Event): void {
-        const select = (event.target as Element | null)?.closest(
-            tmSelectors.PreviewPdfPageSelect,
-        ) as HTMLSelectElement | null;
-        if (!select) {
-            return;
-        }
-
-        const value = (select.value || '').trim();
-        if (value === '') {
-            this.closePdfPreview();
-            return;
-        }
-
-        if (value === 'download-all') {
-            if (this.pageId > 0) {
-                window.location.assign(`/ajax/tinymist/${this.pageId}/pdf/download-all`);
-            }
-            select.value = '';
-            return;
-        }
-
-        this.openPdfPreview(value);
+        window.$tmEventBus.emit(tmEvents.PreviewDocumentUpdated, { pdfPagesCount: svgHost.querySelectorAll("g.typst-page").length });
     }
 
     private patchSVG(svgDiff: string) {
@@ -730,336 +538,6 @@ export class PreviewRenderer {
         return longest.map((t) => oldHashes[t]);
     }
 
-    private handleZoomIn(): void {
-        this.setZoom(this.zoomLevel + this.zoomStep);
-    }
-
-    private handleZoomOut(): void {
-        this.setZoom(this.zoomLevel - this.zoomStep);
-    }
-
-    private handleZoomReset(): void {
-        this.setZoom(1);
-    }
-
-    private handlePanToggle(enabled: boolean): void {
-        this.panEnabled = enabled;
-        if (!enabled) {
-            this.stopPanning();
-        }
-
-        this.previewElement.classList.toggle(
-            tmClassNames.PreviewPanEnabled,
-            enabled,
-        );
-        this.applyPanButtonState();
-    }
-
-    private handlePreviewPaneClick(event: Event): void {
-        const button = (event.target as Element | null)?.closest(
-            tmSelectors.ActionButton,
-        ) as HTMLButtonElement | null;
-        if (!button) {
-            return;
-        }
-
-        const action = button.getAttribute("data-action");
-        switch (action) {
-            case "previewZoomIn":
-                this.handleZoomIn();
-                break;
-            case "previewZoomOut":
-                this.handleZoomOut();
-                break;
-            case "previewZoomReset":
-                this.handleZoomReset();
-                break;
-            case "previewPanToggle":
-                this.handlePanToggle(!this.panEnabled);
-                break;
-            case "previewScrollIntoViewToggle":
-                this.scrollIntoViewUserEnabled =
-                    !this.scrollIntoViewUserEnabled;
-                this.applyScrollIntoViewState();
-                break;
-            case "previewCursorSpotlightToggle":
-                this.cursorSpotlightUserEnabled =
-                    !this.cursorSpotlightUserEnabled;
-                this.applyCursorSpotlightState();
-                break;
-            case "previewConnectionToggle":
-                window.$tmEventBus.emit(tmEvents.PreviewConnectionToggle);
-                break;
-            case "previewPdfClose":
-                this.closePdfPreview();
-                break;
-            default:
-                break;
-        }
-    }
-
-    private handlePreviewConnectionState(payload: {
-        label: "pause" | "run" | "connecting";
-    }): void {
-        const button = document.querySelector(
-            `${this.paneSelector} ${tmSelectors.PreviewConnectionToggle}`,
-        ) as HTMLButtonElement | null;
-        if (!button) {
-            return;
-        }
-
-        button.disabled = payload.label === "connecting";
-        button.textContent = payload.label;
-        button.setAttribute("title", payload.label);
-    }
-
-    private applyPanButtonState(): void {
-        const button = document.querySelector(
-            `${this.paneSelector} ${tmSelectors.PreviewPan}`,
-        ) as HTMLButtonElement | null;
-
-        if (!button) {
-            return;
-        }
-        button.setAttribute("aria-pressed", this.panEnabled.toString());
-        button.setAttribute(
-            "title",
-            this.panEnabled ? "Disable Hand Tool" : "Enable Hand Tool",
-        );
-    }
-
-    private applyCursorSpotlightState(): void {
-        const enabled =
-            this.cursorSpotlightUserEnabled &&
-            this.activeFileName === ENTRY_FILE_NAME;
-
-        const button = document.querySelector(
-            `${this.paneSelector} ${tmSelectors.PreviewCursorSpotlight}`,
-        ) as HTMLButtonElement | null;
-        if (button) {
-            button.setAttribute("aria-pressed", enabled.toString());
-            button.setAttribute(
-                "title",
-                enabled ? "Disable Caret Spotlight" : "Enable Caret Spotlight",
-            );
-        }
-
-        window.$tmEventBus.emit(tmEvents.CursorSpotlightToggle, {
-            enabled,
-            activeFile: this.activeFileName,
-            userEnabled: this.cursorSpotlightUserEnabled,
-        });
-    }
-
-    private applyScrollIntoViewState(): void {
-        const enabled =
-            this.scrollIntoViewUserEnabled &&
-            this.activeFileName === ENTRY_FILE_NAME;
-
-        const button = document.querySelector(
-            `${this.paneSelector} ${tmSelectors.PreviewScrollIntoView}`,
-        ) as HTMLButtonElement | null;
-        if (button) {
-            button.setAttribute("aria-pressed", enabled.toString());
-            button.setAttribute(
-                "title",
-                enabled
-                    ? "Disable Scroll Into View"
-                    : "Enable Scroll Into View",
-            );
-        }
-
-        window.$tmEventBus.emit(tmEvents.CursorScrollIntoViewToggle, {
-            enabled,
-            activeFile: this.activeFileName,
-            userEnabled: this.scrollIntoViewUserEnabled,
-        });
-    }
-
-    private handleCursorPosition(payload: {
-        contentX?: number;
-        contentY?: number;
-        width?: number;
-        height?: number;
-    }): void {
-        const enabled =
-            this.scrollIntoViewUserEnabled &&
-            this.activeFileName === ENTRY_FILE_NAME;
-        if (!enabled) {
-            return;
-        }
-
-        const contentX = Number(payload?.contentX);
-        const contentY = Number(payload?.contentY);
-        const width = Math.max(1, Number(payload?.width ?? 1));
-        const height = Math.max(1, Number(payload?.height ?? 1));
-        if (!Number.isFinite(contentX) || !Number.isFinite(contentY)) {
-            return;
-        }
-
-        this.scrollPreviewToClosestVisibleArea(
-            contentX,
-            contentY,
-            width,
-            height,
-        );
-    }
-
-    private scrollPreviewToClosestVisibleArea(
-        contentX: number,
-        contentY: number,
-        width: number,
-        height: number,
-    ): void {
-        const viewportWidth = this.previewElement.clientWidth;
-        const viewportHeight = this.previewElement.clientHeight;
-        if (viewportWidth <= 0 || viewportHeight <= 0) {
-            return;
-        }
-
-        const marginX = Math.max(24, Math.min(120, viewportWidth * 0.1));
-        const marginY = Math.max(24, Math.min(120, viewportHeight * 0.1));
-
-        const minVisibleX = this.previewElement.scrollLeft + marginX;
-        const maxVisibleX =
-            this.previewElement.scrollLeft + viewportWidth - marginX;
-        const minVisibleY = this.previewElement.scrollTop + marginY;
-        const maxVisibleY =
-            this.previewElement.scrollTop + viewportHeight - marginY;
-
-        const cursorLeft = contentX - width / 2;
-        const cursorRight = contentX + width / 2;
-        const cursorTop = contentY - height / 2;
-        const cursorBottom = contentY + height / 2;
-
-        let nextScrollLeft = this.previewElement.scrollLeft;
-        let nextScrollTop = this.previewElement.scrollTop;
-
-        if (cursorLeft < minVisibleX) {
-            nextScrollLeft = cursorLeft - marginX;
-        } else if (cursorRight > maxVisibleX) {
-            nextScrollLeft = cursorRight - viewportWidth + marginX;
-        }
-
-        if (cursorTop < minVisibleY) {
-            nextScrollTop = cursorTop - marginY;
-        } else if (cursorBottom > maxVisibleY) {
-            nextScrollTop = cursorBottom - viewportHeight + marginY;
-        }
-
-        nextScrollLeft = Math.max(0, nextScrollLeft);
-        nextScrollTop = Math.max(0, nextScrollTop);
-
-        if (
-            Math.abs(nextScrollLeft - this.previewElement.scrollLeft) < 1 &&
-            Math.abs(nextScrollTop - this.previewElement.scrollTop) < 1
-        ) {
-            return;
-        }
-
-        this.previewElement.scrollTo({
-            left: nextScrollLeft,
-            top: nextScrollTop,
-            behavior: "smooth",
-        });
-    }
-
-    private setZoom(level: number): void {
-        const clamped = Math.min(
-            this.zoomMax,
-            Math.max(this.zoomMin, Number(level)),
-        );
-        this.zoomLevel = Number(clamped.toFixed(2));
-        this.applyZoomToSvg();
-    }
-
-    private applyZoomToSvg(): void {
-        const svg = this.previewElement.querySelector(
-            `${tmSelectors.PreviewDocumentHost} > svg`,
-        ) as SVGElement | null;
-        if (!svg) {
-            return;
-        }
-
-        if (this.baseSvgWidth === null || this.baseSvgHeight === null) {
-            const rect = svg.getBoundingClientRect();
-            const fallbackWidth = svg.clientWidth || rect.width;
-            const fallbackHeight = svg.clientHeight || rect.height;
-            this.baseSvgWidth = fallbackWidth || 0;
-            this.baseSvgHeight = fallbackHeight || 0;
-        }
-
-        const width = (this.baseSvgWidth || 0) * this.zoomLevel;
-        const height = (this.baseSvgHeight || 0) * this.zoomLevel;
-        svg.style.width = `${Math.max(1, width)}px`;
-        svg.style.height = `${Math.max(1, height)}px`;
-        svg.style.maxWidth = "none";
-    }
-
-    private handlePanMouseDown(event: Event): void {
-        const mouseEvent = event as MouseEvent;
-        if (!this.panEnabled || mouseEvent.button !== 0) {
-            return;
-        }
-
-        this.isPanning = true;
-        this.panStartX = mouseEvent.clientX;
-        this.panStartY = mouseEvent.clientY;
-        this.panStartScrollLeft = this.previewElement.scrollLeft;
-        this.panStartScrollTop = this.previewElement.scrollTop;
-        this.previewElement.classList.add(tmClassNames.PreviewPanning);
-        event.preventDefault();
-    }
-
-    private handlePanMouseMove(event: Event): void {
-        if (!this.isPanning) {
-            return;
-        }
-
-        const mouseEvent = event as MouseEvent;
-        const dx = mouseEvent.clientX - this.panStartX;
-        const dy = mouseEvent.clientY - this.panStartY;
-        this.previewElement.scrollLeft = this.panStartScrollLeft - dx;
-        this.previewElement.scrollTop = this.panStartScrollTop - dy;
-
-        event.preventDefault();
-    }
-
-    private handlePanMouseUp(event: Event): void {
-        if (!this.isPanning) {
-            return;
-        }
-
-        this.stopPanning();
-    }
-
-    private stopPanning(): void {
-        this.isPanning = false;
-        this.previewElement.classList.remove(tmClassNames.PreviewPanning);
-    }
-
-    dispose() {
-        this.hasInitialDocument = false;
-        this.processingQueue = Promise.resolve();
-        if (this.sessionResolve) {
-            this.sessionResolve();
-            this.sessionResolve = null;
-        }
-
-        this.sessionPromise = null;
-        this.session = null;
-        this.renderer = null;
-
-        console.log("[Preview WASM] Renderer disposed");
-    }
-
-    destroy() {
-        this.dispose();
-        this.addRemoveListeners(false);
-        this.previewElement.remove();
-        this.previewElement = null as any;
-    }
-
     private async recoverRenderer(error: Error): Promise<void> {
         if (this.recovering) {
             console.warn(
@@ -1094,5 +572,26 @@ export class PreviewRenderer {
         } finally {
             this.recovering = false;
         }
+    }
+
+    dispose() {
+        this.hasInitialDocument = false;
+        this.processingQueue = Promise.resolve();
+        if (this.sessionResolve) {
+            this.sessionResolve();
+            this.sessionResolve = null;
+        }
+
+        this.sessionPromise = null;
+        this.session = null;
+        this.renderer = null;
+
+        console.log("[Preview WASM] Renderer disposed");
+    }
+
+    destroy() {
+        this.dispose();
+        this.previewElement.remove();
+        this.previewElement = null as any;
     }
 }

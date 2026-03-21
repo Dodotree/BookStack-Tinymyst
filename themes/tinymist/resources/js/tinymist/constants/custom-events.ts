@@ -31,6 +31,7 @@ export const tmEvents = {
     PreviewCursorPosition: "preview-cursor-position",
     PreviewDataMessage: "preview-data-message",
     PreviewDisconnect: "preview-disconnect",
+    PreviewDocumentUpdated: "preview-document-updated",
     PreviewSendControl: "preview-send-control",
     PreviewSendData: "preview-send-data",
     PruneSnapshots: "prune-snapshots",
@@ -92,9 +93,10 @@ export type TinymistEventPayloads = {
     [tmEvents.Insert]: { typst?: string; markdown?: string; html?: string };
     [tmEvents.InvalidToken]: undefined;
     [tmEvents.LspSemanticTokens]: { fileName: string; tokens: number[]; resultId?: string; docVersion: number };
+    [tmEvents.PreviewDocumentUpdated]: { pdfPagesCount: number };
     [tmEvents.LspSemanticTokensDelta]: { fileName: string; edits: any[]; resultId?: string; previousResultId?: string; docVersion: number };
     [tmEvents.PreviewConnect]: undefined;
-    [tmEvents.PreviewConnectionState]: { label: "pause" | "run" | "connecting" };
+    [tmEvents.PreviewConnectionState]: { label: "paused" | "running" | "connecting" };
     [tmEvents.PreviewConnectionToggle]: undefined;
     [tmEvents.PreviewControlMessage]: string;
     [tmEvents.PreviewCursorRequest]: { uniqueTabId?: string };

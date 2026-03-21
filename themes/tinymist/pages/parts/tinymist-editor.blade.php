@@ -28,23 +28,23 @@
                 <div class="tinymist-toolbar-title-wrap flex-container-row items-center">
                     <div class="editor-toolbar-label text-mono bold px-m py-xs">
                         <span>{{ trans('entities.pages_tinymist_editor') ?? 'Typst Editor' }}</span>
-                    </div>
-                    <select refs="tinymist-editor@fileList"
-                            class="tinymist-file-select text-small"
-                            aria-label="Typst files">
-                        <option value="entry.typ">entry.typ</option>
-                        @foreach($page->attachments as $attachment)
-                            @if(!$attachment->external)
-                                @php($fileName = $attachment->getFileName())
-                                @if($fileName !== 'entry.typ')
-                                    <option
-                                        value="{{ $fileName }}"
-                                        data-file-url="{{ $attachment->getUrl() }}"
-                                    >{{ $fileName }}</option>
+                        <select refs="tinymist-editor@fileList"
+                                class="tinymist-file-select text-small"
+                                aria-label="Typst files">
+                            <option value="entry.typ">entry.typ</option>
+                            @foreach($page->attachments as $attachment)
+                                @if(!$attachment->external)
+                                    @php($fileName = $attachment->getFileName())
+                                    @if($fileName !== 'entry.typ')
+                                        <option
+                                            value="{{ $fileName }}"
+                                            data-file-url="{{ $attachment->getUrl() }}"
+                                        >{{ $fileName }}</option>
+                                    @endif
                                 @endif
-                            @endif
-                        @endforeach
-                    </select>
+                            @endforeach
+                        </select>
+                    </div>
                 </div>
                 <div class="buttons flex-container-row items-stretch">
                     <button class="text-button" type="button" data-action="insertImage" title="Insert Image">
@@ -144,25 +144,20 @@
     <div class="tinymist-preview-pane flex-container-column">
         <div class="editor-toolbar flex-container-row items-stretch justify-space-between">
             <div class="editor-toolbar-label text-mono bold px-m py-xs">
-                <span>{{ trans('entities.pages_tinymist_preview') ?? 'Live Preview' }}</span>
+                Preview
+                <select class="tinymist-preview-mode-select text-small"
+                        data-action="previewModeSelect"
+                        title="Preview mode"
+                        aria-label="Preview mode">
+                    <option value="live-preview">Live <output role="status">Connecting...</output></option>
+                    <option value="toggle-live-preview">Pause Live</option>
+                </select>
             </div>
             <div class="buttons flex-container-row items-stretch">
-                <select class="text-button text-small tinymist-preview-pdf-page-select"
-                        data-action="previewPdfPageSelect"
-                        title="PDF Page"
-                        aria-label="PDF Page">
-                    <option value="">PDF page...</option>
-                </select>
-                <button class="text-button" type="button" data-action="previewPdfClose" title="Back to Live Preview" hidden>
-                    @icon('close')
-                </button>
-                <button class="text-button" type="button" data-action="previewConnectionToggle" title="connecting" aria-label="Preview connection toggle" disabled>
-                    connecting
-                </button>
-                <button class="text-button" type="button" data-action="previewZoomOut" title="Zoom Out">
+                <button class="text-button" type="button" data-action="previewZoomOut" title="Zoom Out, hot key: Z -">
                     @icon('zoom-out')
                 </button>
-                <button class="text-button" type="button" data-action="previewZoomIn" title="Zoom In">
+                <button class="text-button" type="button" data-action="previewZoomIn" title="Zoom In, hot key: Z =">
                     @icon('zoom-in')
                 </button>
                 <button class="text-button" type="button" data-action="previewZoomReset" title="Reset Zoom">
@@ -171,7 +166,7 @@
                 <button class="text-button" type="button" data-action="previewScrollIntoViewToggle" title="Disable Scroll Into View" aria-pressed="true">
                     @icon('editor/auto-scroll')
                 </button>
-                <button class="text-button" type="button" data-action="previewPanToggle" title="Enable Hand Tool" aria-pressed="false">
+                <button class="text-button" type="button" data-action="previewPanToggle" title="Enable Hand Tool (Hold Space to temporarily enable)" aria-pressed="false">
                     @icon('hand')
                 </button>
                 <button class="text-button" type="button" data-action="previewCursorSpotlightToggle" title="Disable Caret Spotlight" aria-pressed="true">
@@ -182,7 +177,7 @@
 
         <div refs="tinymist-editor@preview"
             class="tinymist-preview-content flex flex-fill">
-            <iframe class="tinymist-preview-pdf-frame" title="Tinymist PDF Preview" hidden></iframe>
+            <iframe class="tinymist-preview-pdf-frame" title="Tinymist PDF Preview" hidden>Loading...</iframe>
             @if(isset($model) && !empty($model->html))
             {!! $model->html !!}
             @else

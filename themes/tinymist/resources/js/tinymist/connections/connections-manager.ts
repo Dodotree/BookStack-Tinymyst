@@ -128,14 +128,14 @@ export class TinymistConnectionsManager {
     }
 
     private setPreviewConnectionState(): void {
-        const label = this.previewPaused
-            ? "run"
+        const status = this.previewPaused
+            ? "paused"
             : !this.bridgeConnected
               ? "connecting"
-              : "pause";
+              : "running";
 
         window.$tmEventBus.emit(tmEvents.PreviewConnectionState, {
-            label
+            label: status,
         });
     }
 

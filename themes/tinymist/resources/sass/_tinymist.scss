@@ -530,13 +530,21 @@
     }
   }
 
+  .tinymist-preview-mode-select,
   .tinymist-file-select {
-    min-width: 150px;
-    max-width: 320px;
-    height: 28px;
-    margin-right: 8px;
+    min-width: 0;
+    max-width: min(320px, 100%);
+    width: auto;
+    height: 24px;
+    field-sizing: content;
+    border: 0;
+    outline: none;
     padding-top: 0;
     padding-bottom: 0;
+    padding-right: 2.3rem; /* space for dropdown icon */
+
+    font-weight: 600;
+    cursor: pointer;
   }
 
   .tinymist-source-editor {
@@ -613,9 +621,7 @@
     }
   }
 
-  .tinymist-preview-pdf-page-select {
-    min-width: 110px;
-  }
+
 
   .tinymist-console-content {
     flex: 1;
