@@ -125,74 +125,10 @@ return [
     | Max Document Size
     |--------------------------------------------------------------------------
     |
-    | Maximum size (in KB) of Typst document to compile.
+    | Maximum size (in KB) of Typst document to compile. Used in controller.
     |
     */
     'max_document_size' => env('TINYMIST_MAX_SIZE', 1024),
-
-    /*
-    |--------------------------------------------------------------------------
-    | LSP Mode
-    |--------------------------------------------------------------------------
-    |
-    | Enable Tinymist LSP mode for incremental compilation.
-    | When enabled, uses persistent LSP process instead of spawning
-    | typst CLI for each compilation.
-    |
-    */
-    'lsp_enabled' => env('TINYMIST_LSP_ENABLED', true),
-
-    /*
-    |--------------------------------------------------------------------------
-    | LSP Max Processes
-    |--------------------------------------------------------------------------
-    |
-    | Maximum number of concurrent LSP processes.
-    | Additional requests will be queued or fall back to typst CLI.
-    |
-    */
-    'lsp_max_processes' => env('TINYMIST_LSP_MAX_PROCESSES', 10),
-
-    /*
-    |--------------------------------------------------------------------------
-    | LSP Process Idle Timeout
-    |--------------------------------------------------------------------------
-    |
-    | Time (in minutes) before an idle LSP process is terminated.
-    | Matches draft autosave expiry time.
-    |
-    */
-    'lsp_idle_timeout' => env('TINYMIST_LSP_IDLE_TIMEOUT', 60),
-
-    /*
-    |--------------------------------------------------------------------------
-    | WebSocket Preview Server (On-Demand per Page)
-    |--------------------------------------------------------------------------
-    |
-    | Base ports for on-demand preview servers.
-    | Each page gets: control_port = base + (2 * page_id)
-    |                 data_port = base + (2 * page_id) + 1
-    | Example: Page ID 5 → Control: 33636, Data: 33637
-    |
-    */
-
-    // Base port for Control Plane (events, status, outline)
-    // Actual port = base_port + (2 * page_id)
-    'control_plane_base_port' => env('TINYMIST_CONTROL_BASE_PORT', 33626),
-
-    // Base port for Data Plane (binary SVG streaming)
-    // Actual port = base_port + (2 * page_id) + 1
-    'data_plane_base_port' => env('TINYMIST_DATA_BASE_PORT', 33625),
-
-    // Preview server host
-    'preview_host' => env('TINYMIST_PREVIEW_HOST', '127.0.0.1'),
-
-    // Maximum concurrent preview servers
-    'max_preview_servers' => env('TINYMIST_MAX_PREVIEW_SERVERS', 20),
-
-    // Preview server idle timeout (minutes) before auto-termination
-    'preview_idle_timeout' => env('TINYMIST_PREVIEW_IDLE_TIMEOUT', 30),
-
 
     /*
     |--------------------------------------------------------------------------

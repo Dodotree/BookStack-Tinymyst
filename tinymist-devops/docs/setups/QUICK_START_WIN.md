@@ -44,7 +44,6 @@ Optional seed data:
 Add these to .env (if not already present):
 
 - APP_THEME=tinymist
-- TINYMIST_LSP_ENABLED=true
 - TINYMIST_WS_SECRET=<random 64-hex string>
 
 Tip: generate a secret with Node:
