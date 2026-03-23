@@ -29,6 +29,7 @@ export class DiagnosticsProcessor {
         this.getSnapshotContext = getSnapshotContext;
 
         this.mapDiagnosticsToCurrent = this.mapDiagnosticsToCurrent.bind(this);
+
         window.$tmEventBus.listen(
             tmEvents.Diagnostics,
             this.mapDiagnosticsToCurrent,
@@ -53,17 +54,6 @@ export class DiagnosticsProcessor {
                 changeSet: ChangeSet.empty(0),
             });
         });
-    }
-
-    attachEditorView(
-        view: EditorView,
-        getSnapshotContext: (
-            docVersion: number,
-            fileName: string,
-        ) => { snapshot: string; changeSet: ChangeSet },
-    ): void {
-        this.editorView = view;
-        this.getSnapshotContext = getSnapshotContext;
     }
 
     private mapLspSeverity(
@@ -97,6 +87,7 @@ export class DiagnosticsProcessor {
         }
 
         if (payload.fileName && payload.fileName !== this.activeFileName) {
+            this.logAnotherFileDiagnostics(payload.fileName, payload.diagnostics);
             return;
         }
 
@@ -203,6 +194,15 @@ export class DiagnosticsProcessor {
                 type: diag.severity,
                 message: logMessage,
                 ...(location ? { location } : {}),
+            });
+        });
+    }
+
+    logAnotherFileDiagnostics(fileName: string, diagnostics: Diagnostic[]): void {
+        diagnostics.forEach((diag, index) => {
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
+                type: diag.severity,
+                message: `[Diagnostic] ${fileName} ${diag.severity}: ${diag.message} `,
             });
         });
     }

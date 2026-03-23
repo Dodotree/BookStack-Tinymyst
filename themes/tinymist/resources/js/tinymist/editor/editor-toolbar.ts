@@ -128,6 +128,7 @@ export class EditorToolbar {
         this.imageSelector = `${tmSelectors.Root} ${tmSelectors.Image}`;
         this.imageMessageSelector = `${tmSelectors.Root} ${tmSelectors.ImageMessage}`;
 
+        this.setActiveFile = this.setActiveFile.bind(this);
         this.insertFromEditorEvent = this.insertFromEditorEvent.bind(this);
         this.buttonsListener = this.buttonsListener.bind(this);
 

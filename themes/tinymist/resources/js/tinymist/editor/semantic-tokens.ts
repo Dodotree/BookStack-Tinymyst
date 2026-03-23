@@ -202,23 +202,6 @@ export class SemanticTokenProcessor {
         });
     }
 
-    attachEditorView(
-        view: EditorView,
-        getSnapshotContext: (
-            docVersion: number,
-            fileName: string,
-        ) => { snapshot: string; changeSet: ChangeSet },
-    ): void {
-        this.editorView = view;
-        this.getSnapshotContext = getSnapshotContext;
-
-        if (!this.pendingSemanticHighlights) {
-            return;
-        }
-        this.addHighlights(this.pendingSemanticHighlights);
-        this.pendingSemanticHighlights = null;
-    }
-
     private mapRegionsToCurrent(
         regions: Array<{
             line: number;
