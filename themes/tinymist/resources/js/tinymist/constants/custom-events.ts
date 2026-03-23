@@ -44,7 +44,8 @@ export const tmEvents = {
     SyncDisconnect: "sync-disconnect",
     SyncFullState: "sync-full-state",
     SyncOpenFile: "sync-open-file",
-    TextChange: "text-change",
+    EntryTextModified: "entry-text-modified",
+    TextModified: "text-modified",
     TextDiff: "text-diff",
     ThemeSettingsOpen: "theme-settings-open",
     TokenRenewed: "token-renewed",
@@ -116,7 +117,8 @@ export type TinymistEventPayloads = {
     [tmEvents.SyncFullState]: { timestamp: number; fileName: string; content: string; docVersion: number };
     [tmEvents.SyncOpenFile]: { fileName: string };
     [tmEvents.VersionedCursorRequest]: { docVersion: number; timestamp: number; request: { event: string; fileName: string; line: number; character: number } };
-    [tmEvents.TextChange]: string;
+    [tmEvents.EntryTextModified]: string; // gets forwarded outside of Tinymist as "editor-tinymist-change" for auto-saving trigger
+    [tmEvents.TextModified]: undefined; // for searchReplace to trigger without marking as changed
     [tmEvents.TextDiff]: { fileName: string; changes: any; docVersion: number };
     [tmEvents.ThemeSettingsOpen]: undefined;
     [tmEvents.TokenRenewed]: string;

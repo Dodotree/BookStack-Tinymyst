@@ -143,6 +143,8 @@ export const highlightField = StateField.define<DecorationSet>({
 
 export class SemanticTokenProcessor {
     private editorView: EditorView | null;
+    private activeFileName: string = ENTRY_FILE_NAME;
+
     private pendingSemanticHighlights: HighlightRegion[] | null = null;
     private encodedTokens: number[] | null = null;
     private lineSignatures: Map<number, string> = new Map();
@@ -151,16 +153,14 @@ export class SemanticTokenProcessor {
         docVersion: number,
         fileName: string,
     ) => { snapshot: string; changeSet: ChangeSet };
-    private activeFileName: string;
 
-    constructor(editorView: EditorView | null = null) {
-        // placeholders until attachEditorView is called
+    constructor(editorView: EditorView, getSnapshotContext: (
+        docVersion: number,
+        fileName: string,
+    ) => { snapshot: string; changeSet: ChangeSet }) {
+
         this.editorView = editorView;
-        this.getSnapshotContext = () => ({
-            snapshot: "",
-            changeSet: ChangeSet.empty(0),
-        });
-        this.activeFileName = ENTRY_FILE_NAME;
+        this.getSnapshotContext = getSnapshotContext;
 
         this.processSemanticTokens = this.processSemanticTokens.bind(this);
         this.processSemanticTokensDelta =

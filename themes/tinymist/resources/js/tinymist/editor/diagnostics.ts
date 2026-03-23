@@ -13,19 +13,20 @@ type DiagnosticLocationMap = Map<number, TinymistConsoleLocation>;
 
 export class DiagnosticsProcessor {
     private editorView: EditorView | null;
+    private activeFileName: string = ENTRY_FILE_NAME;
+
     private getSnapshotContext: (
         docVersion: number,
         fileName: string,
     ) => { snapshot: string; changeSet: ChangeSet };
-    private activeFileName: string;
 
-    constructor(editorView: EditorView | null = null) {
+    constructor(editorView: EditorView, getSnapshotContext: (
+        docVersion: number,
+        fileName: string,
+    ) => { snapshot: string; changeSet: ChangeSet }) {
+
         this.editorView = editorView;
-        this.getSnapshotContext = () => ({
-            snapshot: "should be overridden",
-            changeSet: ChangeSet.empty(0),
-        });
-        this.activeFileName = ENTRY_FILE_NAME;
+        this.getSnapshotContext = getSnapshotContext;
 
         this.mapDiagnosticsToCurrent = this.mapDiagnosticsToCurrent.bind(this);
         window.$tmEventBus.listen(

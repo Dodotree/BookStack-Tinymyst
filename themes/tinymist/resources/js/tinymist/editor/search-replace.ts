@@ -1,11 +1,70 @@
-import { EditorSelection } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
-import { tmClassNames, tmSelectors } from "../constants";
+import {
+    EditorSelection,
+    RangeSetBuilder,
+    StateEffect,
+    StateField,
+} from "@codemirror/state";
+import { Decoration, DecorationSet, EditorView } from "@codemirror/view";
+import { tmClassNames, tmEvents, tmSelectors } from "../constants";
 
 type MatchRange = {
     from: number;
     to: number;
 };
+
+type SearchHighlightRange = MatchRange & {
+    active: boolean;
+};
+
+const setSearchHighlightsEffect = StateEffect.define<SearchHighlightRange[]>();
+const clearSearchHighlightsEffect = StateEffect.define<null>();
+
+const searchMatchMark = Decoration.mark({ class: "tm-search-match" });
+const activeSearchMatchMark = Decoration.mark({
+    class: "tm-search-match tm-search-match-active",
+});
+
+const searchMatchHighlightField = StateField.define<DecorationSet>({
+    create() {
+        return Decoration.none;
+    },
+    update(highlights, tr) {
+        highlights = highlights.map(tr.changes);
+
+        for (const effect of tr.effects) {
+            if (effect.is(clearSearchHighlightsEffect)) {
+                highlights = Decoration.none;
+                continue;
+            }
+
+            if (!effect.is(setSearchHighlightsEffect)) {
+                continue;
+            }
+
+            const builder = new RangeSetBuilder<Decoration>();
+            const docLength = tr.state.doc.length;
+
+            for (const range of effect.value) {
+                const from = Math.max(0, Math.min(range.from, docLength));
+                const to = Math.max(from, Math.min(range.to, docLength));
+                if (to <= from) {
+                    continue;
+                }
+
+                builder.add(
+                    from,
+                    to,
+                    range.active ? activeSearchMatchMark : searchMatchMark,
+                );
+            }
+
+            highlights = builder.finish();
+        }
+
+        return highlights;
+    },
+    provide: (field) => EditorView.decorations.from(field),
+});
 
 export class TinymistSearchReplace {
     private readonly getEditorView: () => EditorView | null;
@@ -35,6 +94,56 @@ export class TinymistSearchReplace {
         this.addRemoveListeners(true);
     }
 
+    private cacheNodes(): void {
+        this.root = document.querySelector<HTMLElement>(tmSelectors.Root);
+        this.panel = this.root?.querySelector<HTMLElement>(
+            tmSelectors.SearchPanel,
+        ) ?? null;
+        this.searchInput = this.root?.querySelector<HTMLInputElement>(
+            tmSelectors.SearchInput,
+        ) ?? null;
+        this.replaceInput = this.root?.querySelector<HTMLInputElement>(
+            tmSelectors.SearchReplaceInput,
+        ) ?? null;
+        this.matchCount = this.root?.querySelector<HTMLElement>(
+            tmSelectors.SearchMatchCount,
+        ) ?? null;
+        this.replaceRow = this.root?.querySelector<HTMLElement>(
+            tmSelectors.SearchReplaceRow,
+        ) ?? null;
+        this.toggleReplaceButton = this.root?.querySelector<HTMLButtonElement>(
+            tmSelectors.SearchReplaceToggle,
+        ) ?? null;
+    }
+
+    private addRemoveListeners(adding: boolean): void {
+        if (!this.root || !this.panel) {
+            return;
+        }
+
+        const method = adding ? "addEventListener" : "removeEventListener";
+        document[method]("keydown", this.onDocumentKeyDown);
+        this.panel[method]("click", this.onPanelClick);
+        this.searchInput?.[method]("input", this.onSearchInput);
+        this.searchInput?.[method]("keydown", this.onSearchInputKeyDown);
+        this.replaceInput?.[method]("keydown", this.onReplaceInputKeyDown);
+
+        const busMethod = adding ? "listen" : "remove";
+        window.$tmEventBus[busMethod](tmEvents.TextModified, this.refreshMatchCount);
+    }
+
+    destroy(): void {
+        this.clearSearchHighlights();
+        this.addRemoveListeners(false);
+        this.root = null;
+        this.panel = null;
+        this.searchInput = null;
+        this.replaceInput = null;
+        this.matchCount = null;
+        this.replaceRow = null;
+        this.toggleReplaceButton = null;
+    }
+
     open(showReplace = false): void {
         if (!this.panel) {
             return;
@@ -61,17 +170,7 @@ export class TinymistSearchReplace {
         this.panel.classList.remove(tmClassNames.SearchVisible);
         this.panel.hidden = true;
         this.setReplaceExpanded(false);
-    }
-
-    destroy(): void {
-        this.addRemoveListeners(false);
-        this.root = null;
-        this.panel = null;
-        this.searchInput = null;
-        this.replaceInput = null;
-        this.matchCount = null;
-        this.replaceRow = null;
-        this.toggleReplaceButton = null;
+        this.clearSearchHighlights();
     }
 
     refreshMatchCount(): void {
@@ -79,6 +178,7 @@ export class TinymistSearchReplace {
         const view = this.getEditorView();
 
         if (!this.matchCount || !view || query.length === 0) {
+            this.clearSearchHighlights();
             if (this.matchCount) {
                 this.matchCount.textContent = "0 / 0";
             }
@@ -93,10 +193,104 @@ export class TinymistSearchReplace {
                 match.from === selected.from && match.to === selected.to,
         );
 
+        this.applySearchHighlights(view, matches, selectedIndex);
+
         this.matchCount.textContent =
             matches.length === 0
                 ? "0 / 0"
                 : `${selectedIndex >= 0 ? selectedIndex + 1 : 0} / ${matches.length}`;
+    }
+
+        private onDocumentKeyDown(event: Event): void {
+        const keyboardEvent = event as KeyboardEvent;
+        const target = keyboardEvent.target as Node | null;
+        const focusInTinymist = Boolean(target && this.root?.contains(target));
+
+        const usesMeta = keyboardEvent.ctrlKey || keyboardEvent.metaKey;
+        const key = keyboardEvent.key.toLowerCase();
+
+        if (usesMeta && key === "f" && focusInTinymist) {
+            keyboardEvent.preventDefault();
+            this.open(false);
+            return;
+        }
+
+        if (usesMeta && key === "h" && focusInTinymist) {
+            keyboardEvent.preventDefault();
+            this.open(true);
+            return;
+        }
+
+        if (keyboardEvent.key === "Escape" && this.panel && !this.panel.hidden) {
+            keyboardEvent.preventDefault();
+            this.close();
+            this.getEditorView()?.focus();
+        }
+    }
+
+    private onSearchInput(): void {
+        this.refreshMatchCount();
+    }
+
+    private onSearchInputKeyDown(event: Event): void {
+        const keyboardEvent = event as KeyboardEvent;
+
+        // That is problematic. You press enter to see the next match
+        // And second enter will erase the match instead of going to the next one
+
+        if (keyboardEvent.key !== "Enter") {
+            return;
+        }
+        keyboardEvent.preventDefault();
+        if (keyboardEvent.shiftKey) {
+            this.previousMatch();
+            this.searchInput?.focus();
+            return;
+        }
+        this.nextMatch();
+        this.searchInput?.focus();
+    }
+
+    private onReplaceInputKeyDown(event: Event): void {
+        const keyboardEvent = event as KeyboardEvent;
+        if (keyboardEvent.key !== "Enter") {
+            return;
+        }
+        keyboardEvent.preventDefault();
+        this.replaceNext();
+    }
+
+    private onPanelClick(event: Event): void {
+        const target = event.target as Element;
+        const button = target.closest<HTMLButtonElement>("button[data-tm-search-action]");
+        if (!button) {
+            return;
+        }
+
+        const action = button.dataset.tmSearchAction;
+        switch (action) {
+            case "close":
+                this.close();
+                this.getEditorView()?.focus();
+                break;
+            case "next":
+                this.nextMatch();
+                break;
+            case "previous":
+                this.previousMatch();
+                break;
+            case "toggleReplace":
+                this.setReplaceExpanded(this.replaceRow?.hidden ?? true);
+                break;
+            case "replace":
+                this.replaceNext();
+                break;
+            case "replaceAll":
+                this.replaceAll();
+                break;
+            default:
+                break;
+        }
     }
 
     nextMatch(): void {
@@ -215,127 +409,6 @@ export class TinymistSearchReplace {
         this.refreshMatchCount();
     }
 
-    private cacheNodes(): void {
-        this.root = document.querySelector<HTMLElement>(tmSelectors.Root);
-        this.panel = this.root?.querySelector<HTMLElement>(
-            tmSelectors.SearchPanel,
-        ) ?? null;
-        this.searchInput = this.root?.querySelector<HTMLInputElement>(
-            tmSelectors.SearchInput,
-        ) ?? null;
-        this.replaceInput = this.root?.querySelector<HTMLInputElement>(
-            tmSelectors.SearchReplaceInput,
-        ) ?? null;
-        this.matchCount = this.root?.querySelector<HTMLElement>(
-            tmSelectors.SearchMatchCount,
-        ) ?? null;
-        this.replaceRow = this.root?.querySelector<HTMLElement>(
-            tmSelectors.SearchReplaceRow,
-        ) ?? null;
-        this.toggleReplaceButton = this.root?.querySelector<HTMLButtonElement>(
-            tmSelectors.SearchReplaceToggle,
-        ) ?? null;
-    }
-
-    private addRemoveListeners(adding: boolean): void {
-        if (!this.root || !this.panel) {
-            return;
-        }
-
-        const method = adding ? "addEventListener" : "removeEventListener";
-        document[method]("keydown", this.onDocumentKeyDown);
-        this.panel[method]("click", this.onPanelClick);
-        this.searchInput?.[method]("input", this.onSearchInput);
-        this.searchInput?.[method]("keydown", this.onSearchInputKeyDown);
-        this.replaceInput?.[method]("keydown", this.onReplaceInputKeyDown);
-    }
-
-    private onDocumentKeyDown(event: Event): void {
-        const keyboardEvent = event as KeyboardEvent;
-        const target = keyboardEvent.target as Node | null;
-        const focusInTinymist = Boolean(target && this.root?.contains(target));
-
-        const usesMeta = keyboardEvent.ctrlKey || keyboardEvent.metaKey;
-        const key = keyboardEvent.key.toLowerCase();
-
-        if (usesMeta && key === "f" && focusInTinymist) {
-            keyboardEvent.preventDefault();
-            this.open(false);
-            return;
-        }
-
-        if (usesMeta && key === "h" && focusInTinymist) {
-            keyboardEvent.preventDefault();
-            this.open(true);
-            return;
-        }
-
-        if (keyboardEvent.key === "Escape" && this.panel && !this.panel.hidden) {
-            keyboardEvent.preventDefault();
-            this.close();
-            this.getEditorView()?.focus();
-        }
-    }
-
-    private onSearchInput(): void {
-        this.refreshMatchCount();
-    }
-
-    private onSearchInputKeyDown(event: Event): void {
-        const keyboardEvent = event as KeyboardEvent;
-        if (keyboardEvent.key !== "Enter") {
-            return;
-        }
-        keyboardEvent.preventDefault();
-        if (keyboardEvent.shiftKey) {
-            this.previousMatch();
-            return;
-        }
-        this.nextMatch();
-    }
-
-    private onReplaceInputKeyDown(event: Event): void {
-        const keyboardEvent = event as KeyboardEvent;
-        if (keyboardEvent.key !== "Enter") {
-            return;
-        }
-        keyboardEvent.preventDefault();
-        this.replaceNext();
-    }
-
-    private onPanelClick(event: Event): void {
-        const target = event.target as Element;
-        const button = target.closest<HTMLButtonElement>("button[data-tm-search-action]");
-        if (!button) {
-            return;
-        }
-
-        const action = button.dataset.tmSearchAction;
-        switch (action) {
-            case "close":
-                this.close();
-                this.getEditorView()?.focus();
-                break;
-            case "next":
-                this.nextMatch();
-                break;
-            case "previous":
-                this.previousMatch();
-                break;
-            case "toggleReplace":
-                this.setReplaceExpanded(this.replaceRow?.hidden ?? true);
-                break;
-            case "replace":
-                this.replaceNext();
-                break;
-            case "replaceAll":
-                this.replaceAll();
-                break;
-            default:
-                break;
-        }
-    }
-
     private setReplaceExpanded(expanded: boolean): void {
         if (!this.replaceRow || !this.toggleReplaceButton) {
             return;
@@ -398,5 +471,44 @@ export class TinymistSearchReplace {
 
     private getQuery(): string {
         return this.searchInput?.value ?? "";
+    }
+
+    private ensureSearchHighlightExtension(view: EditorView): void {
+        if (view.state.field(searchMatchHighlightField, false)) {
+            return;
+        }
+
+        view.dispatch({
+            effects: StateEffect.appendConfig.of([searchMatchHighlightField]),
+        });
+    }
+
+    private applySearchHighlights(
+        view: EditorView,
+        matches: MatchRange[],
+        selectedIndex: number,
+    ): void {
+        this.ensureSearchHighlightExtension(view);
+
+        view.dispatch({
+            effects: setSearchHighlightsEffect.of(
+                matches.map((match, index) => ({
+                    from: match.from,
+                    to: match.to,
+                    active: index === selectedIndex,
+                })),
+            ),
+        });
+    }
+
+    private clearSearchHighlights(): void {
+        const view = this.getEditorView();
+        if (!view || !view.state.field(searchMatchHighlightField, false)) {
+            return;
+        }
+
+        view.dispatch({
+            effects: clearSearchHighlightsEffect.of(null),
+        });
     }
 }

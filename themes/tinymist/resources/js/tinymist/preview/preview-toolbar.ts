@@ -5,6 +5,9 @@ import {
     tmSelectors,
 } from "../constants";
 
+/** Preview controls: toolbar, hot keys, mode dropdown
+ * PDF is a static simple frame
+ */
 export class PreviewToolbar {
     private previewElement: HTMLElement;
     private pageId: number;

@@ -16,32 +16,18 @@ import {
     ChangeSet,
     Compartment,
     EditorState,
-    Extension,
     Transaction,
 } from "@codemirror/state";
-import {
-    LanguageDescription,
-    LanguageSupport,
-    StreamLanguage,
-    bracketMatching,
-    defaultHighlightStyle,
-    syntaxHighlighting,
-} from "@codemirror/language";
-import { markdown } from "@codemirror/lang-markdown";
-import { css } from "@codemirror/lang-css";
-import { html } from "@codemirror/lang-html";
-import { javascript } from "@codemirror/lang-javascript";
-import { json } from "@codemirror/lang-json";
-import { python } from "@codemirror/lang-python";
-import { php } from "@codemirror/lang-php";
-import { oneDarkHighlightStyle } from "@codemirror/theme-one-dark";
-import { shell } from "@codemirror/legacy-modes/mode/shell";
-import { stex } from "@codemirror/legacy-modes/mode/stex";
-import { toml } from "@codemirror/legacy-modes/mode/toml";
+import { bracketMatching } from "@codemirror/language";
 
+import {
+    EditorToolbar,
+    getLanguageExtensionForFile,
+    getHighlightExtension,
+    isImageFile,
+} from "./editor-toolbar";
 import { SemanticTokenProcessor, highlightField } from "./semantic-tokens";
 import { DiagnosticsProcessor } from "./diagnostics";
-import { TinymistSearchReplace } from "./search-replace";
 
 import { ENTRY_FILE_NAME, tmEvents, tmSelectors } from "../constants";
 
@@ -59,99 +45,84 @@ type FileSyncState = {
     lastEmittedDirty: boolean;
     loaded: boolean;
     pendingSendTimer: ReturnType<typeof setTimeout> | null;
-    pendingDirtyTimer: ReturnType<typeof setTimeout> | null;
     snapshots: FileSnapshot[];
+    cursorRequest?: { event: string; fileName: string; line: number; character: number };
 };
 
 export class TinymistEditorUI {
     editor: HTMLTextAreaElement;
     editorView: EditorView | null = null;
-    private imageViewSelector: string;
-    private imageSelector: string;
-    private imageMessageSelector: string;
+    private activeFileName = ENTRY_FILE_NAME;
+    private fallbackEnabled = false;
+    private isOffline = !navigator.onLine;
 
     private readonly languageCompartment = new Compartment();
     private readonly highlightCompartment = new Compartment();
     private readonly isDarkMode =
         document.documentElement.classList.contains("dark-mode");
 
-    private readonly entryFileName = ENTRY_FILE_NAME;
-    private activeFileName = this.entryFileName;
-
     private readonly fileStates: Map<string, FileSyncState> = new Map();
     private readonly maxSnapshots = 3;
     private readonly changeDebounceMs = 150;
-    private readonly dirtyStateDebounceMs = 300;
     private readonly fallbackDebounceMs = 800;
     private readonly collabClientId = `tinymist-${crypto.randomUUID()}`; // formality to distinguish local vs remote changes in rebase
-    private readonly searchReplace: TinymistSearchReplace;
-
-    private fallbackEnabled = false;
-    private isOffline =
-        typeof navigator !== "undefined" ? navigator.onLine === false : false;
-    private readonly onBrowserOnline = () => {
-        this.isOffline = false;
-        this.flushAllPendingChanges();
-    };
-    private readonly onBrowserOffline = () => {
-        this.isOffline = true;
-    };
-
-    private getCurrentEditorText(): string {
-        if (this.editorView) {
-            return this.editorView.state.doc.toString();
-        }
-
-        return this.editor.value;
-    }
 
     constructor() {
-        this.editor = document.querySelector(tmSelectors.TextArea) as HTMLTextAreaElement;
-        this.imageViewSelector = `${tmSelectors.Root} ${tmSelectors.ImageView}`;
-        this.imageSelector = `${tmSelectors.Root} ${tmSelectors.Image}`;
-        this.imageMessageSelector = `${tmSelectors.Root} ${tmSelectors.ImageMessage}`;
+        this.editor = document.querySelector(
+            tmSelectors.TextArea,
+        ) as HTMLTextAreaElement;
 
         // Hook for diagnostics and semantic tokens to get editor state context for mapping
         this.getSnapshotContext = this.getSnapshotContext.bind(this);
+
         // Those are hooks for Bookstack's native form submission and for fallback mode
         this.getEntryText = this.getEntryText.bind(this);
         this.syncEntryContentToTextarea =
             this.syncEntryContentToTextarea.bind(this);
 
-        this.updateListenerForCodeMirror =
-            this.updateListenerForCodeMirror.bind(this);
+        this.onCodeMirrorUpdate = this.onCodeMirrorUpdate.bind(this);
+        this.jumpToConsoleLocation = this.jumpToConsoleLocation.bind(this);
+
+        this.setActiveFile = this.setActiveFile.bind(this);
         this.syncFullStateFromServer = this.syncFullStateFromServer.bind(this);
         this.syncRemoteChangesFromServer =
             this.syncRemoteChangesFromServer.bind(this);
-        this.pruneSnapshots = this.pruneSnapshots.bind(this);
-        this.onInput = this.onInput.bind(this);
-        this.buttonsListener = this.buttonsListener.bind(this);
-        this.insertFromEditorEvent = this.insertFromEditorEvent.bind(this);
-        this.jumpToConsoleLocation = this.jumpToConsoleLocation.bind(this);
         this.resetAttachmentFileFromServer =
             this.resetAttachmentFileFromServer.bind(this);
-        this.setActiveFile = this.setActiveFile.bind(this);
+        this.pruneSnapshots = this.pruneSnapshots.bind(this);
+
         this.destroy = this.destroy.bind(this);
 
         this.setupCodeMirror();
-        this.searchReplace = new TinymistSearchReplace(() => this.editorView);
         this.setupListeners();
 
-        const diagnosticsProcessor = new DiagnosticsProcessor();
-        diagnosticsProcessor.attachEditorView(
-            this.editorView!,
-            this.getSnapshotContext,
-        );
-        const semanticTokenProcessor = new SemanticTokenProcessor();
-        semanticTokenProcessor.attachEditorView(
-            this.editorView!,
-            this.getSnapshotContext,
-        );
+        new EditorToolbar(this.editor, this.editorView!);
+
+        new DiagnosticsProcessor(this.editorView!, this.getSnapshotContext);
+
+        new SemanticTokenProcessor(this.editorView!, this.getSnapshotContext);
 
         this.resetSyncStateForFile({
-            fileName: this.entryFileName,
+            fileName: ENTRY_FILE_NAME,
             docVersion: 1,
             content: this.getCurrentEditorText(),
+        });
+    }
+
+    private reconfigureEditorForFile(fileName: string): void {
+        if (!this.editorView) {
+            return;
+        }
+
+        this.editorView.dispatch({
+            effects: [
+                this.languageCompartment.reconfigure(
+                    getLanguageExtensionForFile(fileName),
+                ),
+                this.highlightCompartment.reconfigure(
+                    getHighlightExtension(this.isDarkMode),
+                ),
+            ],
         });
     }
 
@@ -166,17 +137,17 @@ export class TinymistEditorUI {
                     highlightActiveLineGutter(), // Highlight current line number in gutter
                     highlightActiveLine(), // Highlight current line
                     this.languageCompartment.of(
-                        this.getLanguageExtensionForFile(this.activeFileName),
+                        getLanguageExtensionForFile(this.activeFileName),
                     ),
-                    this.highlightCompartment.of(this.getHighlightExtension()),
-                    bracketMatching(),
+                    this.highlightCompartment.of(
+                        getHighlightExtension(this.isDarkMode),
+                    ),
+                    bracketMatching(), // Extension for bracket matching
                     highlightField, // Add custom highlighting support
-                    history(),
+                    history(), // Extension for undo/redo history
                     keymap.of([...historyKeymap, ...defaultKeymap]),
                     EditorView.editable.of(true), // Make editor editable
-                    EditorView.updateListener.of(
-                        this.updateListenerForCodeMirror,
-                    ),
+                    EditorView.updateListener.of(this.onCodeMirrorUpdate),
                 ],
             });
 
@@ -188,176 +159,17 @@ export class TinymistEditorUI {
 
             // Hide original textarea
             this.editor.style.display = "none";
-
-            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
-                type: "info",
-                message: "CodeMirror editor initialized",
-            });
         } catch (error) {
             this.editor.style.display = "block";
-            this.editor.addEventListener("input", this.onInput);
-            console.error("[Editor] Failed to initialize CodeMirror:", error);
+            this.editor.addEventListener("input", () => {
+                window.$tmEventBus.emit(tmEvents.EntryTextModified, "");
+            });
             window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                 type: "error",
                 message: "[Editor] Failed to initialize CodeMirror editor",
                 details: error,
             });
         }
-    }
-
-    private getHighlightExtension(): Extension {
-        return syntaxHighlighting(
-            this.isDarkMode ? oneDarkHighlightStyle : defaultHighlightStyle,
-            { fallback: true },
-        );
-    }
-
-    private getMarkdownLanguageExtension(): Extension {
-        return markdown({
-            codeLanguages: [
-                LanguageDescription.of({
-                    name: "javascript",
-                    alias: ["js", "jsx", "ts", "tsx"],
-                    load: async () => javascript(),
-                }),
-                LanguageDescription.of({
-                    name: "python",
-                    alias: ["py"],
-                    load: async () => python(),
-                }),
-                LanguageDescription.of({
-                    name: "php",
-                    load: async () => php(),
-                }),
-                LanguageDescription.of({
-                    name: "shell",
-                    alias: ["sh", "bash", "zsh", "shell"],
-                    load: async () =>
-                        new LanguageSupport(StreamLanguage.define(shell)),
-                }),
-            ],
-        });
-    }
-
-    private getLanguageExtensionForFile(fileName: string): Extension {
-        const ext = this.getFileExtension(fileName);
-
-        switch (ext) {
-            case "md":
-                return this.getMarkdownLanguageExtension();
-            case "toml":
-                return StreamLanguage.define(toml);
-            case "bib":
-                return StreamLanguage.define(stex);
-            case "sh":
-            case "bash":
-                return StreamLanguage.define(shell);
-            case "html":
-                return html();
-            case "css":
-                return css();
-            case "json":
-                return json();
-            case "ts":
-                return javascript({ typescript: true });
-            case "js":
-                return javascript();
-            case "php":
-                return php();
-            case "py":
-                return python();
-            case "txt":
-                return [];
-            default:
-                return this.getMarkdownLanguageExtension();
-        }
-    }
-
-    private getFileExtension(fileName: string): string {
-        const baseName = fileName.split(/[\\/]/).pop() ?? fileName;
-        const dotIndex = baseName.lastIndexOf(".");
-        if (dotIndex <= 0 || dotIndex >= baseName.length - 1) {
-            return "";
-        }
-
-        return baseName.slice(dotIndex + 1).toLowerCase();
-    }
-
-    private reconfigureEditorForFile(fileName: string): void {
-        if (!this.editorView) {
-            return;
-        }
-
-        this.editorView.dispatch({
-            effects: [
-                this.languageCompartment.reconfigure(
-                    this.getLanguageExtensionForFile(fileName),
-                ),
-                this.highlightCompartment.reconfigure(
-                    this.getHighlightExtension(),
-                ),
-            ],
-        });
-    }
-
-    private isImageFile(fileName: string): boolean {
-        return /\.(png|jpe?g|gif|webp|bmp|svg|ico|avif)$/i.test(fileName);
-    }
-
-    private showImagePreview(fileName: string, url: string): void {
-        const imageViewContainer = document.querySelector(this.imageViewSelector) as HTMLDivElement | null;
-        const imageViewElement = document.querySelector(this.imageSelector) as HTMLImageElement | null;
-        const imageViewMessage = document.querySelector(this.imageMessageSelector) as HTMLDivElement | null;
-        if (
-            !imageViewContainer ||
-            !imageViewElement ||
-            !imageViewMessage
-        ) {
-            return;
-        }
-
-        imageViewContainer.hidden = false;
-        if (this.editorView) {
-            this.editorView.dom.style.setProperty(
-                "display",
-                "none",
-                "important",
-            );
-        }
-        this.editor.style.display = "none";
-
-        if (!url) {
-            imageViewElement.hidden = true;
-            imageViewElement.removeAttribute("src");
-            imageViewMessage.hidden = false;
-            imageViewMessage.textContent = `Image preview unavailable for ${fileName}.`;
-            return;
-        }
-
-        imageViewElement.src = url;
-        imageViewElement.hidden = false;
-        imageViewMessage.hidden = true;
-    }
-
-    private showTextEditor(): void {
-        const imageViewContainer = document.querySelector(this.imageViewSelector) as HTMLDivElement | null;
-        const imageViewElement = document.querySelector(this.imageSelector) as HTMLImageElement | null;
-        const imageViewMessage = document.querySelector(this.imageMessageSelector) as HTMLDivElement | null;
-        if (imageViewContainer) {
-            imageViewContainer.hidden = true;
-        }
-        if (imageViewElement) {
-            imageViewElement.hidden = true;
-            imageViewElement.removeAttribute("src");
-        }
-        if (imageViewMessage) {
-            imageViewMessage.hidden = true;
-        }
-        if (this.editorView) {
-            this.editorView.dom.style.display = "";
-            return;
-        }
-        this.editor.style.display = "block";
     }
 
     setupListeners() {
@@ -381,7 +193,6 @@ export class TinymistEditorUI {
             tmEvents.ActiveFileChange,
             this.setActiveFile,
         );
-        window.$tmEventBus.listen(tmEvents.Insert, this.insertFromEditorEvent);
         window.$tmEventBus.listen(
             tmEvents.ResetFile,
             this.resetAttachmentFileFromServer,
@@ -390,24 +201,40 @@ export class TinymistEditorUI {
             tmEvents.ConsoleJumpToLocation,
             this.jumpToConsoleLocation,
         );
-
-        // Button actions, it counts on event bubbling to the container
-        this.editor
-            .closest(tmSelectors.EditorPane)
-            ?.addEventListener("click", this.buttonsListener);
     }
 
-    removeListeners() {
-        this.editor.removeEventListener("input", this.onInput);
-        this.editor
-            .closest(tmSelectors.EditorPane)
-            ?.removeEventListener("click", this.buttonsListener);
+    public setActiveFile(payload: { fileName: string; url: string }): void {
+        const { fileName, url } = payload;
+        if (fileName === this.activeFileName) {
+            return;
+        }
+
+        this.flushPendingChanges(this.activeFileName);
+        this.activeFileName = fileName;
+
+        if (isImageFile(fileName)) {
+            return;
+        }
+
+        this.reconfigureEditorForFile(fileName);
+        const state = this.getOrCreateFileState(fileName);
+
+        if (state.loaded) {
+            // In case it's already loaded by some chance
+            this.setText(state.currentContent, true);
+            return;
+        }
+
+        this.setText("", true);
+        window.$tmEventBus.emit(tmEvents.SyncOpenFile, { fileName: fileName });
     }
 
-    onInput() {
-        // Notify Bookstack page editor of changes, also fallback is using it
-        if (this.activeFileName === this.entryFileName) {
-            window.$tmEventBus.emit(tmEvents.TextChange, "");
+    onCodeMirrorUpdate(update: any) {
+        if (update.docChanged) {
+            this.onDocumentChange(update.transactions);
+        }
+        if (update.selectionSet) {
+            this.onCursorPositionChange(update.state);
         }
     }
 
@@ -430,11 +257,11 @@ export class TinymistEditorUI {
 
         const state = this.editorView.state;
         const safeLineNumber = Math.min(
-            Math.max(1, Math.trunc(payload.line || 1)),
+            Math.max(1, payload.line || 1),
             state.doc.lines,
         );
         const line = state.doc.line(safeLineNumber);
-        const safeCharacter = Math.max(1, Math.trunc(payload.character || 1));
+        const safeCharacter = Math.max(1, payload.character || 1);
         const targetPos = Math.min(line.from + safeCharacter - 1, line.to);
 
         this.editorView.dispatch({
@@ -444,235 +271,45 @@ export class TinymistEditorUI {
         this.editorView.focus();
     }
 
-    buttonsListener(event: Event) {
-        if (!event.target) return;
-        const button = (event.target as Element).closest(tmSelectors.ActionButton);
-        if (button === null) return;
-
-        const action = button.getAttribute("data-action");
-        switch (action) {
-            case "insertImage":
-                this.insertImage();
-                break;
-            case "insertLink":
-                this.insertLink();
-                break;
-            case "insertBold":
-                this.insertMarkup("*", "*");
-                break;
-            case "insertItalic":
-                this.insertMarkup("_", "_");
-                break;
-            case "insertMath":
-                this.insertMarkup("$", "$");
-                break;
-            case "insertCodeBlock":
-                this.insertCodeBlock();
-                break;
-            case "insertHeading":
-                this.insertHeading();
-                break;
-            case "changeCodeMirrorSettings":
-                window.$tmEventBus.emit(tmEvents.ThemeSettingsOpen);
-                break;
-            case "openSearchReplace":
-                this.searchReplace.open(false);
-                break;
-            default:
-                console.warn(`[Editor]Unknown button action: ${action}`);
-        }
-    }
-
-    private getSelectionInfo(): {
-        selectedText: string;
-        from: number;
-        to: number;
-    } {
-        if (this.editorView) {
-            const selection = this.editorView.state.selection.main;
-            return {
-                selectedText: this.editorView.state.doc.sliceString(
-                    selection.from,
-                    selection.to,
-                ),
-                from: selection.from,
-                to: selection.to,
-            };
-        }
-
-        return {
-            selectedText: this.editor.value.substring(
-                this.editor.selectionStart,
-                this.editor.selectionEnd,
-            ),
-            from: this.editor.selectionStart,
-            to: this.editor.selectionEnd,
-        };
-    }
-
-    private replaceSelection(replacement: string): void {
-        if (this.editorView) {
-            const selection = this.editorView.state.selection.main;
-            this.editorView.dispatch({
-                changes: {
-                    from: selection.from,
-                    to: selection.to,
-                    insert: replacement,
-                },
-                selection: {
-                    anchor: selection.from + replacement.length,
-                },
-            });
-            this.editorView.focus();
+    onCursorPositionChange(updateState: any) {
+        if (this.activeFileName !== ENTRY_FILE_NAME) {
             return;
         }
 
-        this.editor.setRangeText(
-            replacement,
-            this.editor.selectionStart,
-            this.editor.selectionEnd,
-            "end",
-        );
-        this.editor.focus();
-        this.onInput();
-    }
-
-    private escapeTypstString(value: string): string {
-        return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-    }
-
-    private insertImage(): void {
-        const selection = this.getSelectionInfo();
-        const selectedSrc = selection.selectedText.trim();
-        const src = selectedSrc.length > 0 ? selectedSrc : "image.png";
-        const escapedSrc = this.escapeTypstString(src);
-        this.replaceSelection(
-            `#image("${escapedSrc}", width: 100%, height: 100%, fit: "cover", scaling: "smooth", alt: "my image description")`,
-        );
-    }
-
-    private insertLink(): void {
-        const selection = this.getSelectionInfo();
-        const selectedUrl = selection.selectedText.trim();
-        const url =
-            selectedUrl.length > 0 ? selectedUrl : "https://example.com";
-        const escapedUrl = this.escapeTypstString(url);
-        this.replaceSelection(`#link("${escapedUrl}")[\n  See example.com\n]`);
-    }
-
-    private insertCodeBlock(): void {
-        const selection = this.getSelectionInfo();
-        const selectedCode = selection.selectedText;
-        if (selectedCode.length > 0) {
-            this.replaceSelection(`\`\`\`python\n${selectedCode}\n\`\`\``);
-            return;
-        }
-        this.replaceSelection("```python\n\n```");
-    }
-
-    syncFullStateFromServer(payload: {
-        content: string;
-        docVersion: number;
-        fileName: string;
-    }) {
-        const state = this.getOrCreateFileState(payload.fileName);
-        state.loaded = true;
-        state.currentContent = payload.content;
-        this.resetSyncStateForFile(payload);
-
-        if (payload.fileName === this.activeFileName) {
-            const currentText = this.getCurrentEditorText();
-            if (payload.content !== currentText) {
-                this.setText(payload.content, true);
-            }
-            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
-                type: "info",
-                message: `[Editor] Document ${payload.fileName} synchronized from server`,
-            });
-        }
-    }
-
-    // Those are hooks for Bookstack's native form submission and for fallback mode
-    public syncEntryContentToTextarea() {
-        const entryContent = this.getEntryText();
-        this.editor.value = entryContent;
-        return this.editor.value;
-    }
-    public getEntryText(): string {
-        if (this.activeFileName === this.entryFileName) {
-            return this.getCurrentEditorText();
-        }
-        return this.getOrCreateFileState(this.entryFileName).currentContent;
-    }
-
-    public setActiveFile(payload: { fileName: string; url: string }): void {
-        const { fileName, url } = payload;
-        if (fileName === this.activeFileName) {
-            return;
-        }
-
-        this.flushPendingChanges(this.activeFileName);
-
-        this.activeFileName = fileName;
-        this.searchReplace.close();
-        if (this.isImageFile(fileName)) {
-            this.showImagePreview(fileName, url);
-            return;
-        }
-
-        this.showTextEditor();
-        this.reconfigureEditorForFile(fileName);
-        const state = this.getOrCreateFileState(fileName);
-
-        if (state.loaded) {
-            this.setText(state.currentContent, true);
-        } else {
-            this.setText("", true);
-        }
-
-        window.$tmEventBus.emit(tmEvents.SyncOpenFile, { fileName: fileName });
-    }
-
-    updateListenerForCodeMirror(update: any) {
-        if (update.docChanged) {
-            this.onInput();
-            this.onDocumentChange(update.transactions);
-            this.searchReplace.refreshMatchCount();
-        }
-        // Track cursor position changes
-        if (update.selectionSet) {
-            const state = this.getOrCreateFileState(this.activeFileName);
-            // Since diffs are debounced it doesn't make sense to ram the server with cursor updates on every keystroke
-            if( !state.pendingSendTimer ) {
-                this.onCursorPositionChange(update.state);
-            }
-        }
-    }
-
-    onCursorPositionChange(state: any) {
-        if (this.isOffline) {
-            return;
-        }
-
-        if (this.activeFileName !== this.entryFileName) {
-            return;
-        }
         // Get cursor position and line
-        const pos = state.selection.main.head;
-        const line = state.doc.lineAt(pos);
-        window.$tmEventBus.emit(tmEvents.VersionedCursorRequest, {
-            docVersion: this.getOrCreateFileState(this.entryFileName).docVersion,
-            timestamp: Date.now(),
-            request: {
-                event: "changeCursorPosition",
-                fileName: this.entryFileName,
-                line: line.number - 1, // 0-indexed
-                character: Math.max(0, pos - line.from - 1),
-            },
-        });
+        const pos = updateState.selection.main.head;
+        const line = updateState.doc.lineAt(pos);
+        const state = this.getOrCreateFileState(this.activeFileName);
+        const request = {
+                    event: "changeCursorPosition",
+                    fileName: ENTRY_FILE_NAME,
+                    line: line.number - 1, // 0-indexed
+                    character: Math.max(0, pos - line.from - 1),
+                };
+
+        // Since diffs are debounced it doesn't make sense to ram the server with cursor updates on every keystroke
+        if (!state.pendingSendTimer && !this.isOffline) {
+            window.$tmEventBus.emit(tmEvents.VersionedCursorRequest, {
+                docVersion: state.docVersion,
+                timestamp: Date.now(),
+                request
+            });
+            return;
+        }
+        // Will go out with the diff, only to be waiting in the control-plane
+        // until diff render is confirmed and applied, then it will be queried
+        state.cursorRequest = request;
     }
 
     onDocumentChange(transactions: readonly Transaction[]) {
+        // In case search-replace is active
+        window.$tmEventBus.emit(tmEvents.TextModified);
+
+        if (this.activeFileName === ENTRY_FILE_NAME) {
+            // goes to tinymist-editor.ts and there translated to BookStack event that content changed
+            window.$tmEventBus.emit(tmEvents.EntryTextModified, "");
+        }
+
         if (
             transactions.some(
                 (tr) =>
@@ -681,33 +318,28 @@ export class TinymistEditorUI {
         ) {
             return;
         }
-        const state = this.getOrCreateFileState(this.activeFileName);
-        state.currentContent = this.getCurrentEditorText();
-        this.queueDirtyStateEmit(this.activeFileName);
 
-        // Eventually changes from transactions sent to WebSocket server
+        const fileName = this.activeFileName;
+        const state = this.getOrCreateFileState(fileName);
+        state.currentContent = this.getCurrentEditorText();
+
+        // Accumulates changes from transactions, eventually flushed to WebSocket server
         if (transactions.some((tr) => tr.docChanged)) {
             transactions.forEach((tr) => {
                 if (tr.changes && !tr.changes.empty) {
-                    this.queueChanges(tr.changes, this.activeFileName);
+                    const lastSnapshot = state.snapshots.at(-1);
+                    if (lastSnapshot) {
+                        lastSnapshot.afterTransactions = lastSnapshot.afterTransactions
+                            ? lastSnapshot.afterTransactions.compose(tr.changes)
+                            : tr.changes;
+                    }
                 }
             });
+            this.schedulePendingFlush(fileName);
         }
     }
 
-    private queueChanges(changes: ChangeSet, fileName: string): void {
-        const state = this.getOrCreateFileState(fileName);
-        const lastSnapshot = state.snapshots.at(-1);
-        if (lastSnapshot) {
-            state.snapshots[state.snapshots.length - 1].afterTransactions =
-                lastSnapshot.afterTransactions
-                    ? lastSnapshot.afterTransactions.compose(changes)
-                    : changes;
-        }
-
-        this.schedulePendingFlush(fileName);
-    }
-
+    // Debounced for furious typing
     private schedulePendingFlush(fileName: string): void {
         const state = this.getOrCreateFileState(fileName);
 
@@ -724,11 +356,203 @@ export class TinymistEditorUI {
         );
     }
 
+    private flushAllPendingChanges(): void {
+        for (const fileName of this.fileStates.keys()) {
+            this.flushPendingChanges(fileName);
+        }
+    }
+
+    private emitDirtyState(fileName: string, isDirty: boolean): void {
+        window.$tmEventBus.emit(tmEvents.FileDirtyState, {
+            fileName,
+            isDirty,
+        });
+    }
+
+    private flushPendingChanges(fileName: string): void {
+        const state = this.getOrCreateFileState(fileName);
+
+        if (state.pendingSendTimer) {
+            clearTimeout(state.pendingSendTimer);
+            state.pendingSendTimer = null;
+        }
+
+        const nextDirty =
+            this.hashString(state.currentContent) !== state.savedContentHash;
+        if (nextDirty !== state.lastEmittedDirty) {
+            this.emitDirtyState(fileName, nextDirty);
+        }
+        state.lastEmittedDirty = nextDirty;
+
+        const pendingChanges = state.snapshots.at(-1)?.afterTransactions;
+        if (!pendingChanges || pendingChanges.empty) {
+            // Happens only on early flash when files are switched
+            // Nothing gives you nothing, no need to advance docVersion or send empty changes to the server
+            return;
+        }
+
+        if (this.isOffline) {
+            return;
+        }
+
+        state.docVersion += 1;
+
+        // After applying changes, back end will be at current docVersion with current content
+        if (this.fallbackEnabled && fileName === ENTRY_FILE_NAME) {
+            window.$tmEventBus.emit(tmEvents.FallbackCompile, {
+                content: state.currentContent,
+                docVersion: state.docVersion,
+            });
+        } else if (!this.fallbackEnabled) {
+            window.$tmEventBus.emit(tmEvents.TextDiff, {
+                fileName,
+                changes: pendingChanges,
+                docVersion: state.docVersion,
+            });
+
+            if (state.cursorRequest) {
+                window.$tmEventBus.emit(tmEvents.VersionedCursorRequest, {
+                    docVersion: state.docVersion,
+                    timestamp: Date.now(),
+                    request: state.cursorRequest,
+                });
+            }
+        }
+
+        state.snapshots.push({
+            docVersion: state.docVersion,
+            snapshot: state.currentContent,
+            afterTransactions: ChangeSet.empty(state.currentContent.length),
+        });
+        if (state.snapshots.length > this.maxSnapshots) {
+            state.snapshots = state.snapshots.slice(-this.maxSnapshots);
+        }
+    }
+
+    private getSnapshotContext(
+        docVersion: number,
+        fileName: string,
+    ): { snapshot: string; changeSet: ChangeSet } {
+        const state = this.getOrCreateFileState(fileName);
+        const index = state.snapshots.findIndex(
+            (s) => s.docVersion === docVersion,
+        );
+        if (index === -1) {
+            console.error("[Editor] Snapshot not found", state);
+            throw new Error(
+                `No snapshot found for docVersion ${docVersion} in file ${fileName}`,
+            );
+        }
+        let pending = state.snapshots[index].afterTransactions;
+        for (let i = index + 1; i < state.snapshots.length; i++) {
+            if (state.snapshots[i].afterTransactions) {
+                pending = pending.compose(state.snapshots[i].afterTransactions);
+            }
+        }
+        return {
+            snapshot: state.snapshots[index].snapshot,
+            changeSet: pending,
+        };
+    }
+
+    private pruneSnapshots(payload: {
+        fileName: string;
+        docVersion: number;
+    }): void {
+        const state = this.getOrCreateFileState(payload.fileName);
+
+        if (
+            !Number.isFinite(payload.docVersion) ||
+            state.snapshots.length === 0
+        ) {
+            return;
+        }
+        if (payload.docVersion > state.docVersion) {
+            console.warn(
+                `[Editor] DocVersion out of sync for ${payload.fileName} current: ${state.docVersion}, requested prune: ${payload.docVersion}`,
+            );
+            return;
+        }
+
+        // Leave at least one snapshot
+        const pruned = state.snapshots.filter(
+            (s) =>
+                s.docVersion >=
+                Math.min(payload.docVersion, state.docVersion - 1),
+        );
+        state.snapshots = pruned;
+    }
+
+    syncFullStateFromServer(payload: {
+        content: string;
+        docVersion: number;
+        fileName: string;
+    }) {
+        if (payload.fileName === this.activeFileName) {
+            const currentText = this.getCurrentEditorText();
+            if (payload.content !== currentText) {
+                this.setText(payload.content, true);
+            }
+            window.$tmEventBus.emit(tmEvents.ConsoleLog, {
+                type: "info",
+                message: `[Editor] Document ${payload.fileName} synchronized from server`,
+            });
+        }
+
+        // Full sync can be dispatched for not active files as well
+        this.resetSyncStateForFile(payload);
+    }
+
+    private resetSyncStateForFile(payload: {
+        fileName: string;
+        docVersion: number;
+        content: string;
+    }): void {
+        const state = this.getOrCreateFileState(payload.fileName);
+        console.log(
+            `[Editor] Resetting sync state for ${payload.fileName} to docVersion ${payload.docVersion}`,
+        );
+        state.docVersion = payload.docVersion;
+        state.currentContent = payload.content;
+        state.savedContentHash = this.hashString(payload.content);
+        state.loaded = true;
+        state.snapshots = [
+            {
+                docVersion: payload.docVersion,
+                snapshot: payload.content,
+                afterTransactions: ChangeSet.empty(payload.content.length),
+            },
+        ];
+        if (state.pendingSendTimer) {
+            clearTimeout(state.pendingSendTimer);
+            state.pendingSendTimer = null;
+        }
+        state.lastEmittedDirty = false;
+        this.emitDirtyState(payload.fileName, false);
+    }
+
+    private resetAttachmentFileFromServer(payload: {
+        fileName?: string;
+    }): void {
+        const fileName = String(payload?.fileName || "").trim();
+        if (!fileName || fileName === ENTRY_FILE_NAME) {
+            return;
+        }
+        // will be reset after full sync comes from node server
+        window.$tmEventBus.emit(tmEvents.SyncOpenFile, { fileName });
+    }
+
     private syncRemoteChangesFromServer(payload: {
         fileName: string;
         docVersion: number;
         changes: unknown;
     }): void {
+
+        // Sync with remote only files already loaded
+        if (!this.fileStates.has(payload.fileName)) {
+            return;
+        }
+
         const state = this.getOrCreateFileState(payload.fileName);
         const nextDocVersion = Number(payload.docVersion);
 
@@ -760,8 +584,8 @@ export class TinymistEditorUI {
             console.warn("[Editor] Missing base snapshot for remote merge", {
                 fileName: payload.fileName,
                 requestedDocVersion: nextDocVersion,
-                availableSnapshots: state.snapshots.map((snapshot) =>
-                    snapshot.docVersion,
+                availableSnapshots: state.snapshots.map(
+                    (snapshot) => snapshot.docVersion,
                 ),
             });
             window.$tmEventBus.emit(tmEvents.SyncOpenFile, {
@@ -820,9 +644,8 @@ export class TinymistEditorUI {
 
         if (payload.fileName === this.activeFileName && this.editorView) {
             const currentText = this.editorView.state.doc.toString();
-            const nextSelection = this.editorView.state.selection.map(
-                currentToFinal,
-            );
+            const nextSelection =
+                this.editorView.state.selection.map(currentToFinal);
 
             if (
                 !currentToFinal.empty ||
@@ -833,7 +656,6 @@ export class TinymistEditorUI {
                     changes: currentToFinal,
                     selection: nextSelection,
                     annotations: [
-                        Transaction.userEvent.of("tinymist-sync"),
                         Transaction.addToHistory.of(false),
                         Transaction.remote.of(true),
                     ],
@@ -841,337 +663,14 @@ export class TinymistEditorUI {
             }
         }
 
-        if (!rebasedLocal.empty) {
-            this.schedulePendingFlush(payload.fileName);
-        }
-
-        this.queueDirtyStateEmit(payload.fileName);
         window.$tmEventBus.emit(tmEvents.ConsoleLog, {
             type: "info",
             message: `[Editor] Remote changes merged for ${payload.fileName}`,
         });
     }
 
-    private flushPendingChanges(fileName: string): void {
-        const state = this.getOrCreateFileState(fileName);
-
-        if (state.pendingSendTimer) {
-            clearTimeout(state.pendingSendTimer);
-            state.pendingSendTimer = null;
-        }
-
-        const pendingChanges = state.snapshots.at(-1)?.afterTransactions;
-        if (!pendingChanges || pendingChanges.empty) {
-            // Happens only on early flash when files are switched
-            // Nothing gives you nothing, no need to advance docVersion or send empty changes to the server
-            return;
-        }
-
-        if (this.isOffline) {
-            return;
-        }
-
-        state.docVersion += 1;
-
-        // After applying changes back end will be at current docVersion with current content
-        if (this.fallbackEnabled && fileName === this.entryFileName) {
-            window.$tmEventBus.emit(tmEvents.FallbackCompile, {
-                content: state.currentContent,
-                docVersion: state.docVersion,
-            });
-        } else if (!this.fallbackEnabled) {
-            window.$tmEventBus.emit(tmEvents.TextDiff, {
-                fileName,
-                changes: pendingChanges,
-                docVersion: state.docVersion,
-            });
-
-            // The problem is that even after the server side copy is changed and "ack" received,
-            // there's no way of knowing that preview is already rendered and cursor paths are for that updated preview.
-            this.onCursorPositionChange(this.editorView!.state);
-        }
-
-        state.snapshots.push({
-            docVersion: state.docVersion,
-            snapshot: state.currentContent,
-            afterTransactions: ChangeSet.empty(state.currentContent.length),
-        });
-        if (state.snapshots.length > this.maxSnapshots) {
-            state.snapshots = state.snapshots.slice(-this.maxSnapshots);
-        }
-    }
-
-    private flushAllPendingChanges(): void {
-        for (const fileName of this.fileStates.keys()) {
-            this.flushPendingChanges(fileName);
-        }
-    }
-
-    private resetSyncStateForFile(payload: {
-        fileName: string;
-        docVersion: number;
-        content: string;
-    }): void {
-        const state = this.getOrCreateFileState(payload.fileName);
-        console.log(
-            `[Editor] Resetting sync state for ${payload.fileName} to docVersion ${payload.docVersion}`,
-        );
-        state.docVersion = payload.docVersion;
-        state.currentContent = payload.content;
-        state.savedContentHash = this.hashString(payload.content);
-        state.loaded = true;
-        state.snapshots = [
-            {
-                docVersion: payload.docVersion,
-                snapshot: payload.content,
-                afterTransactions: ChangeSet.empty(payload.content.length),
-            },
-        ];
-        if (state.pendingSendTimer) {
-            clearTimeout(state.pendingSendTimer);
-            state.pendingSendTimer = null;
-        }
-        if (state.pendingDirtyTimer) {
-            clearTimeout(state.pendingDirtyTimer);
-            state.pendingDirtyTimer = null;
-        }
-        state.lastEmittedDirty = false;
-    }
-
-    private queueDirtyStateEmit(fileName: string): void {
-        if (fileName === this.entryFileName) {
-            return;
-        }
-        const state = this.getOrCreateFileState(fileName);
-        if (state.pendingDirtyTimer) {
-            clearTimeout(state.pendingDirtyTimer);
-        }
-        state.pendingDirtyTimer = setTimeout(() => {
-            state.pendingDirtyTimer = null;
-            const nextDirty =
-                this.hashString(state.currentContent) !==
-                state.savedContentHash;
-            if (nextDirty === state.lastEmittedDirty) {
-                return;
-            }
-            state.lastEmittedDirty = nextDirty;
-            this.emitDirtyState(fileName, nextDirty);
-        }, this.dirtyStateDebounceMs);
-    }
-
-    private emitDirtyState(fileName: string, isDirty: boolean): void {
-        window.$tmEventBus.emit(tmEvents.FileDirtyState, {
-            fileName,
-            isDirty,
-        });
-    }
-
-    private resetAttachmentFileFromServer(payload: {
-        fileName?: string;
-    }): void {
-        const fileName = String(payload?.fileName || "").trim();
-        if (!fileName || fileName === this.entryFileName) {
-            return;
-        }
-
-        const state = this.getOrCreateFileState(fileName);
-        if (state.pendingSendTimer) {
-            clearTimeout(state.pendingSendTimer);
-            state.pendingSendTimer = null;
-        }
-        if (state.pendingDirtyTimer) {
-            clearTimeout(state.pendingDirtyTimer);
-            state.pendingDirtyTimer = null;
-        }
-
-        state.loaded = false;
-        state.snapshots = [
-            {
-                docVersion: state.docVersion,
-                snapshot: "",
-                afterTransactions: ChangeSet.empty(0),
-            },
-        ];
-        state.currentContent = "";
-        state.lastEmittedDirty = false;
-        this.emitDirtyState(fileName, false);
-
-        window.$tmEventBus.emit(tmEvents.SyncOpenFile, { fileName });
-    }
-
-    private getSnapshotContext(
-        docVersion: number,
-        fileName: string,
-    ): { snapshot: string; changeSet: ChangeSet } {
-        const state = this.getOrCreateFileState(fileName);
-        const index = state.snapshots.findIndex(
-            (s) => s.docVersion === docVersion,
-        );
-        if (index === -1) {
-            console.error("[Editor] Snapshot not found", state);
-            throw new Error(
-                `No snapshot found for docVersion ${docVersion} in file ${fileName}`,
-            );
-        }
-        let pending = state.snapshots[index].afterTransactions;
-        for (let i = index + 1; i < state.snapshots.length; i++) {
-            if (state.snapshots[i].afterTransactions) {
-                pending = pending.compose(state.snapshots[i].afterTransactions);
-            }
-        }
-        return {
-            snapshot: state.snapshots[index].snapshot,
-            changeSet: pending,
-        };
-    }
-
-    private pruneSnapshots(payload: {
-        fileName: string;
-        docVersion: number;
-    }): void {
-        const state = this.getOrCreateFileState(payload.fileName);
-
-        if (
-            !Number.isFinite(payload.docVersion) ||
-            state.snapshots.length === 0
-        ) {
-            return;
-        }
-        if (payload.docVersion > state.docVersion) {
-            console.warn(
-                `[Editor] DocVersion out of sync for ${payload.fileName} current: ${state.docVersion}, requested prune: ${payload.docVersion}`,
-            );
-            return;
-        }
-
-        // Leave at least one snapshot
-        const pruned = state.snapshots.filter(
-            (s) =>
-                s.docVersion >=
-                Math.min(payload.docVersion, state.docVersion - 1),
-        );
-        state.snapshots = pruned;
-    }
-
-    private insertFromEditorEvent(eventContent: {
-        typst?: string;
-        markdown?: string;
-        html?: string;
-    }): void {
-        const insertText = (
-            eventContent?.typst ||
-            eventContent?.markdown ||
-            eventContent?.html ||
-            ""
-        ).toString();
-        if (!insertText) {
-            return;
-        }
-        if (this.activeFileName !== this.entryFileName) {
-            console.warn("[Editor] Ignoring insert event for non-active file", {
-                activeFile: this.activeFileName,
-                eventFile: this.activeFileName,
-            });
-            return;
-        }
-
-        if (this.editorView) {
-            const selection = this.editorView.state.selection.main;
-            this.editorView.dispatch({
-                changes: {
-                    from: selection.from,
-                    to: selection.to,
-                    insert: insertText,
-                },
-                selection: {
-                    anchor: selection.from + insertText.length,
-                },
-            });
-            this.editorView.focus();
-            return;
-        }
-
-        const start = this.editor.selectionStart;
-        const end = this.editor.selectionEnd;
-        this.editor.setRangeText(insertText, start, end, "end");
-        this.editor.focus();
-        this.onInput();
-    }
-
     /**
-     * Insert markup around selected text or at cursor position.
-     */
-    insertMarkup(before: string, after: string) {
-        if (this.editorView) {
-            const state = this.editorView.state;
-            const selection = state.selection.main;
-            const selectedText = state.doc.sliceString(
-                selection.from,
-                selection.to,
-            );
-            const replacement = before + selectedText + after;
-
-            this.editorView.dispatch({
-                changes: {
-                    from: selection.from,
-                    to: selection.to,
-                    insert: replacement,
-                },
-                selection: {
-                    anchor: selection.from + before.length,
-                    head: selection.from + before.length + selectedText.length,
-                },
-            });
-            this.editorView.focus();
-        } else {
-            const start = this.editor.selectionStart;
-            const end = this.editor.selectionEnd;
-            const selectedText = this.editor.value.substring(start, end);
-            const replacement = before + selectedText + after;
-
-            this.editor.setRangeText(replacement, start, end, "select");
-            this.editor.focus();
-            this.onInput();
-        }
-    }
-
-    /**
-     * Insert heading at cursor position.
-     */
-    insertHeading() {
-        if (this.editorView) {
-            const state = this.editorView.state;
-            const selection = state.selection.main;
-            const before = state.doc.sliceString(0, selection.from);
-            const heading =
-                before.endsWith("\n") || before === ""
-                    ? "= Heading\n"
-                    : "\n= Heading\n";
-
-            this.editorView.dispatch({
-                changes: { from: selection.from, insert: heading },
-                selection: { anchor: selection.from + heading.length - 1 },
-            });
-            this.editorView.focus();
-        } else {
-            const start = this.editor.selectionStart;
-            const before = this.editor.value.substring(0, start);
-            const after = this.editor.value.substring(start);
-
-            const heading =
-                before.endsWith("\n") || before === ""
-                    ? "= Heading\n"
-                    : "\n= Heading\n";
-            this.editor.value = before + heading + after;
-            this.editor.selectionStart = this.editor.selectionEnd =
-                start + heading.length - 1;
-            this.editor.focus();
-            this.onInput();
-        }
-    }
-
-    /**
-     * Set editor content.
+     * Set editor content from file sync or because editor switched files.
      */
     setText(content: string, fromSync: boolean = false) {
         if (this.editorView) {
@@ -1194,17 +693,6 @@ export class TinymistEditorUI {
     }
 
     /**
-     * Focus editor.
-     */
-    focus() {
-        if (this.editorView) {
-            this.editorView.focus();
-        } else {
-            this.editor.focus();
-        }
-    }
-
-    /**
      * Simple string hash function for content comparison.
      */
     hashString(str: string): string {
@@ -1217,30 +705,6 @@ export class TinymistEditorUI {
         return hash.toString();
     }
 
-    destroy() {
-        window.removeEventListener("online", this.onBrowserOnline);
-        window.removeEventListener("offline", this.onBrowserOffline);
-
-        for (const fileState of this.fileStates.values()) {
-            if (fileState.pendingSendTimer) {
-                clearTimeout(fileState.pendingSendTimer);
-                fileState.pendingSendTimer = null;
-            }
-            if (fileState.pendingDirtyTimer) {
-                clearTimeout(fileState.pendingDirtyTimer);
-                fileState.pendingDirtyTimer = null;
-            }
-        }
-        this.removeListeners();
-        if (this.editorView) {
-            this.editorView.destroy();
-            this.editorView = null;
-        }
-        this.searchReplace.destroy();
-        // dereference editor to release DOM reference, but don't remove
-        this.editor = null as any;
-    }
-
     private getOrCreateFileState(fileName: string): FileSyncState {
         const existing = this.fileStates.get(fileName);
         if (existing) {
@@ -1248,16 +712,16 @@ export class TinymistEditorUI {
         }
 
         const currentContent =
-            fileName === this.entryFileName ? this.getCurrentEditorText() : "";
+            fileName === this.activeFileName ? this.getCurrentEditorText() : "";
+
         const created: FileSyncState = {
             fileName: fileName,
             docVersion: 1,
             currentContent: currentContent,
             savedContentHash: this.hashString(currentContent),
             lastEmittedDirty: false,
-            loaded: fileName === this.entryFileName,
+            loaded: fileName === this.activeFileName,
             pendingSendTimer: null,
-            pendingDirtyTimer: null,
             snapshots: [
                 {
                     docVersion: 1,
@@ -1269,5 +733,57 @@ export class TinymistEditorUI {
 
         this.fileStates.set(fileName, created);
         return created;
+    }
+
+    private readonly onBrowserOnline = () => {
+        this.isOffline = false;
+        this.flushAllPendingChanges();
+    };
+    private readonly onBrowserOffline = () => {
+        this.isOffline = true;
+    };
+
+    private getCurrentEditorText(): string {
+        if (this.editorView) {
+            return this.editorView.state.doc.toString();
+        }
+
+        return this.editor.value;
+    }
+
+    // Those are hooks for Bookstack's native form submission and for fallback mode
+    public syncEntryContentToTextarea() {
+        const entryContent = this.getEntryText();
+        this.editor.value = entryContent;
+        return this.editor.value;
+    }
+
+    public getEntryText(): string {
+        if (this.activeFileName === ENTRY_FILE_NAME) {
+            return this.getCurrentEditorText();
+        }
+        return this.getOrCreateFileState(ENTRY_FILE_NAME).currentContent;
+    }
+
+    removeListeners() {
+        // event bus removes them automatically on destroy, but we need to remove browser events
+         window.removeEventListener("online", this.onBrowserOnline);
+         window.removeEventListener("offline", this.onBrowserOffline);
+    }
+
+    destroy() {
+        for (const fileState of this.fileStates.values()) {
+            if (fileState.pendingSendTimer) {
+                clearTimeout(fileState.pendingSendTimer);
+                fileState.pendingSendTimer = null;
+            }
+        }
+        this.removeListeners();
+        if (this.editorView) {
+            this.editorView.destroy();
+            this.editorView = null;
+        }
+        // dereference editor to release DOM reference, but don't remove
+        this.editor = null as any;
     }
 }

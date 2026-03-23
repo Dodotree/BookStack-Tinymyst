@@ -10,7 +10,7 @@ const externalToInternalEvents: Record<string, keyof TinymistEventPayloads> = {
 };
 
 const internalToExternalEvents: Partial<Record<keyof TinymistEventPayloads, string>> = {
-    "text-change": "editor-tinymist-change", // used for letting know page-editor.js that something changed, so it can trigger auto-saving
+    "entry-text-modified": "editor-tinymist-change", // used for letting know page-editor.js that something changed, so it can trigger auto-saving
     "file-dirty-state": "attachments-file-dirty-state",
 };
 
@@ -30,9 +30,12 @@ export class TinymistEditor extends Component {
         const internalListeners = Object.entries(internalToExternalEvents)
             .filter(([, externalEvent]) => externalEvent)
             .map(([internalEvent, externalEvent]) => {
+
             const typedInternalEvent = internalEvent as keyof TinymistEventPayloads;
             const handler = (payload: unknown) => externalBus.emit(externalEvent, payload as {});
+
             tinymistBus.listen(typedInternalEvent, handler as any);
+
             return { eventName: internalEvent, handler };
         });
 

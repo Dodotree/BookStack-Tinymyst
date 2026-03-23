@@ -5,8 +5,6 @@
 import { TinymistConnectionsManager } from "./connections/connections-manager";
 import { TinymistFallbackCompiler } from "./connections/fallback";
 import { TinymistEditorUI } from "./editor/editor";
-import { TinymistFileDropdown } from "./editor/file-dropdown";
-import { TinymistThemeSettings } from "./editor/theme-settings";
 import { TinymistConsole } from "./console";
 import { PreviewRenderer } from "./preview/render";
 import { EventBus } from "./event-bus";
@@ -47,8 +45,6 @@ export class TinymistApp {
         this.getText = editorUI.getEntryText;
         this.syncTextGetText = editorUI.syncEntryContentToTextarea;
 
-        new TinymistThemeSettings();
-        new TinymistFileDropdown(`${tmSelectors.Root} ${tmSelectors.FileDropDown}`);
         new TinymistConsole(tmSelectors.ConsolePanel, tmSelectors.ConsoleContent);
         new TinymistFallbackCompiler(this.pageId);
 

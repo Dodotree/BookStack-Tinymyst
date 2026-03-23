@@ -547,7 +547,7 @@ End-to-end lifecycle of an attachment file in the Tinymist editor integration.
 │  "attachments-reset-file"      →   "reset-file"                  │
 │                                                                  │
 │  INTERNAL → EXTERNAL:                                            │
-│  "text-change"                 →   "editor-tinymist-change"      │
+│  "text-modified"                 →   "editor-tinymist-change"      │
 │  "file-dirty-state"           →   "attachments-file-dirty-state" │
 │                                                                  │
 └──────────────────────────────────────────────────────────────────┘
