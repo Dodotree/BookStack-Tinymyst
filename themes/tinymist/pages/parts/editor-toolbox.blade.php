@@ -9,6 +9,7 @@
             @endif
             @if($editor === \BookStack\Entities\Tools\PageEditorType::Tinymist)
                 <button type="button" refs="editor-toolbox@tab-button" data-tab="packages" title="{{ trans('entities.tinymist_editor_packages') }}">@icon('package')</button>
+                <button type="button" refs="editor-toolbox@tab-button" data-tab="fonts" title="{{ trans('entities.tinymist_editor_fonts') }}">@icon('fonts-list')</button>
             @endif
             <button type="button" refs="editor-toolbox@tab-button" data-tab="templates" title="{{ trans('entities.templates') }}">@icon('template')</button>
             @if($comments->enabled())
@@ -34,6 +35,14 @@
 
             <div class="px-l">
                 @include('pages.parts.package-manager', ['tinymistPackageSelector' => $tinymistPackageSelector ?? []])
+            </div>
+        </div>
+
+        <div refs="editor-toolbox@tab-content" data-tab-content="fonts" class="toolbox-tab-content">
+            <h4>{{ trans('entities.tinymist_editor_fonts') }}</h4>
+
+            <div class="px-l">
+                @include('pages.parts.font-manager', ['tinymistFontSelector' => $tinymistFontSelector ?? []])
             </div>
         </div>
     @endif

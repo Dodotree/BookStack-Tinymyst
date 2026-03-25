@@ -4,6 +4,7 @@ namespace BookStack\Extensions\Tinymist\Pages;
 
 use BookStack\Entities\Tools\PageEditorType;
 use BookStack\Extensions\Tinymist\Packages\TinymistPackageService;
+use BookStack\Extensions\Tinymist\Tools\TinymistFontService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 
@@ -11,6 +12,7 @@ class TinymistEditorToolboxComposer
 {
     public function __construct(
         protected TinymistPackageService $packages,
+        protected TinymistFontService $fonts,
     ) {
     }
 
@@ -38,6 +40,35 @@ class TinymistEditorToolboxComposer
                 'settings_url' => url('/settings/customization#tinymist-packages'),
             ]);
         }
+
+        try {
+            $view->with('tinymistFontSelector', [
+                'fonts' => $this->listAvailableFonts(),
+                'load_error' => null,
+            ]);
+        } catch (\Throwable $exception) {
+            Log::warning('Failed to build Tinymist editor font selector data', [
+                'error' => $exception->getMessage(),
+            ]);
+
+            $view->with('tinymistFontSelector', [
+                'fonts' => [],
+                'load_error' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * @return array<int, array{name: string, search_text: string}>
+     */
+    protected function listAvailableFonts(): array
+    {
+        return array_map(static function (string $font): array {
+            return [
+                'name' => $font,
+                'search_text' => mb_strtolower($font),
+            ];
+        }, $this->fonts->listAvailableFonts());
     }
 
     /**

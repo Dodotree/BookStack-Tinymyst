@@ -4,10 +4,12 @@ namespace BookStack\Extensions\Tinymist\Controllers;
 
 use BookStack\Entities\Models\Page;
 use BookStack\Extensions\Tinymist\Tools\TinymistPandocService;
+use BookStack\Extensions\Tinymist\Tools\TinymistFontService;
 use BookStack\Extensions\Tinymist\Tools\TinymistPreviewManager;
 use BookStack\Extensions\Tinymist\Tools\TinymistService;
 use BookStack\Uploads\Attachment;
 use BookStack\Http\Controller;
+use BookStack\Permissions\Permission;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -17,7 +19,42 @@ class TinymistController extends Controller
     public function __construct(
         protected TinymistService $tinymist,
         protected TinymistPandocService $pandoc,
+        protected TinymistFontService $fonts,
     ) {
+    }
+
+    /**
+     * Refresh cached Typst fonts list.
+     * POST /ajax/tinymist/fonts/refresh
+     */
+    public function refreshFonts()
+    {
+        $this->checkPermission(Permission::SettingsManage);
+        $this->preventAccessInDemoMode();
+
+        try {
+            $fonts = $this->fonts->refreshFontCache();
+
+            $fontItems = array_map(static function (string $font): array {
+                return [
+                    'name' => $font,
+                    'search_text' => mb_strtolower($font),
+                ];
+            }, $fonts);
+
+            return response()->json([
+                'fonts' => $fontItems,
+                'message' => trans('entities.tinymist_editor_fonts_refresh_success', ['count' => count($fontItems)]),
+            ]);
+        } catch (\Throwable $exception) {
+            Log::warning('Tinymist font cache refresh failed', [
+                'error' => $exception->getMessage(),
+            ]);
+
+            return response()->json([
+                'message' => trans('entities.tinymist_editor_fonts_refresh_failed'),
+            ], 500);
+        }
     }
 
     /**

@@ -11,6 +11,7 @@ Route::post('/ajax/tinymist/compile', [TinymistController::class, 'compile']);
 Route::get('/ajax/tinymist/{pageId}/pdf/{pdfPage}', [TinymistController::class, 'previewPdf']);
 Route::post('/ajax/tinymist/check', [TinymistController::class, 'check']);
 Route::post('/ajax/tinymist/convert-to-typst', [TinymistController::class, 'convertToTypst']);
+Route::post('/ajax/tinymist/fonts/refresh', [TinymistController::class, 'refreshFonts']);
 Route::get('/ajax/tinymist/status', [TinymistController::class, 'status']);
 Route::post('/ajax/tinymist/renew-ws-token', [TinymistController::class, 'renewWsToken']);
 
