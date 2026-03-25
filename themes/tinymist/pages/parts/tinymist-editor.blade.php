@@ -178,7 +178,9 @@
         <div refs="tinymist-editor@preview"
             class="tinymist-preview-content flex flex-fill">
             <iframe class="tinymist-preview-pdf-frame" title="Tinymist PDF Preview" hidden>Loading...</iframe>
-            @if(isset($model) && !empty($model->html))
+            @if(isset($tinymistPreview['initial_html']) && !empty($tinymistPreview['initial_html']))
+            {!! $tinymistPreview['initial_html'] !!}
+            @elseif(isset($model) && !empty($model->html))
             {!! $model->html !!}
             @else
             <div class="text-muted p-m">Loading preview...</div>

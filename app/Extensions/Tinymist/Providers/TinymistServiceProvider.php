@@ -2,8 +2,10 @@
 
 namespace BookStack\Extensions\Tinymist\Providers;
 
+use BookStack\Entities\Models\Page;
 use BookStack\Extensions\Tinymist\Pages\TinymistEditorToolboxComposer;
 use BookStack\Extensions\Tinymist\Packages\TinymistPackageSettingsComposer;
+use BookStack\Extensions\Tinymist\Tools\TinymistPageStorageCleaner;
 use BookStack\Extensions\Tinymist\Tools\TinymistPreviewManager;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\View;
@@ -14,6 +16,7 @@ class TinymistServiceProvider extends ServiceProvider
     public function register()
     {
         $this->app->singleton(TinymistPreviewManager::class);
+        $this->app->singleton(TinymistPageStorageCleaner::class);
     }
 
     public function boot()
@@ -32,6 +35,11 @@ class TinymistServiceProvider extends ServiceProvider
         // }
 
         $this->app->make(TinymistPreviewManager::class);
+        $this->app->make(TinymistPageStorageCleaner::class);
+
+        Page::deleted(static function (Page $page): void {
+            app(TinymistPageStorageCleaner::class)->cleanupPage((int) $page->id);
+        });
 
         View::composer('settings.categories.customization', TinymistPackageSettingsComposer::class);
         View::composer('pages.parts.editor-toolbox', TinymistEditorToolboxComposer::class);

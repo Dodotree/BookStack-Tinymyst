@@ -4,6 +4,7 @@ namespace BookStack\Extensions\Tinymist\Pages;
 
 use BookStack\Entities\Models\Page;
 use BookStack\Extensions\Tinymist\Tools\TinymistPreviewManager;
+use BookStack\Extensions\Tinymist\Tools\TinymistRenderedHtmlStore;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
@@ -11,6 +12,7 @@ class TinymistPageEditorBridge
 {
     public function __construct(
         protected TinymistPreviewManager $previewManager,
+        protected TinymistRenderedHtmlStore $renderedHtmlStore,
     ) {
     }
 
@@ -37,6 +39,7 @@ class TinymistPageEditorBridge
             return [
                 'ws_token' => $token['ws_token'],
                 'status' => 'token_ready',
+                'initial_html' => $this->renderedHtmlStore->getPageHtml($page),
             ];
         } catch (Throwable $exception) {
             Log::error('Failed to start Tinymist preview', [
