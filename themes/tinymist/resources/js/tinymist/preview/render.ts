@@ -172,6 +172,7 @@ export class PreviewRenderer {
         }
 
         let svgText: string = "";
+        let fullSvgText: string = "";
         let action: "reset" | "merge" =
             command === "new" ? "reset" : "merge"; // 'merge' or 'reset'
 
@@ -246,6 +247,18 @@ export class PreviewRenderer {
                 `[Preview WASM] SVG DIFF generated ${svgText.length} chars`,
             );
 
+            if (true) {
+                fullSvgText = await session.renderSvg({
+                    data_selection: {
+                        body: true,
+                        defs: true,
+                        css: false,
+                        js: false,
+                    },
+                });
+                console.warn(`[Preview WASM] Full SVG generated ${fullSvgText.length} chars`);
+            }
+
             if (command === "diff-v1") {
                 this.pmewmaDiff = 0.4 * this.pmewmaDiff + 0.6 * payload.length;
             } else {
@@ -274,7 +287,7 @@ export class PreviewRenderer {
         // Separate UI try/catch from WASM processing try/catch (don't need rendered recovery)
         try {
             if(action === "merge") {
-                this.patchSVG(svgText);
+                this.patchSVG(svgText, fullSvgText);
             } else {
                 this.updateSVG(svgText);
             }
@@ -329,7 +342,7 @@ export class PreviewRenderer {
         window.$tmEventBus.emit(tmEvents.PreviewDocumentUpdated, { pdfPagesCount: svgHost.querySelectorAll("g.typst-page").length });
     }
 
-    private patchSVG(svgDiff: string) {
+    private patchSVG(svgDiff: string, fullSvgText: string) {
         let svgHost = this.previewElement.querySelector(
             tmSelectors.PreviewDocumentHost,
         ) as HTMLElement | null;
@@ -376,17 +389,11 @@ export class PreviewRenderer {
     // apply attribute patches to the `prev <svg or g>` element
     private patchAttributes(prev: Element, next: Element) {
         const prevAttrsSet = new Set(prev.attributes);
-        const nextAttrsSet = new Set(next.attributes);
-        const diffAttrsSet = prevAttrsSet.difference(nextAttrsSet);
+        const nextAttrsSet = new Set(Array.from(next.attributes).filter((attr) => attr.name !== "data-reuse-from"));
 
         // Check if nothing changed: same size, same attrs, same values
-        if (
-            prevAttrsSet.size === nextAttrsSet.size &&
-            diffAttrsSet.size === 0 &&
-            Array.from(prevAttrsSet).every(
-                (attr) => next.getAttribute(attr.name) === attr.value,
-            )
-        ) {
+        const diffAttrsSet = prevAttrsSet.symmetricDifference(nextAttrsSet);
+        if (diffAttrsSet.size === 0) {
             return;
         }
 
@@ -400,23 +407,33 @@ export class PreviewRenderer {
     }
 
     private patchSvgChildren(oldBranch: SVGElement, newBranch: SVGElement) {
-
         if ( !newBranch.hasChildNodes() ) {
             return; // reuse without changes placeholder
         }
 
-        const oldNodes = Array.from(oldBranch.childNodes);
         const isSvgRoot = oldBranch.tagName.toLowerCase() === "svg";
 
+        const oldNodes = Array.from(oldBranch.childNodes);
+
+        let newNodes = Array.from(newBranch.childNodes);
+        if (isSvgRoot) {
+            newNodes = newNodes.slice(3); // skip header, it is patched separately
+        }
+
         const reuseTids = Array.from(
-            newBranch.querySelectorAll("g[data-reuse-from]"),
+            newBranch.querySelectorAll(":scope > g[data-reuse-from]"),
         ).map((n) => n.getAttribute("data-reuse-from") || "");
+
+        const tally = reuseTids.reduce((acc, tid) => {
+            acc[tid] = (acc[tid] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>);
 
         // Old nodes: leave in DOM only <g> with data-tid from reuse pool of a diffSvg branch,
         // make array of tids while you are at it
         // SVG header has <defs> and <style> are not removable, patched separately
         const oldTids: string[] = [];
-        const oldMap = new Map<string, Element>();
+        const oldMap = new Map<string, Node>();
         for (const node of oldNodes) {
             const tid = (node as Element).getAttribute("data-tid");
             const tagName = (node as Element).tagName.toLowerCase();
@@ -433,57 +450,106 @@ export class PreviewRenderer {
                 continue;
             }
             oldTids.push(tid);
-            oldMap.set(tid, node as Element);
+            oldMap.set(tid, node);
+            tally[tid] = (tally[tid] || 0) - 1;
         }
 
-        function getInsertFn(pinnedTid: string) {
-            const pinnedNode = oldMap.get(pinnedTid) || null;
-            return !pinnedNode
-                ? (node: Node) => oldBranch.appendChild(node)
-                : (node: Node) => oldBranch.insertBefore(node, pinnedNode);
-        }
+            // Problem with simple mappings tid->node is mostly related to initially copy-pasted texts:
+            // 1) always points to the last node with the same tid,
+            // so the change to random one will always go to the last one of former clones
+            // 2) if we need to clone previous for extra node, the initial node might have changed already.
+            // But still we want to avoid cloning and moving huge branches "just in case"
+            // a) so we need to know in advance if we need a clean clone - and clone into map
+            // b) and we need to match preservation pattern:
+            // - remove old nodes into stack until we hit preserved one,
+            // - insert before it nodes from patch
+            //   (or if it calls for out of order reuse get it from stack/clone map + patch)
+            //   until we hit reuse-from == preserved tid,
+            // - patch preserved, repeat
 
         // List of old tids that will not be moved (but still might need some patching)
         const preserve = this.esoteric(oldTids, reuseTids);
-        let currentTid = preserve.shift();
-        let insertFn = getInsertFn(currentTid || "");
-
-        let newNodes = Array.from(newBranch.childNodes);
-        if (isSvgRoot) {
-            newNodes = newNodes.slice(3); // skip header, it is patched separately
-        }
 
         // not preserved old nodes will be reattached, we have to make sure though
         // that if the old node is reused more than once, it's cloned and not moved
-        const checkTids = new Set(oldTids);
-        for (const newNode of newNodes) {
-            const reuseFrom = (newNode as Element).getAttribute(
-                "data-reuse-from",
-            ) || '';
-            if (!reuseFrom) {
-                insertFn(newNode);
-                continue;
+        const moveTids = new Map<string, Node[]>();
+        const extraClones = new Map<string, Node>();
+
+        let oldTidsIndex = 0;
+        const headSkip = isSvgRoot ? 3 : 0; // skip header nodes in svg root, they are patched separately
+
+        let newNode  = newNodes.shift();
+        let reuseFrom = (newNode as Element).getAttribute(
+            "data-reuse-from",
+        ) || '';
+
+        const scrollOldNodesWhile = (ind: number, currentTid: string, all: boolean) => {
+            while (oldTidsIndex < oldTids.length && (oldTids[oldTidsIndex] !== currentTid || all)) {
+                const moveTid = oldTids[oldTidsIndex];
+                if (tally[moveTid] > 0) {
+                    extraClones.set(moveTid, oldNodes[oldTidsIndex + headSkip].cloneNode(true));
+                    tally[moveTid] = 0; // no need for more clean clones
+                }
+                const tidNodeIndexes = moveTids.get(moveTid);
+                if (!tidNodeIndexes) {
+                    moveTids.set(moveTid, [oldNodes[oldTidsIndex + headSkip]]);
+                } else {
+                    tidNodeIndexes.push(oldNodes[oldTidsIndex + headSkip]);
+                }
+                oldTidsIndex++;
             }
-            if (currentTid && reuseFrom === currentTid) {
-                checkTids.delete(currentTid);
-                currentTid = preserve.shift();
-                insertFn = getInsertFn(currentTid || "");
-
-                const oldNode = oldMap.get(reuseFrom)!;
-                this.patchAttributes(oldNode, newNode as Element,);
-                this.patchSvgChildren(oldNode as SVGElement, newNode as SVGElement,);
-                continue;
-            }
-
-            const oldNode = checkTids.has(reuseFrom)
-                ? oldMap.get(reuseFrom)
-                : oldMap.get(reuseFrom)?.cloneNode(true);
-            checkTids.delete(reuseFrom);
-            insertFn(oldNode!);
-
-            this.patchAttributes(oldNode! as Element, newNode as Element);
-            this.patchSvgChildren(oldNode! as SVGElement, newNode as SVGElement);
         }
+
+        const insertNewNodesWhile = (ind: number, currentTid: string, insertFn: (node: Node) => void, all: boolean) => {
+            while (newNode && (reuseFrom !== currentTid || all) ) {
+                if (!reuseFrom) {
+                    insertFn(newNode);
+                } else {
+                    // means out of order reuse, get from moveTids or extraClones
+                    const moveNode = moveTids.get(reuseFrom)?.shift();
+                    let insertNode = moveNode || extraClones.get(reuseFrom)?.cloneNode(true);
+                    if (!insertNode) {
+                        // In this case we know that the node was not modified yet, so oldMap is good to get from
+                        insertNode = tally[reuseFrom] > 0 ? oldMap.get(reuseFrom)?.cloneNode(true) : oldMap.get(reuseFrom);
+                    }
+                    insertFn(insertNode!);
+                    this.patchAttributes(insertNode! as Element, newNode as Element);
+                    this.patchSvgChildren(insertNode! as SVGElement, newNode as SVGElement);
+                }
+                newNode  = newNodes.shift();
+                reuseFrom = (newNode as Element)?.getAttribute(
+                    "data-reuse-from",
+                ) || '';
+            }
+        }
+
+        for (const [ind, currentTid] of preserve.entries()) {
+            scrollOldNodesWhile(ind, currentTid, false);
+
+            const oldNode = oldTidsIndex < oldTids.length ? oldNodes[oldTidsIndex + headSkip] : null;
+            const insertFn = oldTidsIndex < oldTids.length ?
+                (node: Node) => oldNode!.before(node) : (node: Node) => oldBranch.appendChild(node);
+            if (oldNode && tally[currentTid] > 0) {
+                extraClones.set(currentTid, oldNode.cloneNode(true));
+                tally[currentTid] = 0; // no need for more clean clones
+            }
+
+            insertNewNodesWhile(ind, currentTid, insertFn, false);
+
+            if (oldNode && newNode) {
+                this.patchAttributes(oldNode as Element, newNode as Element,);
+                const newTid = (newNode as Element).getAttribute("data-tid");
+                this.patchSvgChildren(oldNode as SVGElement, newNode as SVGElement,);
+
+                oldTidsIndex++;
+                newNode  = newNodes.shift();
+                reuseFrom = (newNode as Element)?.getAttribute(
+                    "data-reuse-from",
+                ) || '';
+            }
+        }
+        scrollOldNodesWhile(0, '', true);
+        insertNewNodesWhile(0, "", (node: Node) => oldBranch.appendChild(node), true);
     }
 
     // Finds longest common sparse subsequence, allowing to preserve maximum number of nodes without cloning or moving
