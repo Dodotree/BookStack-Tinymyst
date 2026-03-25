@@ -6,6 +6,7 @@ import {
     THEME_FONT_PREVIEW_TEXT,
     THEME_FONT_STATUS_EMPTY_HINT,
     THEME_FONT_TOKENS,
+    THEME_FONT_SIZE_TOKENS,
     THEME_SETTINGS_STORAGE_KEY,
     HIGHLIGHT_COLORS,
     tmClassNames,
@@ -31,7 +32,12 @@ const HIGHLIGHT_COLOR_TOKENS = HIGHLIGHT_COLOR_TYPES.flatMap((type) => [
     toThemeToken(type, false),
     toThemeToken(type, true),
 ]);
-const THEME_TOKENS = [...THEME_FONT_TOKENS, ...HIGHLIGHT_COLOR_TOKENS];
+const THEME_TOKENS = [
+    ...THEME_FONT_TOKENS,
+    ...THEME_FONT_SIZE_TOKENS,
+    ...HIGHLIGHT_COLOR_TOKENS,
+];
+const FONT_SIZE_TOKENS = new Set<string>(THEME_FONT_SIZE_TOKENS);
 const COLOR_TOKENS = new Set(
     THEME_TOKENS.filter((token) => {
         if (!token.startsWith(tmClassNames.TokenTypePrefix)) {
@@ -179,6 +185,12 @@ export class TinymistThemeSettings {
               this.currentSettings[token] ??
               this.stylesheetDefaults[token] ??
               "")
+                        : FONT_SIZE_TOKENS.has(token)
+                            ? (this.normalizeFontSizeValue(rawValue) ??
+                                this.currentSettings[token] ??
+                                this.stylesheetDefaults[token] ??
+                                THEME_FALLBACK_SETTINGS[token] ??
+                                "")
             : rawValue;
 
         this.currentSettings[token] = nextValue;
@@ -292,6 +304,13 @@ export class TinymistThemeSettings {
                     this.normalizeColorValue(value) ??
                     this.normalizeColorValue(this.stylesheetDefaults[token]) ??
                     THEME_COLOR_INPUT_DEFAULT;
+                return;
+            }
+            if (input.type === "number") {
+                const normalizedNumber = this.normalizeFontSizeValue(value);
+                input.value = normalizedNumber
+                    ? String(parseFloat(normalizedNumber))
+                    : "";
                 return;
             }
             input.value = value;
@@ -622,5 +641,21 @@ export class TinymistThemeSettings {
             Math.max(0, Math.min(255, Math.round(channel))),
         );
         return `#${[red, green, blue].map((channel) => channel.toString(16).padStart(2, "0")).join("")}`;
+    }
+
+    private normalizeFontSizeValue(value: string): string | null {
+        const trimmed = value.trim();
+        if (!trimmed) {
+            return null;
+        }
+
+        const parsed = Number.parseFloat(trimmed.replace(/px$/i, "").trim());
+        if (Number.isNaN(parsed)) {
+            return null;
+        }
+
+        const clamped = Math.max(8, Math.min(48, parsed));
+        const rounded = Math.round(clamped * 100) / 100;
+        return `${rounded}px`;
     }
 }

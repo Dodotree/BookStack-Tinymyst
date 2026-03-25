@@ -9,6 +9,8 @@
 #tinymist-editor {
   --tm-font-ui: #{vars.$font-body};
   --tm-font-mono: #{vars.$font-mono};
+  --tm-font-size-ui: 14px;
+  --tm-font-size-mono: 14px;
   --tm-hlt-keyword: #8250df;
   --tm-hlt-keyword-dark: #bb8fce;
   --tm-hlt-string: #0a7f3f;
@@ -24,6 +26,7 @@
   flex-direction: row;
   width: 100%;
   height: 100%;
+  font-size: var(--tm-font-size-ui);
 
   &.tinymist-console-collapsed {
     .tinymist-console-panel {
@@ -85,7 +88,7 @@
 
     .cm-editor {
       flex: 1;
-      font-size: 14px;
+      font-size: var(--tm-font-size-mono);
       border: none;
       font-family: var(--tm-font-mono);
       @include mixins.lightDark(background-color, #fff, #1e1e1e);
@@ -554,7 +557,7 @@
     width: 100%;
     min-height: 200px;
     font-family: var(--tm-font-mono);
-    font-size: 14px;
+    font-size: var(--tm-font-size-mono);
     line-height: 1.6;
     padding: 12px;
     border: none;

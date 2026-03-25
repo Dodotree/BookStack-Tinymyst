@@ -2,9 +2,16 @@ export const THEME_SETTINGS_STORAGE_KEY = "tinymist-theme-settings-v1";
 
 export const THEME_FONT_TOKENS = ["tm-font-mono", "tm-font-ui"] as const;
 
+export const THEME_FONT_SIZE_TOKENS = [
+    "tm-font-size-mono",
+    "tm-font-size-ui",
+] as const;
+
 export const THEME_FALLBACK_SETTINGS: Record<string, string> = {
     "tm-font-mono": '"Monaco", "Menlo", "Ubuntu Mono", "Consolas", monospace',
     "tm-font-ui": '"-apple-system", BlinkMacSystemFont, "Segoe UI", "Oxygen", "Ubuntu", "Roboto", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif',
+    "tm-font-size-mono": "14px",
+    "tm-font-size-ui": "14px",
     "tm-hlt-keyword": "#8250df",
     "tm-hlt-keyword-dark": "#bb8fce",
     "tm-hlt-string": "#0a7f3f",

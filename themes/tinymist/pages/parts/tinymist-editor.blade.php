@@ -216,6 +216,30 @@
                         <div class="font-probes"></div>
                     </label>
 
+                    <label class="setting-row">
+                        <span class="text-muted text-small">Code Font Size (px)</span>
+                        <input
+                            type="number"
+                            min="8"
+                            max="48"
+                            step="1"
+                            data-tm-token="tm-font-size-mono"
+                            placeholder="14"
+                        >
+                    </label>
+
+                    <label class="setting-row">
+                        <span class="text-muted text-small">UI Font Size (px)</span>
+                        <input
+                            type="number"
+                            min="8"
+                            max="48"
+                            step="1"
+                            data-tm-token="tm-font-size-ui"
+                            placeholder="14"
+                        >
+                    </label>
+
                     <div class="settings-grid">
                     </div>
                 </div>
