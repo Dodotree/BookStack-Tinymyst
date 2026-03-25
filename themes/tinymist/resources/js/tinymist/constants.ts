@@ -11,6 +11,11 @@ export {
 } from "./constants/theme-settings";
 
 export {
+    PREVIEW_SETTINGS_STORAGE_KEY,
+    PREVIEW_FALLBACK_SETTINGS,
+} from "./constants/preview-settings";
+
+export {
 	DEFAULT_WS_TIMINGS,
 	LOCAL_WS_HOSTNAMES,
     SYNC_AND_LSP_URI,

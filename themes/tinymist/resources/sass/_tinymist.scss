@@ -284,7 +284,8 @@
       @include mixins.lightDark(color, #2d6f96, #7ec5f0);
     }
 
-    .tinymist-theme-settings-overlay {
+    .tinymist-theme-settings-overlay,
+    .tinymist-preview-settings-overlay {
       position: absolute;
       inset: 0;
       z-index: 5;
@@ -299,6 +300,7 @@
       }
 
       input[type="text"],
+      input[type="number"],
       input[type="color"] {
         width: 100%;
       }

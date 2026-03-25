@@ -172,6 +172,9 @@
                 <button class="text-button" type="button" data-action="previewCursorSpotlightToggle" title="Disable Caret Spotlight" aria-pressed="true">
                     @icon('editor/caret-spotlight')
                 </button>
+                <button class="text-button" type="button" data-action="previewSettingsOpen" title="Preview Settings" aria-label="Preview Settings">
+                    @icon('settings')
+                </button>
             </div>
         </div>
 
@@ -220,6 +223,39 @@
                 <div class="settings-footer">
                     <button class="text-button" type="button" data-action="resetThemeSettings">Reset</button>
                     <button class="button outline" type="button" data-action="closeThemeSettings">Done</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="tinymist-preview-settings-overlay" hidden>
+            <div class="settings-panel" role="dialog" aria-modal="true" aria-label="Preview settings">
+                <div class="settings-header">
+                    <div class="text-mono bold">Preview Settings</div>
+                    <button class="text-button" type="button" data-action="closePreviewSettings" title="Close settings">
+                        @icon('close')
+                    </button>
+                </div>
+
+                <div class="settings-body">
+                    <label class="setting-row">
+                        <span class="text-muted text-small">Initial Zoom</span>
+                        <input
+                            type="number"
+                            min="0.25"
+                            max="3"
+                            step="0.05"
+                            data-tm-preview-setting="initial-zoom"
+                            placeholder="1.00"
+                        >
+                        <span class="text-small text-muted">Applied only on first preview render after page load.</span>
+                        <span class="text-small text-muted">
+                            Current zoom: <strong data-tm-preview-setting="current-zoom">1.00x</strong>
+                        </span>
+                    </label>
+                </div>
+
+                <div class="settings-footer">
+                    <button class="button outline" type="button" data-action="closePreviewSettings">Done</button>
                 </div>
             </div>
         </div>

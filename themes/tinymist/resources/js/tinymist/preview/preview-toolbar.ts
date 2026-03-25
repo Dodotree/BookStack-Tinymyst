@@ -1,5 +1,7 @@
 import {
     ENTRY_FILE_NAME,
+    PREVIEW_FALLBACK_SETTINGS,
+    PREVIEW_SETTINGS_STORAGE_KEY,
     tmClassNames,
     tmEvents,
     tmSelectors,
@@ -26,6 +28,8 @@ export class PreviewToolbar {
     private readonly zoomMax = 3;
     private baseSvgWidth: number | null = null;
     private baseSvgHeight: number | null = null;
+    private hasAppliedInitialZoom = false;
+    private preferredInitialZoom = PREVIEW_FALLBACK_SETTINGS.initialZoom;
     private panEnabled = false;
     private isPanning = false;
     private panStartX = 0;
@@ -39,6 +43,10 @@ export class PreviewToolbar {
     private cursorSpotlightUserEnabled = true;
     private scrollIntoViewUserEnabled = true;
 
+    private previewSettingsOverlay: HTMLElement | null = null;
+    private initialZoomInput: HTMLInputElement | null = null;
+    private currentZoomValue: HTMLElement | null = null;
+
     constructor(previewElement: HTMLElement, pageId: number) {
         this.previewElement = previewElement;
         this.pageId = pageId;
@@ -48,6 +56,15 @@ export class PreviewToolbar {
         this.previewModeSelect = document.querySelector(
             `${tmSelectors.Root} ${tmSelectors.PreviewModeSelect}`,
         ) as HTMLSelectElement | null;
+        this.previewSettingsOverlay = document.querySelector(
+            `${tmSelectors.Root} .tinymist-preview-settings-overlay`,
+        ) as HTMLElement | null;
+        this.initialZoomInput = this.previewSettingsOverlay?.querySelector(
+            'input[data-tm-preview-setting="initial-zoom"]',
+        ) as HTMLInputElement | null;
+        this.currentZoomValue = this.previewSettingsOverlay?.querySelector(
+            '[data-tm-preview-setting="current-zoom"]',
+        ) as HTMLElement | null;
 
         this.handleZoomIn = this.handleZoomIn.bind(this);
         this.handleZoomOut = this.handleZoomOut.bind(this);
@@ -62,6 +79,14 @@ export class PreviewToolbar {
         this.handleGlobalKeyUp = this.handleGlobalKeyUp.bind(this);
         this.handleWindowBlur = this.handleWindowBlur.bind(this);
         this.handlePreviewPaneChange = this.handlePreviewPaneChange.bind(this);
+        this.handlePreviewSettingsInput = this.handlePreviewSettingsInput.bind(this);
+        this.handlePreviewSettingsOverlayClick =
+            this.handlePreviewSettingsOverlayClick.bind(this);
+        this.handleWindowKeyUp = this.handleWindowKeyUp.bind(this);
+
+        this.readStoredSettings();
+        this.syncSettingsToInputs();
+        this.syncCurrentZoomDisplay();
 
         this.handlePreviewConnectionState =
             this.handlePreviewConnectionState.bind(this);
@@ -102,6 +127,12 @@ export class PreviewToolbar {
     private onDocumentUpdate(payload: { pdfPagesCount: number }): void {
         this.baseSvgWidth = null;
         this.baseSvgHeight = null;
+
+        if (!this.hasAppliedInitialZoom) {
+            this.setZoom(this.preferredInitialZoom);
+            this.hasAppliedInitialZoom = true;
+        }
+
         this.applyZoomToSvg();
         this.refreshPdfOptions(payload.pdfPagesCount);
     }
@@ -127,12 +158,23 @@ export class PreviewToolbar {
         if (adding) {
             window.addEventListener("keydown", this.handleGlobalKeyDown);
             window.addEventListener("keyup", this.handleGlobalKeyUp);
+            window.addEventListener("keyup", this.handleWindowKeyUp);
             window.addEventListener("blur", this.handleWindowBlur);
         } else {
             window.removeEventListener("keydown", this.handleGlobalKeyDown);
             window.removeEventListener("keyup", this.handleGlobalKeyUp);
+            window.removeEventListener("keyup", this.handleWindowKeyUp);
             window.removeEventListener("blur", this.handleWindowBlur);
         }
+
+        this.initialZoomInput?.[method](
+            "input",
+            this.handlePreviewSettingsInput,
+        );
+        this.previewSettingsOverlay?.[method](
+            "click",
+            this.handlePreviewSettingsOverlayClick,
+        );
     }
 
     private setLivePreviewVisibility(visible: boolean): void {
@@ -452,8 +494,110 @@ export class PreviewToolbar {
                     !this.cursorSpotlightUserEnabled;
                 this.applyCursorSpotlightState();
                 break;
+            case "previewSettingsOpen":
+                this.openPreviewSettings();
+                break;
+            case "closePreviewSettings":
+                this.closePreviewSettings();
+                break;
             default:
                 break;
+        }
+    }
+
+    private openPreviewSettings(): void {
+        if (!this.previewSettingsOverlay) {
+            return;
+        }
+
+        this.previewSettingsOverlay.hidden = false;
+        this.previewSettingsOverlay.classList.add(tmClassNames.ThemeVisible);
+        this.syncSettingsToInputs();
+        this.initialZoomInput?.focus();
+        this.initialZoomInput?.select();
+    }
+
+    private closePreviewSettings(): void {
+        if (!this.previewSettingsOverlay) {
+            return;
+        }
+
+        this.previewSettingsOverlay.classList.remove(tmClassNames.ThemeVisible);
+        this.previewSettingsOverlay.hidden = true;
+    }
+
+    private handlePreviewSettingsOverlayClick(event: Event): void {
+        if (event.target === this.previewSettingsOverlay) {
+            this.closePreviewSettings();
+        }
+    }
+
+    private handleWindowKeyUp(event: Event): void {
+        const keyboardEvent = event as KeyboardEvent;
+        if (keyboardEvent.key !== "Escape") {
+            return;
+        }
+
+        if (this.previewSettingsOverlay && !this.previewSettingsOverlay.hidden) {
+            this.closePreviewSettings();
+        }
+    }
+
+    private handlePreviewSettingsInput(event: Event): void {
+        const input = event.target as HTMLInputElement | null;
+        if (!input) {
+            return;
+        }
+
+        const parsed = Number(input.value);
+        if (!Number.isFinite(parsed)) {
+            return;
+        }
+
+        const clamped = Number(
+            Math.min(this.zoomMax, Math.max(this.zoomMin, parsed)).toFixed(2),
+        );
+        this.preferredInitialZoom = clamped;
+        this.persistSettings();
+    }
+
+    private syncSettingsToInputs(): void {
+        if (!this.initialZoomInput) {
+            return;
+        }
+
+        this.initialZoomInput.value = this.preferredInitialZoom.toFixed(2);
+    }
+
+    private readStoredSettings(): void {
+        try {
+            const raw = window.localStorage.getItem(PREVIEW_SETTINGS_STORAGE_KEY);
+            if (!raw) {
+                this.preferredInitialZoom = PREVIEW_FALLBACK_SETTINGS.initialZoom;
+                return;
+            }
+
+            const parsed = JSON.parse(raw) as { initialZoom?: unknown };
+            const candidate = Number(parsed?.initialZoom);
+            if (Number.isFinite(candidate)) {
+                this.preferredInitialZoom = Number(
+                    Math.min(this.zoomMax, Math.max(this.zoomMin, candidate)).toFixed(2),
+                );
+                return;
+            }
+        } catch {
+        }
+
+        this.preferredInitialZoom = PREVIEW_FALLBACK_SETTINGS.initialZoom;
+    }
+
+    private persistSettings(): void {
+        try {
+            window.localStorage.setItem(
+                PREVIEW_SETTINGS_STORAGE_KEY,
+                JSON.stringify({ initialZoom: this.preferredInitialZoom }),
+            );
+        } catch {
         }
     }
 
@@ -616,7 +760,16 @@ export class PreviewToolbar {
             Math.max(this.zoomMin, Number(level)),
         );
         this.zoomLevel = Number(clamped.toFixed(2));
+        this.syncCurrentZoomDisplay();
         this.applyZoomToSvg();
+    }
+
+    private syncCurrentZoomDisplay(): void {
+        if (!this.currentZoomValue) {
+            return;
+        }
+
+        this.currentZoomValue.textContent = `${this.zoomLevel.toFixed(2)}x`;
     }
 
     private applyZoomToSvg(): void {
@@ -685,6 +838,7 @@ export class PreviewToolbar {
     }
 
     destroy() {
+        this.closePreviewSettings();
         this.addRemoveListeners(false);
     }
 }
