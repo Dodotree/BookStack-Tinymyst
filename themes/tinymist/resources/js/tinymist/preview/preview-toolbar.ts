@@ -29,7 +29,7 @@ export class PreviewToolbar {
     private baseSvgWidth: number | null = null;
     private baseSvgHeight: number | null = null;
     private hasAppliedInitialZoom = false;
-    private preferredInitialZoom = PREVIEW_FALLBACK_SETTINGS.initialZoom;
+    private preferredInitialZoom: number = PREVIEW_FALLBACK_SETTINGS.initialZoom;
     private panEnabled = false;
     private isPanning = false;
     private panStartX = 0;
