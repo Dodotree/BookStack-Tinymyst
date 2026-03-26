@@ -172,7 +172,8 @@ export class PreviewRenderer {
         }
 
         let svgText: string = "";
-        let fullSvgText: string = "";
+        const fullSvgRender = this.pmewmaNew < 500_000;
+
         let action: "reset" | "merge" =
             command === "new" ? "reset" : "merge"; // 'merge' or 'reset'
 
@@ -235,20 +236,9 @@ export class PreviewRenderer {
             console.log(`[Preview WASM] Rendering diff to SVG DIFF...`);
             // Since Incremental SVG state starts empty inside renderer and gets empty on reset
             // and gives full document on first render, we can count on it to cover both reset and merge actions and give us correct diff or full svg when needed without extra checks
-            svgText = session.renderSvgDiff({
-                data_selection: {
-                    body: true,
-                    defs: true,
-                    css: false,
-                    js: false,
-                },
-            });
-            console.log(
-                `[Preview WASM] SVG DIFF generated ${svgText.length} chars`,
-            );
 
-            if (true) {
-                fullSvgText = await session.renderSvg({
+            if (fullSvgRender) {
+                svgText = await session.renderSvg({
                     data_selection: {
                         body: true,
                         defs: true,
@@ -256,7 +246,19 @@ export class PreviewRenderer {
                         js: false,
                     },
                 });
-                console.warn(`[Preview WASM] Full SVG generated ${fullSvgText.length} chars`);
+                console.log(`[Preview WASM] Full SVG generated ${svgText.length} chars`);
+            } else {
+                svgText = session.renderSvgDiff({
+                    data_selection: {
+                        body: true,
+                        defs: true,
+                        css: false,
+                        js: false,
+                    },
+                });
+                console.log(
+                    `[Preview WASM] SVG DIFF generated ${svgText.length} chars`,
+                );
             }
 
             if (command === "diff-v1") {
@@ -286,8 +288,9 @@ export class PreviewRenderer {
 
         // Separate UI try/catch from WASM processing try/catch (don't need rendered recovery)
         try {
-            if(action === "merge") {
-                this.patchSVG(svgText, fullSvgText);
+            // For 1 page documents full substitution is usually faster than patching, and it is more robust
+            if(action === "merge" && !fullSvgRender) {
+                this.patchSVG(svgText, svgText);
             } else {
                 this.updateSVG(svgText);
             }
