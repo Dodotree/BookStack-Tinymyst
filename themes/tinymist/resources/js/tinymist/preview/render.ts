@@ -172,8 +172,8 @@ export class PreviewRenderer {
         }
 
         let svgText: string = "";
-        const fullSvgRender = false; //this.pmewmaNew < 500_000;
-        console.warn(`[Preview WASM] Full SVG render? ${this.pmewmaNew} ${this.pmewmaDiff} ${this.pmewmaNew < 500_000}`);
+        const fullSvgRender = this.pmewmaNew < 500_000;
+        console.warn(`[Preview WASM] Full SVG render? ${this.pmewmaNew} ${this.pmewmaDiff} ${fullSvgRender}`);
 
         let action: "reset" | "merge" =
             command === "new" ? "reset" : "merge"; // 'merge' or 'reset'
