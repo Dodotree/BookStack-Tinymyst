@@ -26,6 +26,7 @@ import { PreviewCursor } from "./cursor";
 export class PreviewRenderer {
     private previewElement: HTMLElement;
     private readonly pageId: number;
+    private activeFileName = ENTRY_FILE_NAME;
 
     private renderer: TypstRenderer | null = null;
     private session: RenderSession | null = null;
@@ -41,7 +42,8 @@ export class PreviewRenderer {
     private pmewmaNew: number = 0;
     private pmewmaDiff: number = 0;
 
-    private activeFileName = ENTRY_FILE_NAME;
+    private patchDebugOn: boolean = false;
+
 
     constructor(uniqueTabId?: string, pageId: number = 0) {
         this.pageId = pageId;
@@ -173,7 +175,6 @@ export class PreviewRenderer {
 
         let svgText: string = "";
         const fullSvgRender = this.pmewmaNew < 500_000;
-        console.warn(`[Preview WASM] Full SVG render? ${this.pmewmaNew} ${this.pmewmaDiff} ${fullSvgRender}`);
 
         let action: "reset" | "merge" =
             command === "new" ? "reset" : "merge"; // 'merge' or 'reset'
@@ -260,6 +261,20 @@ export class PreviewRenderer {
                 console.log(
                     `[Preview WASM] SVG DIFF generated ${svgText.length} chars`,
                 );
+
+                // Patch debug
+                if (this.patchDebugOn) {
+                    const svgDebug = await session.renderSvg({
+                        data_selection: {
+                            body: true,
+                            defs: true,
+                            css: false,
+                            js: false,
+                        },
+                    });
+                    console.warn("Patch", svgText);
+                    console.warn("Patch debug full SVG for comparison", svgDebug);
+                }
             }
 
             if (command === "diff-v1") {
@@ -291,7 +306,7 @@ export class PreviewRenderer {
         try {
             // For 1 page documents full substitution is usually faster than patching, and it is more robust
             if(action === "merge" && !fullSvgRender) {
-                this.patchSVG(svgText, svgText);
+                this.patchSVG(svgText);
             } else {
                 this.updateSVG(svgText);
             }
@@ -346,7 +361,7 @@ export class PreviewRenderer {
         window.$tmEventBus.emit(tmEvents.PreviewDocumentUpdated, { pdfPagesCount: svgHost.querySelectorAll("g.typst-page").length });
     }
 
-    private patchSVG(svgDiff: string, fullSvgText: string) {
+    private patchSVG(svgDiff: string) {
         let svgHost = this.previewElement.querySelector(
             tmSelectors.PreviewDocumentHost,
         ) as HTMLElement | null;
@@ -367,6 +382,10 @@ export class PreviewRenderer {
         this.patchAttributes(prev, next);
         this.patchSvgHeader(prev, next);
         this.patchSvgChildren(prev, next);
+
+        if(this.patchDebugOn) {
+            console.warn("Patched full SVG", prev.outerHTML);
+        }
     }
 
     private patchSvgHeader(prev: SVGElement, next: SVGElement) {
@@ -417,7 +436,7 @@ export class PreviewRenderer {
 
         const isSvgRoot = oldBranch.tagName.toLowerCase() === "svg";
 
-        const oldNodes = Array.from(oldBranch.childNodes);
+        let oldNodes = Array.from(oldBranch.childNodes);
 
         let newNodes = Array.from(newBranch.childNodes);
         if (isSvgRoot) {
@@ -457,6 +476,9 @@ export class PreviewRenderer {
             oldMap.set(tid, node);
             tally[tid] = (tally[tid] || 0) - 1;
         }
+
+        // reindex after removals
+        oldNodes = Array.from(oldBranch.childNodes);
 
             // Problem with simple mappings tid->node is mostly related to initially copy-pasted texts:
             // 1) always points to the last node with the same tid,
@@ -517,6 +539,15 @@ export class PreviewRenderer {
                         insertNode = tally[reuseFrom] > 0 ? oldMap.get(reuseFrom)?.cloneNode(true) : oldMap.get(reuseFrom);
                     }
                     insertFn(insertNode!);
+
+                    if (this.patchDebugOn) {
+                        console.warn(
+                            `Reusing cloned/moved node with tid ${reuseFrom}`, all? "at the end": `before ${currentTid}`,
+                            insertNode,
+                            newNode,
+                        );
+                    }
+
                     this.patchAttributes(insertNode! as Element, newNode as Element);
                     this.patchSvgChildren(insertNode! as SVGElement, newNode as SVGElement);
                 }
@@ -525,6 +556,13 @@ export class PreviewRenderer {
                     "data-reuse-from",
                 ) || '';
             }
+        }
+
+        if (this.patchDebugOn) {
+            console.warn("Old branch, Old tids in DOM, tally", oldBranch, oldTids, oldMap, tally);
+            console.warn("Preserve order of nodes with tids", preserve);
+            console.warn("Move nodes with tids", Array.from(moveTids.entries()));
+            console.warn("Extra clones for tids", Array.from(extraClones.entries()));
         }
 
         for (const [ind, currentTid] of preserve.entries()) {
@@ -541,8 +579,17 @@ export class PreviewRenderer {
             insertNewNodesWhile(ind, currentTid, insertFn, false);
 
             if (oldNode && newNode) {
+
+
+                if (this.patchDebugOn) {
+                    console.warn(
+                        `Expected reuse from ${reuseFrom} for current tid ${currentTid}`,
+                        oldNode,
+                        newNode,
+                    );
+                }
+
                 this.patchAttributes(oldNode as Element, newNode as Element,);
-                const newTid = (newNode as Element).getAttribute("data-tid");
                 this.patchSvgChildren(oldNode as SVGElement, newNode as SVGElement,);
 
                 oldTidsIndex++;
