@@ -160,7 +160,6 @@ export class TinymistFallbackCompiler {
     }
 
     destroy(): void {
-        if(!this){return;}
         this.enabled = false;
     }
 }

@@ -16,10 +16,9 @@ export class TinymistConnectionsManager {
     private readonly pageId: number;
     private readonly uniqueTabId: string;
 
+    private fileSyncClient: TinymistFileSyncClient | null = null;
     private previewBridgeClient: PreviewBridgeClient | null = null;
     private previewControlPlane: PreviewControlPlane | null = null;
-    private tokenManager: TinymistTokenManager | null = null;
-    private fileSyncClient: TinymistFileSyncClient | null = null;
 
     private bridgeConnected: boolean = false;
     private fileSyncConnected: boolean = false;
@@ -45,7 +44,7 @@ export class TinymistConnectionsManager {
         );
         window.$tmEventBus.listen(tmEvents.Destroy, this.destroy);
 
-        this.tokenManager = new TinymistTokenManager(this.pageId, this.wsToken);
+        new TinymistTokenManager(this.pageId, this.wsToken);
     }
 
     start(): void {
@@ -181,5 +180,8 @@ export class TinymistConnectionsManager {
 
     destroy(): void {
         this.restartAllowed = false;
+        this.fileSyncClient = null;
+        this.previewBridgeClient = null;
+        this.previewControlPlane = null;
     }
 }

@@ -390,19 +390,6 @@ export class TinymistPreviewClient extends EventEmitter {
         return !!this.dataSocket && this.dataSocket.readyState === WebSocket.OPEN;
     }
 
-    // Automating cursor requests on successful data messages
-    private isNewOrDiff(msg: Uint8Array) {
-
-        // Parse message format: "type,payload"
-        const commaIndex = msg.indexOf(44); // ASCII for ','
-        if (commaIndex === -1) {
-            return false;
-        }
-
-        const command = new TextDecoder().decode(msg.slice(0, commaIndex));
-        return command === 'new' || command === 'diff-v1';
-    }
-
     async stop(): Promise<void> {
         if (this.stopping) {
             return;

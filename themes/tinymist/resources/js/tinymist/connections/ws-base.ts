@@ -25,6 +25,7 @@ export abstract class TinymistWebSocketClient {
     protected config: TinymistWebSocketClientConfig & typeof DEFAULT_WS_TIMINGS;
 
     private pingInterval: ReturnType<typeof setInterval> | null = null;
+    private pongLength: number = '{"type":"pong"}'.length;
     private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
     private connectionTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -141,6 +142,13 @@ export abstract class TinymistWebSocketClient {
                 };
 
                 this.socket.onmessage = (event) => {
+                    if (
+                        event.data.length === this.pongLength &&
+                        event.data.includes('"type":"pong"')
+                    ) {
+                        console.log(`[${this.config.name}] Received pong`);
+                        return;
+                    }
                     this.handleMessage(event.data);
                 };
 

@@ -36,14 +36,6 @@ export class PreviewBridgeClient extends TinymistWebSocketClient {
 
     protected handleMessage(data: any): void {
         const forwardControl = (payload: string) => {
-            // console.log(`[Preview WS] Forwarding control payload length: ${payload.length}`);
-            if (
-                payload.length === '{"type":"pong"}'.length &&
-                payload.includes('"type":"pong"')
-            ) {
-                console.log(`[Preview WS] Received pong`);
-                return;
-            }
             window.$tmEventBus.emit(tmEvents.PreviewControlMessage, payload);
         };
 

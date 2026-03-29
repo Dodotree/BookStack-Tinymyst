@@ -375,7 +375,7 @@ export class PreviewControlPlane {
                     event: "sourceScrollBySpan",
                     span: message.span, // string
                 };
-
+                break;
             case "panelScrollByPosition":
                 msg = {
                     event: "panelScrollByPosition",
