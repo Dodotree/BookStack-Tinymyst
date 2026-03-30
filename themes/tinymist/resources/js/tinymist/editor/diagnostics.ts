@@ -198,11 +198,12 @@ export class DiagnosticsProcessor {
         });
     }
 
-    logAnotherFileDiagnostics(fileName: string, diagnostics: Diagnostic[]): void {
+    logAnotherFileDiagnostics(fileName: string, diagnostics: DiagnosticsPayload): void {
         diagnostics.forEach((diag, index) => {
+            const severity = this.mapLspSeverity(diag.severity);
             window.$tmEventBus.emit(tmEvents.ConsoleLog, {
-                type: diag.severity,
-                message: `[Diagnostic] ${fileName} ${diag.severity}: ${diag.message} `,
+                type: severity,
+                message: `[Diagnostic] ${fileName} ${severity}: ${diag.message} `,
             });
         });
     }
