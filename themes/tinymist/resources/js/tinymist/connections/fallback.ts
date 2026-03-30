@@ -49,9 +49,6 @@ export class TinymistFallbackCompiler {
             return;
         }
 
-        console.log(
-            `[Typst] Starting Typst compilation #${docVersion} (fallback mode)`,
-        );
         window.$tmEventBus.emit(tmEvents.ConsoleLog, {
             type: "info",
             message: "[Typst] Compiling...",
@@ -63,10 +60,6 @@ export class TinymistFallbackCompiler {
                 docVersion,
                 pageId: this.pageId,
             });
-
-            console.log(
-                `[Typst] Compilation #${docVersion} completed (processing...)`,
-            );
 
             const respData = response && response.data;
 
@@ -102,10 +95,6 @@ export class TinymistFallbackCompiler {
                             docVersion: data.docVersion,
                         });
                     } else {
-                        // Clear diagnostics on successful compilation with no errors
-                        console.log(
-                            "[Typst] Clearing diagnostics (success with no errors)",
-                        );
                         window.$tmEventBus.emit(tmEvents.Diagnostics, {
                             diagnostics: [],
                             docVersion: data.docVersion,

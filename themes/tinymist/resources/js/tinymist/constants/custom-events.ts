@@ -1,3 +1,5 @@
+import { ChangeSet } from "@codemirror/state";
+
 export const tmEvents = {
     ActiveFileChange: "active-file-change",
     AllDisconnect: "all-disconnect",
@@ -70,6 +72,12 @@ export type TinymistControlEventPayload =
     | { event: "sourceScrollBySpan"; span: string }
     | { event: "panelScrollByPosition"; position: number };
 
+export type SemanticTokensDeltaEdit = {
+    start: number;
+    deleteCount: number;
+    data?: number[];
+};
+
 export type TinymistEventPayloads = {
     [tmEvents.ActiveFileChange]: { fileName: string; url: string };
     [tmEvents.AllDisconnect]: undefined;
@@ -95,7 +103,7 @@ export type TinymistEventPayloads = {
     [tmEvents.InvalidToken]: undefined;
     [tmEvents.LspSemanticTokens]: { fileName: string; tokens: number[]; resultId?: string; docVersion: number };
     [tmEvents.PreviewDocumentUpdated]: { pdfPagesCount: number };
-    [tmEvents.LspSemanticTokensDelta]: { fileName: string; edits: any[]; resultId?: string; previousResultId?: string; docVersion: number };
+    [tmEvents.LspSemanticTokensDelta]: { fileName: string; edits: SemanticTokensDeltaEdit[]; resultId?: string; previousResultId?: string; docVersion: number };
     [tmEvents.PreviewConnect]: undefined;
     [tmEvents.PreviewConnectionState]: { label: "paused" | "running" | "connecting" };
     [tmEvents.PreviewConnectionToggle]: undefined;
@@ -110,7 +118,8 @@ export type TinymistEventPayloads = {
     [tmEvents.ReconnectAllowed]: undefined;
     [tmEvents.RenderVersion]: {type: string;timestamp: number;fileName: string;docVersion: number;};
     [tmEvents.ResetFile]: { fileName?: string };
-    [tmEvents.SyncRemoteChanges]: { timestamp: number; fileName: string; docVersion: number; changes: any };
+    // It's a ChangeSet from another tab
+    [tmEvents.SyncRemoteChanges]: { timestamp: number; fileName: string; docVersion: number; changes: ChangeSet };
     [tmEvents.Status]: { what: string; connected: boolean };
     [tmEvents.SyncConnect]: undefined;
     [tmEvents.SyncDisconnect]: undefined;
@@ -119,7 +128,7 @@ export type TinymistEventPayloads = {
     [tmEvents.VersionedCursorRequest]: { docVersion: number; timestamp: number; request: { event: string; fileName: string; line: number; character: number } };
     [tmEvents.EntryTextModified]: string; // gets forwarded outside of Tinymist as "editor-tinymist-change" for auto-saving trigger
     [tmEvents.TextModified]: undefined; // for searchReplace to trigger without marking as changed
-    [tmEvents.TextDiff]: { fileName: string; changes: any; docVersion: number };
+    [tmEvents.TextDiff]: { fileName: string; changes: ChangeSet; docVersion: number };
     [tmEvents.ThemeSettingsOpen]: undefined;
     [tmEvents.TokenRenewed]: string;
     [tmEvents.WasmDispose]: undefined;

@@ -5,8 +5,14 @@ export class PreviewDataPlane {
     private textDecoder = new TextDecoder();
     private cursorSpotlightEnabled = true;
 
+    private debugOn = false;
+    private debugLog: (...args: any[]) => void;
+
     constructor() {
+
         this.handleBridgeDataMessage = this.handleBridgeDataMessage.bind(this);
+        this.debugLog = this.debugOn ? console.debug : () => {};
+
         window.$tmEventBus.listen(
             tmEvents.PreviewDataMessage,
             this.handleBridgeDataMessage,
@@ -25,7 +31,7 @@ export class PreviewDataPlane {
     }
 
     private handleBridgeDataMessage(msg: Uint8Array): void {
-        console.log(
+        this.debugLog(
             `[Preview Data] Data message (length: ${msg.byteLength} bytes) adding to processing queue`,
         );
         this.processingQueue = this.processingQueue
@@ -54,20 +60,10 @@ export class PreviewDataPlane {
             const command = this.textDecoder.decode(msg.slice(0, commaIndex));
             const payload = msg.slice(commaIndex + 1);
 
-            console.log(`[Preview Data] Processing command: "${command}"`);
+            this.debugLog(`[Preview Data] Processing command: "${command}"`);
 
             switch (command) {
                 case "diff-v1":
-                    // console.log(`[Preview Data] Received diff-v1 (${payload.length} bytes)`);
-
-                    // Try to peek at the diff content (it's binary, but might have readable parts)
-                    // try {
-                    //     const sample = new TextDecoder('utf-8', { fatal: false }).decode(payload.slice(0, Math.min(200, payload.length)));
-                    //     console.log('[Preview Data] Diff sample:', sample.substring(0, 100));
-                    // } catch (e) {
-                    //     console.log('[Preview Data] Could not decode diff sample');
-                    // }
-
                     window.$tmEventBus.emit(tmEvents.DataBinary, {
                         command,
                         payload,
@@ -75,7 +71,6 @@ export class PreviewDataPlane {
                     break;
 
                 case "new":
-                    // console.log(`[Preview Data] Received new document (${payload.length} bytes)`);
                     window.$tmEventBus.emit(tmEvents.DataBinary, {
                         command,
                         payload,
@@ -90,7 +85,6 @@ export class PreviewDataPlane {
                     const decoded = this.textDecoder.decode(payload);
                     try {
                         const parsed = JSON.parse(decoded);
-                        // console.info('[Preview Data] Cursor paths parsed:', parsed);
                         window.$tmEventBus.emit(
                             tmEvents.DataCursorPaths,
                             parsed,
@@ -106,20 +100,20 @@ export class PreviewDataPlane {
 
                 case "partial-rendering":
                     const enabled = this.textDecoder.decode(payload) === "true";
-                    console.log(`[Preview Data] Partial rendering: ${enabled}`);
+                    this.debugLog(`[Preview Data] Partial rendering: ${enabled}`);
                     break;
 
                 case "jump":
                     const coords = this.textDecoder.decode(payload).split(" ");
                     const [page, x, y] = coords.map(Number);
-                    console.log(
+                    this.debugLog(
                         `[Preview Data] Jump to page ${page}, x: ${x}, y: ${y}`,
                     );
                     break;
 
                 case "viewport":
                     const decoded = this.textDecoder.decode(payload);
-                    console.log(
+                    this.debugLog(
                         `[Preview Data] Viewport payload (${payload.length} bytes):`,
                         decoded,
                     );
@@ -127,7 +121,7 @@ export class PreviewDataPlane {
 
                 case "cursor":
                     const cursorDecoded = this.textDecoder.decode(payload);
-                    console.log(
+                    this.debugLog(
                         `[Preview Data] Cursor payload (${payload.length} bytes):`,
                         cursorDecoded,
                     );
@@ -136,7 +130,7 @@ export class PreviewDataPlane {
                 case "invert-colors":
                     const invertColorsDecoded =
                         this.textDecoder.decode(payload);
-                    console.log(
+                    this.debugLog(
                         `[Preview Data] Invert colors payload (${payload.length} bytes):`,
                         invertColorsDecoded,
                     );
@@ -145,7 +139,7 @@ export class PreviewDataPlane {
                 // Not sure what kind of outline is that, usually Control Plane receives "outline" events
                 case "outline":
                     const outlineDecoded = this.textDecoder.decode(payload);
-                    console.log(
+                    this.debugLog(
                         `[Preview Data] Outline payload (${payload.length} bytes):`,
                         outlineDecoded,
                     );

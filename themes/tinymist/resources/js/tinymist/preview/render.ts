@@ -42,7 +42,8 @@ export class PreviewRenderer {
     private pmewmaNew: number = 0;
     private pmewmaDiff: number = 0;
 
-    private patchDebugOn: boolean = false;
+    private debugOn = false;
+    private debugLog: (...args: any[]) => void;
 
 
     constructor(uniqueTabId?: string, pageId: number = 0) {
@@ -50,6 +51,7 @@ export class PreviewRenderer {
         this.previewElement = document.querySelector(
             `${tmSelectors.Root} ${tmSelectors.PreviewContent}`,
         ) as HTMLElement;
+        this.debugLog = this.debugOn ? console.debug : () => {};
 
         new PreviewToolbar(this.previewElement, this.pageId);
         new PreviewCursor(this.previewElement, uniqueTabId);
@@ -117,7 +119,7 @@ export class PreviewRenderer {
                 getModule: () => renderModule, // Returns Uint8Array from esbuild WASM plugin
             });
 
-            console.log("[Preview WASM] typst-ts-renderer initialized");
+            this.debugLog("[Preview WASM] typst-ts-renderer initialized");
         } catch (error) {
             console.error(
                 "[Preview WASM] Failed to initialize typst-ts-renderer:",
@@ -137,7 +139,7 @@ export class PreviewRenderer {
         }
 
         if (!this.sessionPromise) {
-            console.log("[Preview WASM] Creating persistent session");
+            this.debugLog("[Preview WASM] Creating persistent session");
             this.sessionPromise = new Promise<RenderSession>(
                 (resolve, reject) => {
                     this.renderer!.runWithSession(async (session) => {
@@ -162,7 +164,7 @@ export class PreviewRenderer {
     }
 
     private async handleBinaryMessage(command: string, payload: Uint8Array) {
-        // console.log(`[Preview WASM] Message command "${command}" (payload ${payload.length} bytes)`);
+
         if (!this.renderer) {
             console.warn("[Preview WASM] Renderer not ready");
             return;
@@ -183,7 +185,7 @@ export class PreviewRenderer {
             const session = await this.ensureSession();
 
             if (!this.hasInitialDocument) {
-                console.warn(
+                this.debugLog(
                     "[Preview WASM] Treating first diff as full reset",
                 );
                 action = "reset";
@@ -206,7 +208,7 @@ export class PreviewRenderer {
                 action = "reset";
             }
 
-            console.log(
+            this.debugLog(
                 `[Preview WASM] Applying "${command}" action "${action}" with ${payload.length} bytes`,
             );
 
@@ -220,26 +222,13 @@ export class PreviewRenderer {
                 this.hasInitialDocument = true;
             }
 
-            // defaults are all true, right now have no use for inline helper script
-            // could be simple session.renderSvg({});
-            // let svgText
-            // if (action === "reset") {
-            //     console.log(`[Preview WASM] Rendering full document to SVG...`);
-            //     svgText = await session.renderSvg({
-            //         data_selection: {
-            //             body: true,
-            //             defs: true,
-            //             css: false,
-            //             js: false,
-            //         },
-            //     });
-            //     console.log(`[Preview WASM] full SVG generated ${svgText.length} chars`);
-            // }
-            console.log(`[Preview WASM] Rendering diff to SVG DIFF...`);
+            this.debugLog(`[Preview WASM] Rendering diff to SVG DIFF...`);
             // Since Incremental SVG state starts empty inside renderer and gets empty on reset
             // and gives full document on first render, we can count on it to cover both reset and merge actions and give us correct diff or full svg when needed without extra checks
 
             if (fullSvgRender) {
+            // defaults are all true, right now have no use for inline helper script
+            // could be simple session.renderSvg({});
                 svgText = await session.renderSvg({
                     data_selection: {
                         body: true,
@@ -258,12 +247,12 @@ export class PreviewRenderer {
                         js: false,
                     },
                 });
-                console.log(
+                this.debugLog(
                     `[Preview WASM] SVG DIFF generated ${svgText.length} chars`,
                 );
 
                 // Patch debug
-                if (this.patchDebugOn) {
+                if (this.debugOn) {
                     const svgDebug = await session.renderSvg({
                         data_selection: {
                             body: true,
@@ -272,8 +261,8 @@ export class PreviewRenderer {
                             js: false,
                         },
                     });
-                    console.warn("Patch", svgText);
-                    console.warn("Patch debug full SVG for comparison", svgDebug);
+                    this.debugLog("Patch", svgText);
+                    this.debugLog("Patch debug full SVG for comparison", svgDebug);
                 }
             }
 
@@ -310,7 +299,7 @@ export class PreviewRenderer {
             } else {
                 this.updateSVG(svgText);
             }
-            console.log(
+            this.debugLog(
                 `[Preview WASM] Render "${command}" action "${action}" complete`,
             );
 
@@ -354,8 +343,8 @@ export class PreviewRenderer {
 
         svgHost.innerHTML = svg;
 
-        console.log(
-            `[Preview WASM] Page with not empty content is ${svgHost.querySelectorAll("g.typst-page:has(*)").length} and total ${svgHost.querySelectorAll("g.typst-page").length}`,
+        this.debugLog(
+            `[Preview WASM] Pages with not empty content length is ${svgHost.querySelectorAll("g.typst-page:has(*)").length} and total ${svgHost.querySelectorAll("g.typst-page").length}`,
         );
 
         window.$tmEventBus.emit(tmEvents.PreviewDocumentUpdated, { pdfPagesCount: svgHost.querySelectorAll("g.typst-page").length });
@@ -383,9 +372,7 @@ export class PreviewRenderer {
         this.patchSvgHeader(prev, next);
         this.patchSvgChildren(prev, next);
 
-        if(this.patchDebugOn) {
-            console.warn("Patched full SVG", prev.outerHTML);
-        }
+        this.debugLog("Patched full SVG", prev.outerHTML);
     }
 
     private patchSvgHeader(prev: SVGElement, next: SVGElement) {
@@ -540,13 +527,11 @@ export class PreviewRenderer {
                     }
                     insertFn(insertNode!);
 
-                    if (this.patchDebugOn) {
-                        console.warn(
-                            `Reusing cloned/moved node with tid ${reuseFrom}`, all? "at the end": `before ${currentTid}`,
-                            insertNode,
-                            newNode,
-                        );
-                    }
+                    this.debugLog(
+                        `Reusing cloned/moved node with tid ${reuseFrom}`, all? "at the end": `before ${currentTid}`,
+                        insertNode,
+                        newNode,
+                    );
 
                     this.patchAttributes(insertNode! as Element, newNode as Element);
                     this.patchSvgChildren(insertNode! as SVGElement, newNode as SVGElement);
@@ -558,12 +543,10 @@ export class PreviewRenderer {
             }
         }
 
-        if (this.patchDebugOn) {
-            console.warn("Old branch, Old tids in DOM, tally", oldBranch, oldTids, oldMap, tally);
-            console.warn("Preserve order of nodes with tids", preserve);
-            console.warn("Move nodes with tids", Array.from(moveTids.entries()));
-            console.warn("Extra clones for tids", Array.from(extraClones.entries()));
-        }
+        this.debugLog("Old branch, Old tids in DOM, tally", oldBranch, oldTids, oldMap, tally);
+        this.debugLog("Preserve order of nodes with tids", preserve);
+        this.debugLog("Move nodes with tids", Array.from(moveTids.entries()));
+        this.debugLog("Extra clones for tids", Array.from(extraClones.entries()));
 
         for (const [ind, currentTid] of preserve.entries()) {
             scrollOldNodesWhile(ind, currentTid, false);
@@ -580,14 +563,11 @@ export class PreviewRenderer {
 
             if (oldNode && newNode) {
 
-
-                if (this.patchDebugOn) {
-                    console.warn(
-                        `Expected reuse from ${reuseFrom} for current tid ${currentTid}`,
-                        oldNode,
-                        newNode,
-                    );
-                }
+                this.debugLog(
+                    `Expected reuse from ${reuseFrom} for current tid ${currentTid}`,
+                    oldNode,
+                    newNode,
+                );
 
                 this.patchAttributes(oldNode as Element, newNode as Element,);
                 this.patchSvgChildren(oldNode as SVGElement, newNode as SVGElement,);
@@ -703,7 +683,7 @@ export class PreviewRenderer {
         this.session = null;
         this.renderer = null;
 
-        console.log("[Preview WASM] Renderer disposed");
+        console.warn("[Preview WASM] Renderer disposed");
     }
 
     destroy() {

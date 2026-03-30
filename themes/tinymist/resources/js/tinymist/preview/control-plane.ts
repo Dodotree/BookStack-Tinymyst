@@ -33,8 +33,10 @@ export class PreviewControlPlane {
     private pendingRenders: RenderVersion[] = [];
     private currentRender: RenderVersion | null = null;
     private confirmedRenderVersion : RenderVersion | null = null;
-    private pendingCursorRequests: Map<number, PendingCursorRequest> =
-        new Map();
+    private pendingCursorRequests: Map<number, PendingCursorRequest> = new Map();
+
+    private debugOn = false;
+    private debugLog: (...args: any[]) => void;
 
     constructor() {
         this.sendControlMessage = this.sendControlMessage.bind(this);
@@ -46,6 +48,8 @@ export class PreviewControlPlane {
         this.clarifyRenderVersion = this.clarifyRenderVersion.bind(this);
         this.addPendingCursorRequest = this.addPendingCursorRequest.bind(this);
         this.prunePendingRenders = this.prunePendingRenders.bind(this);
+
+        this.debugLog = this.debugOn ? console.debug : () => {};
 
         window.$tmEventBus.listen(
             tmEvents.PreviewControlMessage,
@@ -94,8 +98,6 @@ export class PreviewControlPlane {
                 if(!this.currentRender || payload.docVersion >= this.currentRender.docVersion) {
                     this.currentRender = payload;
                 }
-                // console.log(`Render version: ${payload.docVersion} ${this.pendingRenders.length} pending renders:`, this.pendingRenders);
-                // console.log("Current render:", this.currentRender);
             },
         );
     }
@@ -143,7 +145,7 @@ export class PreviewControlPlane {
         } else {
             // If the message is not what we expected, we put the pending back and wait for the next one
             this.pendingRenders.unshift(pending);
-            console.warn(
+            this.debugLog(
                 `[Preview Control:queue] Received "${payload.command}" but expected "${pending.type}". Keeping pending in queue.`,
                 this.pendingRenders,
             );
@@ -197,7 +199,7 @@ export class PreviewControlPlane {
         fileName: string;
         docVersion: number;
     }): void {
-        console.debug(
+        this.debugLog(
             `\x1b[31m[Preview Control:track]\x1b[0m "${payload.fileName}" docVersion: \x1b[94m${payload.docVersion}\x1b[0m`,
             this.pendingRenders,
         );
@@ -216,7 +218,7 @@ export class PreviewControlPlane {
         docVersion: number;
         fileName: string;
     }): void {
-        console.debug(
+        this.debugLog(
             `\x1b[31m[Preview Control:clarify]\x1b[0m "${payload.fileName}" docVersion: \x1b[94m${payload.docVersion}\x1b[0m`,
             this.pendingRenders,
         );
@@ -230,7 +232,7 @@ export class PreviewControlPlane {
     }
 
     private handleControlMessage(raw: string): void {
-        console.log(
+        this.debugLog(
             `[Preview Control:in] Control message length: ${raw.length}`,
             raw.length < 60 ? raw : "too long to display",
         );
@@ -262,7 +264,7 @@ export class PreviewControlPlane {
                         fileName: "entry.typ", // "current" is for "entry.typ" but edited file can be different, preview doesn't know what is being edited
                         docVersion: 0, // "current" docVersion is unknown until svg with the marker is rendered
                     });
-                    console.debug(
+                    this.debugLog(
                         `\x1b[31m[Preview Control:current]\x1b[0m`,
                         this.pendingRenders,
                     );
@@ -272,7 +274,7 @@ export class PreviewControlPlane {
                     window.$tmEventBus.emit(tmEvents.PreviewCursorRequest, {
                         uniqueTabId: msg.details?.uniqueTabId,
                     });
-                    console.log(
+                    this.debugLog(
                         `[Preview Control:in] Cursor position requested by ${msg.details.uniqueTabId}`,
                         msg,
                     );
@@ -298,7 +300,7 @@ export class PreviewControlPlane {
                 type: "info",
                 message: "[Preview Control:in] Compiling...",
             });
-            console.log(this.currentRender, this.pendingRenders);
+            this.debugLog(this.currentRender, this.pendingRenders);
         } else if (kind === "CompileSuccess") {
             window.$tmEventBus.emit(tmEvents.ConsoleLog, {
                 type: "success",
@@ -316,7 +318,7 @@ export class PreviewControlPlane {
 
     private onSyncChanges(msg: any) {
         // Handle synchronization
-        console.log(
+        this.debugLog(
             "[Preview Control:in] Syncing changes received but not used:",
             msg,
         );
@@ -324,7 +326,7 @@ export class PreviewControlPlane {
 
     private onOutline(items: OutlineItem[]) {
         // Update table of contents
-        console.log(
+        this.debugLog(
             "[Preview Control:in] Document outline received but not used",
         );
     }
@@ -364,7 +366,7 @@ export class PreviewControlPlane {
                     line: message.line,
                     character: message.character,
                 };
-                console.log(
+                this.debugLog(
                     "[Preview Control:out] Sending cursor position:",
                     msg,
                 );
@@ -389,7 +391,7 @@ export class PreviewControlPlane {
                 return;
         }
 
-        console.log(
+        this.debugLog(
             `[Preview Control:out] Sending Control Plane ${message.event}:`,
             msg,
         );

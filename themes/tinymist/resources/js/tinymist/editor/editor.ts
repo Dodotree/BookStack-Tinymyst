@@ -468,9 +468,6 @@ export class TinymistEditorUI {
             return;
         }
         if (payload.docVersion > state.docVersion) {
-            console.warn(
-                `[Editor] DocVersion out of sync for ${payload.fileName} current: ${state.docVersion}, requested prune: ${payload.docVersion}`,
-            );
             return;
         }
 
@@ -509,9 +506,6 @@ export class TinymistEditorUI {
         content: string;
     }): void {
         const state = this.getOrCreateFileState(payload.fileName);
-        console.log(
-            `[Editor] Resetting sync state for ${payload.fileName} to docVersion ${payload.docVersion}`,
-        );
         state.docVersion = payload.docVersion;
         state.currentContent = payload.content;
         state.savedContentHash = this.hashString(payload.content);

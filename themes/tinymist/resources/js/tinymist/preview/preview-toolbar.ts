@@ -277,8 +277,6 @@ export class PreviewToolbar {
 
         this.liveStatus = payload.label;
 
-        console.log(`[Preview Toolbar] Connection state changed: ${this.liveStatus}`);
-
         const liveOption = this.previewModeSelect?.querySelector(
             'option[value="live-preview"]',
         );

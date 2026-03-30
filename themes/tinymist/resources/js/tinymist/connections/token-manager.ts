@@ -13,12 +13,14 @@ export class TinymistTokenManager {
 
     private tokenRenewalTimeout: ReturnType<typeof setTimeout> | null = null;
 
+    private debugOn = false;
+    private debugLog: (...args: any[]) => void;
+
     constructor(pageId: number, token?: string) {
         this.token = token ?? null;
         this.pageId = pageId;
-        if (token) {
-            this.decodeAndStoreTokenExpiry(token);
-        }
+
+        this.debugLog = this.debugOn ? console.debug : () => {};
 
         this.disconnect = this.disconnect.bind(this);
         this.renewToken = this.renewToken.bind(this);
@@ -27,6 +29,7 @@ export class TinymistTokenManager {
         window.$tmEventBus.listen(tmEvents.Destroy, this.disconnect);
 
         if (token) {
+            this.decodeAndStoreTokenExpiry(token);
             this.scheduleTokenRenewal();
         }
     }
@@ -57,9 +60,8 @@ export class TinymistTokenManager {
 
             if (payloadObj.exp) {
                 this.tokenExpiry = payloadObj.exp;
-                const expiresIn =
-                    this.tokenExpiry - Math.floor(Date.now() / 1000);
-                console.log(
+                const expiresIn = this.tokenExpiry - Math.floor(Date.now() / 1000);
+                this.debugLog(
                     `[Auth Token] Token expires in ${expiresIn} seconds (${new Date(this.tokenExpiry * 1000).toLocaleTimeString()})`,
                 );
             }
@@ -75,7 +77,7 @@ export class TinymistTokenManager {
         this.clearTokenRenewalTimeout();
 
         if (!this.tokenExpiry) {
-            console.warn(
+            this.debugLog(
                 "[Auth Token] Token expiry not set, skipping renewal schedule",
             );
             return;
@@ -89,14 +91,14 @@ export class TinymistTokenManager {
         const renewIn = Math.max(0, expiresIn - renewalBuffer);
 
         if (renewIn <= 0) {
-            console.warn(
+            this.debugLog(
                 "[Auth Token] Token already expired or about to expire, renewing immediately",
             );
             this.renewToken();
             return;
         }
 
-        console.log(
+        this.debugLog(
             `[Auth Token] Scheduling token renewal in ${renewIn} seconds`,
         );
         this.tokenRenewalTimeout = setTimeout(() => {
@@ -106,7 +108,7 @@ export class TinymistTokenManager {
 
     private async renewToken(): Promise<void> {
         try {
-            console.log("[Auth Token] Renewing WebSocket token...");
+            this.debugLog("[Auth Token] Renewing WebSocket token...");
             const response = (await window.$http.post(AUTH_TOKEN_RENEWAL_URL, {
                 page_id: this.pageId,
             })) as any;
@@ -114,7 +116,7 @@ export class TinymistTokenManager {
             const data = response.data || response;
 
             if (data.success && data.token) {
-                console.log("[Auth Token] Token renewed successfully");
+                this.debugLog("[Auth Token] Token renewed successfully");
 
                 // Update token locally
                 this.token = data.token;

@@ -49,8 +49,8 @@ Overall status: **Not extraction-ready yet** without a stabilization pass.
 - `constants/custom-events.ts`
   - `Diagnostics` uses `diagnostics: any[]`
   - `LspSemanticTokensDelta` uses `edits: any[]`
-  - `SyncRemoteChanges` uses `changes: any`
-  - `TextDiff` uses `changes: any`
+  x `SyncRemoteChanges` uses `changes: any`
+  x `TextDiff` uses `changes: any`
 
 **Risk**
 
@@ -156,32 +156,6 @@ Overall status: **Not extraction-ready yet** without a stabilization pass.
 
 ---
 
-### H3) Logging policy mismatch and noisy hot-path logs
-
-**Evidence**
-
-- Frequent `console.log`/`console.debug` in hot paths:
-  - `preview/render.ts`
-  - `connections/ws-base.ts`
-  - `preview/control-plane.ts`
-  - `connections/fallback.ts`
-  - `connections/token-manager.ts`
-- Includes ANSI escape-coded debug logs in control-plane.
-
-**Risk**
-
-- Harder production diagnostics (signal-to-noise issue).
-- Potential metadata leakage in logs.
-- Divergence from lint policy intent (`no-console` warns except `warn`/`error`).
-
-**Recommendation**
-
-- Introduce `Logger` abstraction with levels and environment gating.
-- Restrict hot-path runtime logs to `warn/error` in production.
-- Remove ANSI escape formatting from browser logs.
-
----
-
 ## Medium Findings
 
 ### M1) Lifecycle cleanup is mostly good but inconsistent nulling/casts remain
@@ -263,8 +237,8 @@ Overall status: **Not extraction-ready yet** without a stabilization pass.
 ### Observability
 
 - [ ] Add structured logger abstraction.
-- [ ] Remove high-frequency debug logging from production paths.
-- [ ] Standardize user-facing console events vs internal diagnostics.
+- [x] Remove high-frequency debug logging from production paths.
+- [x] Standardize user-facing console events vs internal diagnostics.
 
 ### Testing
 
@@ -294,7 +268,7 @@ Overall status: **Not extraction-ready yet** without a stabilization pass.
 
 - Add queue/state tests for preview/render control coupling.
 - Add semantic-token delta consistency tests and fallback refresh behavior.
-- Reduce logs to policy-compliant levels and document debug flags.
+x Reduce logs to policy-compliant levels and document debug flags.
 
 ---
 

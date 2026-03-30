@@ -21,15 +21,14 @@ export class PreviewBridgeClient extends TinymistWebSocketClient {
             binaryType: "arraybuffer",
         });
 
-        this.handleOutgoingControl = this.handleOutgoingControl.bind(this);
-        this.handleOutgoingData = this.handleOutgoingData.bind(this);
+        this.sendRaw = this.sendRaw.bind(this);
         window.$tmEventBus.listen(
             tmEvents.PreviewSendControl,
-            this.handleOutgoingControl,
+            this.sendRaw,
         );
         window.$tmEventBus.listen(
             tmEvents.PreviewSendData,
-            this.handleOutgoingData,
+            this.sendRaw,
         );
         // connect/disconnect events handled by superclass, do not override here!
     }
@@ -40,7 +39,6 @@ export class PreviewBridgeClient extends TinymistWebSocketClient {
         };
 
         const forwardData = (buffer: ArrayBuffer) => {
-            // console.log(`[Preview WS] Forwarding data buffer length: ${buffer.byteLength}`);
             window.$tmEventBus.emit(
                 tmEvents.PreviewDataMessage,
                 new Uint8Array(buffer),
@@ -82,19 +80,5 @@ export class PreviewBridgeClient extends TinymistWebSocketClient {
         } else {
             console.warn("[Preview WS] Message unknown type:", data);
         }
-    }
-
-    private handleOutgoingControl(message: string): void {
-        console.log(
-            `[Preview WS] Sending control message length: ${message.length}`,
-        );
-        this.sendRaw(message);
-    }
-
-    private handleOutgoingData(message: string | Uint8Array): void {
-        const bytes =
-            typeof message === "string" ? message.length : message.byteLength;
-        console.log(`[Preview WS] Sending data message bytes: ${bytes}`);
-        this.sendRaw(message);
     }
 }

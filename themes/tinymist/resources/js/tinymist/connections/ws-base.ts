@@ -104,10 +104,10 @@ export abstract class TinymistWebSocketClient {
 
             try {
                 const wsUrl = this.buildUrl();
-                console.log(
-                    `[${this.config.name}] Connecting to:`,
-                    wsUrl.replace(this.token, "TOKEN_HIDDEN"),
-                );
+
+                // console.log(`[${this.config.name}] Connecting to:`,
+                //     wsUrl.replace(this.token, "TOKEN_HIDDEN"),
+                // );
 
                 this.scheduleConnectionTimeout();
 
@@ -116,9 +116,9 @@ export abstract class TinymistWebSocketClient {
                     this.socket.binaryType = this.config.binaryType;
                 }
 
-                console.log(`[${this.config.name}] Socket created`, {
-                    wsUrl: wsUrl.replace(this.token, "TOKEN_HIDDEN"),
-                });
+                // console.log(`[${this.config.name}] Socket created`, {
+                //     wsUrl: wsUrl.replace(this.token, "TOKEN_HIDDEN"),
+                // });
 
                 this.socket.onopen = () => {
                     settled = true;
@@ -127,7 +127,6 @@ export abstract class TinymistWebSocketClient {
                     this.clearConnectionTimeout();
                     this.startHeartbeat();
 
-                    console.log(`[${this.config.name}] WebSocket connected`);
                     window.$tmEventBus.emit(tmEvents.Status, {
                         what: this.config.statusKey,
                         connected: true,
@@ -146,7 +145,7 @@ export abstract class TinymistWebSocketClient {
                         event.data.length === this.pongLength &&
                         event.data.includes('"type":"pong"')
                     ) {
-                        console.log(`[${this.config.name}] Received pong`);
+                        // console.log(`[${this.config.name}] Received pong`);
                         return;
                     }
                     this.handleMessage(event.data);
@@ -173,7 +172,7 @@ export abstract class TinymistWebSocketClient {
                 };
 
                 this.socket.onclose = (event) => {
-                    console.log(`[${this.config.name}] WebSocket closed`, {
+                    console.warn(`[${this.config.name}] WebSocket closed`, {
                         code: event.code,
                         reason: event.reason,
                     });
@@ -240,7 +239,7 @@ export abstract class TinymistWebSocketClient {
 
     protected startHeartbeat(): void {
         if (!this.reconnectAllowed) {
-            console.log(
+            console.warn(
                 `[${this.config.name}] Heartbeat: Reconnection not allowed`,
             );
             return;
@@ -262,18 +261,7 @@ export abstract class TinymistWebSocketClient {
     }
 
     protected scheduleReconnect(): void {
-        if (this.reconnectTimeout) {
-            return;
-        }
-
-        if (this.waitingForTokenRenewal) {
-            return;
-        }
-
-        if (!this.reconnectAllowed) {
-            console.log(
-                `[${this.config.name}] scheduleReconnect: Reconnection not allowed`,
-            );
+        if (this.reconnectTimeout || this.waitingForTokenRenewal || !this.reconnectAllowed) {
             return;
         }
 
@@ -285,10 +273,6 @@ export abstract class TinymistWebSocketClient {
                     this.reconnectAttempts - 1,
                 ),
             this.config.reconnectMaxMs,
-        );
-
-        console.log(
-            `[${this.config.name}] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts})`,
         );
 
         this.reconnectTimeout = setTimeout(() => {
@@ -342,9 +326,6 @@ export abstract class TinymistWebSocketClient {
         this.waitingForTokenRenewal = false;
         this.reconnectAttempts = 0;
         if (this.socket && this.socket.readyState === WebSocket.OPEN) {
-            console.log(
-                `[${this.config.name}] Sending token update to node server`,
-            );
             this.sendJson({
                 type: "updateToken",
                 token: token,
@@ -385,7 +366,7 @@ export abstract class TinymistWebSocketClient {
         if (this.socket) {
             this.socket.close(1000, "Client disconnected");
             this.socket = null;
-            console.log(`[${this.config.name}] Intentionally disconnected`);
+            console.warn(`[${this.config.name}] Intentionally disconnected`);
             window.$tmEventBus.emit(tmEvents.Status, {
                 what: this.config.statusKey,
                 connected: false,

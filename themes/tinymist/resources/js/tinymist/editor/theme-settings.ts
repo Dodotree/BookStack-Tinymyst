@@ -524,7 +524,6 @@ export class TinymistThemeSettings {
 
     private readDefaultsFromStylesheet(): ThemeSettingValues {
         const root = document.querySelector<HTMLElement>(tmSelectors.Root);
-        console.log("root:", root);
         const computedRootStyle = getComputedStyle(root!);
         const defaults: ThemeSettingValues = {};
 

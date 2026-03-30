@@ -1,14 +1,18 @@
-export { tmEvents, TinymistConsoleLocation } from "./constants/custom-events";
+export {
+    tmEvents,
+    TinymistConsoleLocation,
+    SemanticTokensDeltaEdit,
+} from "./constants/custom-events";
 
 export {
-	THEME_SETTINGS_STORAGE_KEY,
-	THEME_FONT_TOKENS,
+    THEME_SETTINGS_STORAGE_KEY,
+    THEME_FONT_TOKENS,
     THEME_FONT_SIZE_TOKENS,
-	THEME_FALLBACK_SETTINGS,
-	THEME_COLOR_SPLIT_TITLE,
-	THEME_COLOR_INPUT_DEFAULT,
-	THEME_FONT_PREVIEW_TEXT,
-	THEME_FONT_STATUS_EMPTY_HINT,
+    THEME_FALLBACK_SETTINGS,
+    THEME_COLOR_SPLIT_TITLE,
+    THEME_COLOR_INPUT_DEFAULT,
+    THEME_FONT_PREVIEW_TEXT,
+    THEME_FONT_STATUS_EMPTY_HINT,
 } from "./constants/theme-settings";
 
 export {
@@ -17,8 +21,8 @@ export {
 } from "./constants/preview-settings";
 
 export {
-	DEFAULT_WS_TIMINGS,
-	LOCAL_WS_HOSTNAMES,
+    DEFAULT_WS_TIMINGS,
+    LOCAL_WS_HOSTNAMES,
     SYNC_AND_LSP_URI,
     SYNC_AND_LSP_PORT,
     SYNC_AND_LSP_STATUS_KEY,

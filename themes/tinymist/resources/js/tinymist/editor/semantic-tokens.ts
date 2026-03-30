@@ -19,6 +19,7 @@ import {
     HIGHLIGHT_COLORS,
     tmClassNames,
     tmEvents,
+    SemanticTokensDeltaEdit,
 } from "../constants";
 
 // Highlight region interface
@@ -40,11 +41,6 @@ const replaceHighlightsEffect = StateEffect.define<{
 // StateEffect to clear highlights
 const clearHighlightsEffect = StateEffect.define();
 
-type SemanticTokensDeltaEdit = {
-    start: number;
-    deleteCount: number;
-    data?: number[];
-};
 type DecorationEntry = { from: number; to: number; mark: Decoration };
 
 function buildDecorationEntries(

@@ -39,6 +39,9 @@ import {
 } from "../constants";
 
 export class TinymistFileSyncClient extends TinymistWebSocketClient {
+    private debugOn = false;
+    private debugLog: (...args: any[]) => void;
+
     constructor(pageId: number, token: string, uniqueTabId: string) {
         super(pageId, token, uniqueTabId, {
             name: "File Sync / LSP",
@@ -48,6 +51,8 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
             localPort: SYNC_AND_LSP_PORT,
             remotePath: SYNC_AND_LSP_URI,
         });
+
+        this.debugLog = this.debugOn ? console.debug : () => {};
 
         this.sendChanges = this.sendChanges.bind(this);
         this.openFile = this.openFile.bind(this);
@@ -93,7 +98,7 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
     protected handleMessage(data: string): void {
         try {
             const msg = JSON.parse(data);
-            console.debug("[FilesLSP WS] Received message:", msg);
+            this.debugLog("[FilesLSP WS] Received message:", msg);
 
             const docVersion =
                 "docVersion" in msg ? Number(msg.docVersion) : undefined;
@@ -133,7 +138,7 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
                     break;
 
                 case "fullState":
-                    console.debug(
+                    this.debugLog(
                         `[FilesLSP WS] Received full state \x1b[31m${fileName}\x1b[0m, docVersion: \x1b[94m${docVersion}\x1b[0m`,
                     );
                     window.$tmEventBus.emit(tmEvents.SyncFullState, {
@@ -145,7 +150,7 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
                     break;
 
                 case "remoteChanges":
-                    console.debug(
+                    this.debugLog(
                         `[FilesLSP WS] Received remote changes \x1b[31m${fileName}\x1b[0m, docVersion: \x1b[94m${docVersion}\x1b[0m`,
                     );
                     window.$tmEventBus.emit(tmEvents.SyncRemoteChanges, {
@@ -157,7 +162,7 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
                     break;
 
                 case "semanticTokens":
-                    console.debug(
+                    this.debugLog(
                         `[FilesLSP WS] Received semantic tokens FULL \x1b[31m${fileName}\x1b[0m docVersion: \x1b[94m${docVersion}\x1b[0m, resultId: \x1b[32m${msg.resultId}\x1b[0m, tokenCount: ${msg.tokens?.length || 0}`,
                     );
                     window.$tmEventBus.emit(tmEvents.LspSemanticTokens, {
@@ -173,7 +178,7 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
                     break;
 
                 case "semanticTokensDelta":
-                    console.debug(
+                    this.debugLog(
                         `[FilesLSP WS] Received semantic tokens DELTA \x1b[31m${fileName}\x1b[0m docVersion: \x1b[94m${docVersion}\x1b[0m, editCount: ${msg.edits?.length || 0}, resultId: \x1b[32m${msg.resultId}\x1b[0m, previousResultId: \x1b[32m${msg.previousResultId}\x1b[0m`,
                     );
                     window.$tmEventBus.emit(tmEvents.LspSemanticTokensDelta, {
@@ -190,7 +195,7 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
                     break;
 
                 case "diagnostics":
-                    console.debug(
+                    this.debugLog(
                         `[FilesLSP WS] Received diagnostics \x1b[31m${fileName}\x1b[0m docVersion: \x1b[94m${docVersion}\x1b[0m, diagnosticCount: ${msg.diagnostics?.length || 0}`,
                     );
                     window.$tmEventBus.emit(tmEvents.Diagnostics, {
