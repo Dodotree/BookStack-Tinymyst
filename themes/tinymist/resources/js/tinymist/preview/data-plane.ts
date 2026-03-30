@@ -2,10 +2,10 @@ import { tmEvents } from "../constants";
 
 export class PreviewDataPlane {
     private processingQueue: Promise<void> = Promise.resolve();
-    private textDecoder = new TextDecoder();
-    private cursorSpotlightEnabled = true;
+    private textDecoder: TextDecoder = new TextDecoder();
+    private cursorSpotlightEnabled: boolean = true;
 
-    private debugOn = false;
+    private debugOn: boolean = false;
     private debugLog: (...args: any[]) => void;
 
     constructor() {

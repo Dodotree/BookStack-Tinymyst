@@ -52,20 +52,20 @@ type FileSyncState = {
 export class TinymistEditorUI {
     editor: HTMLTextAreaElement;
     editorView: EditorView | null = null;
-    private activeFileName = ENTRY_FILE_NAME;
-    private fallbackEnabled = false;
-    private isOffline = !navigator.onLine;
+    private activeFileName: string = ENTRY_FILE_NAME;
+    private fallbackEnabled: boolean = false;
+    private isOffline: boolean = !navigator.onLine;
 
     private readonly languageCompartment = new Compartment();
     private readonly highlightCompartment = new Compartment();
-    private readonly isDarkMode =
+    private readonly isDarkMode: boolean =
         document.documentElement.classList.contains("dark-mode");
 
     private readonly fileStates: Map<string, FileSyncState> = new Map();
-    private readonly maxSnapshots = 3;
-    private readonly changeDebounceMs = 150;
-    private readonly fallbackDebounceMs = 800;
-    private readonly collabClientId = `tinymist-${crypto.randomUUID()}`; // formality to distinguish local vs remote changes in rebase
+    private readonly maxSnapshots: number = 3;
+    private readonly changeDebounceMs: number = 150;
+    private readonly fallbackDebounceMs: number = 800;
+    private readonly collabClientId: string = `tinymist-${crypto.randomUUID()}`; // formality to distinguish local vs remote changes in rebase
 
     constructor() {
         this.editor = document.querySelector(

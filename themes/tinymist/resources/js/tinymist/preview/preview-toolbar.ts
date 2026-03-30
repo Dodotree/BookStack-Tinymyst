@@ -15,56 +15,42 @@ export class PreviewToolbar {
     private pageId: number;
     private activeFileName = ENTRY_FILE_NAME;
 
-    private paneSelector: string;
-    private pdfFrameSelector: string;
-
-    private previewModeSelect: HTMLSelectElement | null = null;
     private liveStatus: "paused" | "running" | "connecting" = "connecting";
-    private lastSelectedMode = "live-preview";
+    private lastSelectedMode: "live-preview" | `pdf-page-${number}` = "live-preview";
 
-    private zoomLevel = 1;
-    private readonly zoomStep = 0.1;
-    private readonly zoomMin = 0.25;
-    private readonly zoomMax = 3;
+    private zoomLevel: number = 1;
+    private readonly zoomStep: number = 0.1;
+    private readonly zoomMin: number = 0.25;
+    private readonly zoomMax: number = 3;
+    private hasAppliedInitialZoom: boolean = false;
+    private preferredInitialZoom: number = PREVIEW_FALLBACK_SETTINGS.initialZoom;
     private baseSvgWidth: number | null = null;
     private baseSvgHeight: number | null = null;
-    private hasAppliedInitialZoom = false;
-    private preferredInitialZoom: number = PREVIEW_FALLBACK_SETTINGS.initialZoom;
-    private panEnabled = false;
-    private isPanning = false;
-    private panStartX = 0;
-    private panStartY = 0;
-    private panStartScrollLeft = 0;
-    private panStartScrollTop = 0;
-    private pointerInPreview = false;
-    private zKeyPressed = false;
-    private temporaryPanActive = false;
+    private zKeyPressed: boolean = false;
 
-    private cursorSpotlightUserEnabled = true;
-    private scrollIntoViewUserEnabled = true;
+    private panEnabled: boolean = false;
+    private isPanning: boolean = false;
+    private panStartX: number = 0;
+    private panStartY: number = 0;
+    private panStartScrollLeft: number = 0;
+    private panStartScrollTop: number = 0;
+    private pointerInPreview: boolean = false;
+    private temporaryPanActive: boolean = false;
 
-    private previewSettingsOverlay: HTMLElement | null = null;
-    private initialZoomInput: HTMLInputElement | null = null;
-    private currentZoomValue: HTMLElement | null = null;
+    private cursorSpotlightUserEnabled: boolean = true;
+    private scrollIntoViewUserEnabled: boolean = true;
+
+    private paneSelector = `${tmSelectors.Root} ${tmSelectors.PreviewPane}`;
+    private pdfFrameSelector = `${tmSelectors.Root} ${tmSelectors.PreviewPdfFrame}`;
+    private modeSelectSelector = `${tmSelectors.Root} ${tmSelectors.PreviewModeSelect}`;
+    private overlaySelector = `${tmSelectors.Root} .tinymist-preview-settings-overlay`;
+    private initialZoomInputSelector = `${tmSelectors.Root} .tinymist-preview-settings-overlay input[data-tm-preview-setting="initial-zoom"]`;
+    private currentZoomValueSelector = `${tmSelectors.Root} .tinymist-preview-settings-overlay [data-tm-preview-setting="current-zoom"]`;
+
 
     constructor(previewElement: HTMLElement, pageId: number) {
         this.previewElement = previewElement;
         this.pageId = pageId;
-        this.paneSelector = `${tmSelectors.Root} ${tmSelectors.PreviewPane}`;
-        this.pdfFrameSelector = `${tmSelectors.Root} ${tmSelectors.PreviewPdfFrame}`;
-
-        this.previewModeSelect = document.querySelector(
-            `${tmSelectors.Root} ${tmSelectors.PreviewModeSelect}`,
-        ) as HTMLSelectElement | null;
-        this.previewSettingsOverlay = document.querySelector(
-            `${tmSelectors.Root} .tinymist-preview-settings-overlay`,
-        ) as HTMLElement | null;
-        this.initialZoomInput = this.previewSettingsOverlay?.querySelector(
-            'input[data-tm-preview-setting="initial-zoom"]',
-        ) as HTMLInputElement | null;
-        this.currentZoomValue = this.previewSettingsOverlay?.querySelector(
-            '[data-tm-preview-setting="current-zoom"]',
-        ) as HTMLElement | null;
 
         this.handleZoomIn = this.handleZoomIn.bind(this);
         this.handleZoomOut = this.handleZoomOut.bind(this);
@@ -121,7 +107,8 @@ export class PreviewToolbar {
         this.applyPanButtonState();
         this.addRemoveListeners(true);
 
-        this.previewModeSelect?.toggleAttribute("disabled", this.pageId <= 0);
+        const modeSelect = document.querySelector(this.modeSelectSelector) as HTMLSelectElement | null;
+        modeSelect?.toggleAttribute("disabled", this.pageId <= 0);
     }
 
     private onDocumentUpdate(payload: { pdfPagesCount: number }): void {
@@ -167,11 +154,13 @@ export class PreviewToolbar {
             window.removeEventListener("blur", this.handleWindowBlur);
         }
 
-        this.initialZoomInput?.[method](
+        const initialZoomInput = document.querySelector(this.initialZoomInputSelector) as HTMLInputElement | null;
+        initialZoomInput?.[method](
             "input",
             this.handlePreviewSettingsInput,
         );
-        this.previewSettingsOverlay?.[method](
+        const overlay = document.querySelector(this.overlaySelector) as HTMLElement | null;
+        overlay?.[method](
             "click",
             this.handlePreviewSettingsOverlayClick,
         );
@@ -227,15 +216,16 @@ export class PreviewToolbar {
     }
 
     private handlePreviewPaneChange(event: Event): void {
-        if (!this.previewModeSelect) {
+        const modeSelect = document.querySelector(this.modeSelectSelector) as HTMLSelectElement | null;
+        if (!modeSelect) {
             return;
         }
-        const value = (this.previewModeSelect.value || "").trim();
+        const value = (modeSelect.value || "").trim();
         const isActionOption =
             value === "toggle-live-preview" || value === "download-all";
 
         if (isActionOption) {
-            this.previewModeSelect.value = this.lastSelectedMode;
+            modeSelect.value = this.lastSelectedMode;
         }
 
         if (value === "toggle-live-preview") {
@@ -259,14 +249,14 @@ export class PreviewToolbar {
         }
 
         if (value === "live-preview") {
-            this.previewModeSelect.value = "live-preview";
+            modeSelect.value = "live-preview";
             this.lastSelectedMode = "live-preview";
             this.closePdfPreview();
             return;
         }
         if (value.startsWith("pdf-page-")) {
             const page = value.replace("pdf-page-", "");
-            this.lastSelectedMode = value;
+            this.lastSelectedMode = value as `pdf-page-${number}`;
             this.openPdfPreview(page);
         }
     }
@@ -277,14 +267,15 @@ export class PreviewToolbar {
 
         this.liveStatus = payload.label;
 
-        const liveOption = this.previewModeSelect?.querySelector(
+        const modeSelect = document.querySelector(this.modeSelectSelector) as HTMLSelectElement | null;
+        const liveOption = modeSelect?.querySelector(
             'option[value="live-preview"]',
         );
         const output = liveOption?.querySelector("output");
-        const toggleOption = this.previewModeSelect?.querySelector(
+        const toggleOption = modeSelect?.querySelector(
             'option[value="toggle-live-preview"]',
         );
-        if (!this.previewModeSelect || !liveOption || !output || !toggleOption) {
+        if (!modeSelect || !liveOption || !output || !toggleOption) {
             return;
         }
         output.textContent =
@@ -298,13 +289,14 @@ export class PreviewToolbar {
     }
 
     private refreshPdfOptions(pageCount: number): void {
-        if (!this.previewModeSelect) {
+        const modeSelect = document.querySelector(this.modeSelectSelector) as HTMLSelectElement | null;
+        if (!modeSelect) {
             return;
         }
 
         const previousStableValue = this.lastSelectedMode;
 
-        this.previewModeSelect
+        modeSelect
             .querySelectorAll("option.pdf-option")
             .forEach((option) => option.remove());
 
@@ -313,7 +305,7 @@ export class PreviewToolbar {
             option.classList.add("pdf-option");
             option.value = `pdf-page-${index}`;
             option.textContent = `PDF page ${index}`;
-            this.previewModeSelect.appendChild(option);
+            modeSelect.appendChild(option);
         }
 
         if (pageCount > 0) {
@@ -321,11 +313,11 @@ export class PreviewToolbar {
             downloadAll.classList.add("pdf-option");
             downloadAll.value = "download-all";
             downloadAll.textContent = "Download all";
-            this.previewModeSelect.appendChild(downloadAll);
+            modeSelect.appendChild(downloadAll);
         }
 
         const hasStableOption = Boolean(
-            this.previewModeSelect.querySelector(
+            modeSelect.querySelector(
                 `option[value="${CSS.escape(previousStableValue)}"]`,
             ),
         );
@@ -333,7 +325,7 @@ export class PreviewToolbar {
         this.lastSelectedMode = hasStableOption
             ? previousStableValue
             : "live-preview";
-        this.previewModeSelect.value = this.lastSelectedMode;
+        modeSelect.value = this.lastSelectedMode;
     }
 
     private handleZoomIn(): void {
@@ -504,28 +496,37 @@ export class PreviewToolbar {
     }
 
     private openPreviewSettings(): void {
-        if (!this.previewSettingsOverlay) {
+        const overlay = document.querySelector(this.overlaySelector) as HTMLElement | null;
+        if (!overlay) {
             return;
         }
 
-        this.previewSettingsOverlay.hidden = false;
-        this.previewSettingsOverlay.classList.add(tmClassNames.ThemeVisible);
+        overlay.hidden = false;
+        overlay.classList.add(tmClassNames.ThemeVisible);
         this.syncSettingsToInputs();
-        this.initialZoomInput?.focus();
-        this.initialZoomInput?.select();
+
+        const initialZoomInput = document.querySelector(this.initialZoomInputSelector) as HTMLInputElement | null;
+        initialZoomInput?.focus();
+        initialZoomInput?.select();
     }
 
     private closePreviewSettings(): void {
-        if (!this.previewSettingsOverlay) {
+        const overlay = document.querySelector(this.overlaySelector) as HTMLElement | null;
+        if (!overlay) {
             return;
         }
 
-        this.previewSettingsOverlay.classList.remove(tmClassNames.ThemeVisible);
-        this.previewSettingsOverlay.hidden = true;
+        overlay.classList.remove(tmClassNames.ThemeVisible);
+        overlay.hidden = true;
     }
 
     private handlePreviewSettingsOverlayClick(event: Event): void {
-        if (event.target === this.previewSettingsOverlay) {
+        const overlay = document.querySelector(this.overlaySelector) as HTMLElement | null;
+        if (!overlay) {
+            return;
+        }
+
+        if (event.target === overlay) {
             this.closePreviewSettings();
         }
     }
@@ -536,7 +537,8 @@ export class PreviewToolbar {
             return;
         }
 
-        if (this.previewSettingsOverlay && !this.previewSettingsOverlay.hidden) {
+        const overlay = document.querySelector(this.overlaySelector) as HTMLElement | null;
+        if (overlay && !overlay.hidden) {
             this.closePreviewSettings();
         }
     }
@@ -560,11 +562,12 @@ export class PreviewToolbar {
     }
 
     private syncSettingsToInputs(): void {
-        if (!this.initialZoomInput) {
+        const initialZoomInput = document.querySelector(this.initialZoomInputSelector) as HTMLInputElement | null;
+        if (!initialZoomInput) {
             return;
         }
 
-        this.initialZoomInput.value = this.preferredInitialZoom.toFixed(2);
+        initialZoomInput.value = this.preferredInitialZoom.toFixed(2);
     }
 
     private readStoredSettings(): void {
@@ -763,11 +766,12 @@ export class PreviewToolbar {
     }
 
     private syncCurrentZoomDisplay(): void {
-        if (!this.currentZoomValue) {
+        const currentZoomValue = document.querySelector(this.currentZoomValueSelector) as HTMLElement | null;
+        if (!currentZoomValue) {
             return;
         }
 
-        this.currentZoomValue.textContent = `${this.zoomLevel.toFixed(2)}x`;
+        currentZoomValue.textContent = `${this.zoomLevel.toFixed(2)}x`;
     }
 
     private applyZoomToSvg(): void {
@@ -838,5 +842,6 @@ export class PreviewToolbar {
     destroy() {
         this.closePreviewSettings();
         this.addRemoveListeners(false);
+        this.previewElement = null as any;
     }
 }

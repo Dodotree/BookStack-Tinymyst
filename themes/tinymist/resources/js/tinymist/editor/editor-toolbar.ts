@@ -110,7 +110,7 @@ export function getHighlightExtension(isDarkMode: boolean): Extension {
 export class EditorToolbar {
     editor: HTMLTextAreaElement;
     editorView: EditorView | null = null;
-    private activeFileName = ENTRY_FILE_NAME;
+    private activeFileName: string = ENTRY_FILE_NAME;
     private isOffline: boolean = !navigator.onLine;
 
     private readonly searchReplace: TinymistSearchReplace;

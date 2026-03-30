@@ -1,9 +1,9 @@
 import { ENTRY_FILE_NAME, SYNC_AND_LSP_STATUS_KEY, tmEvents } from "../constants";
 
 export class TinymistFileDropdown {
-    dropdownSelector: string;
-    private fileSyncWSConnected = false;
-    private activeFileName = ENTRY_FILE_NAME;
+    private dropdownSelector: string;
+    private fileSyncWSConnected: boolean = false;
+    private activeFileName: string = ENTRY_FILE_NAME;
     private loadedFileStateByName: Map<string, boolean> = new Map([
         [ENTRY_FILE_NAME, true],
     ]);

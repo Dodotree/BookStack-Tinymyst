@@ -69,9 +69,6 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
         });
     }
 
-    /**
-     * Send changes to the server
-     */
     sendChanges(payload: {
         changes: any;
         docVersion: number;

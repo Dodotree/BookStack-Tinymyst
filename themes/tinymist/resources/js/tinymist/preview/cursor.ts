@@ -38,15 +38,13 @@ const REMOTE_CURSOR_COLORS = [
 
 export class PreviewCursor {
     private previewElement: HTMLElement;
-    private overlayElement: HTMLDivElement | null = null;
-    private overlaySvg: SVGSVGElement | null = null;
+    private readonly uniqueTabId: string;
 
     private latestCursorRequesterTabId: string = "";
     private cursorStates = new Map<string, CursorState>();
 
     private onViewportChange: () => void;
-    private spotlightEnabled = true;
-    private readonly uniqueTabId: string;
+    private spotlightEnabled: boolean = true;
 
     constructor(previewElement: HTMLElement, uniqueTabId?: string) {
         this.previewElement = previewElement;
@@ -89,32 +87,39 @@ export class PreviewCursor {
         });
     }
 
-    private ensureOverlay(): void {
-        if (this.overlayElement && this.overlaySvg) return;
+    private ensureOverlay(): SVGSVGElement | null {
+        let overlaySvg = this.previewElement.querySelector(
+            `.${tmClassNames.PreviewCursorOverlay} > svg`,
+        ) as SVGSVGElement | null;
+
+        if (overlaySvg) {
+            return overlaySvg;
+        }
 
         if (getComputedStyle(this.previewElement).position === "static") {
             this.previewElement.style.position = "relative";
         }
 
-        this.overlayElement = document.createElement("div");
-        this.overlayElement.className = tmClassNames.PreviewCursorOverlay;
-        Object.assign(this.overlayElement.style, {
+        const overlayElement = document.createElement("div");
+        overlayElement.className = tmClassNames.PreviewCursorOverlay;
+        Object.assign(overlayElement.style, {
             position: "absolute",
             inset: "0",
             pointerEvents: "none",
             zIndex: "10",
         });
 
-        this.overlaySvg = document.createElementNS(
+        overlaySvg = document.createElementNS(
             "http://www.w3.org/2000/svg",
             "svg",
         );
-        this.overlaySvg.setAttribute("width", "100%");
-        this.overlaySvg.setAttribute("height", "100%");
-        this.overlaySvg.style.overflow = "visible";
+        overlaySvg.setAttribute("width", "100%");
+        overlaySvg.setAttribute("height", "100%");
+        overlaySvg.style.overflow = "visible";
 
-        this.overlayElement.appendChild(this.overlaySvg);
-        this.previewElement.appendChild(this.overlayElement);
+        overlayElement.appendChild(overlaySvg);
+        this.previewElement.appendChild(overlayElement);
+        return overlaySvg;
     }
 
     private getTabKey(uniqueTabId?: string): string {
@@ -295,8 +300,8 @@ export class PreviewCursor {
             return;
         }
 
-        this.ensureOverlay();
-        if (!this.overlaySvg) {
+        const overlaySvg = this.ensureOverlay();
+        if (!overlaySvg) {
             return;
         }
 
@@ -317,11 +322,11 @@ export class PreviewCursor {
 
             if (!state.circle) {
                 state.circle = this.createCursorCircle(this.getCursorColor(tabKey));
-                this.overlaySvg.appendChild(state.circle);
+                overlaySvg.appendChild(state.circle);
             }
 
             const glyphRect = glyphNode.getBoundingClientRect();
-            const overlayRect = this.overlaySvg.getBoundingClientRect();
+            const overlayRect = overlaySvg.getBoundingClientRect();
             const previewRect = this.previewElement.getBoundingClientRect();
 
             const cx = glyphRect.left - overlayRect.left + glyphRect.width / 2;
@@ -374,10 +379,6 @@ export class PreviewCursor {
         for (const tabKey of Array.from(this.cursorStates.keys())) {
             this.removeTabCursor(tabKey);
         }
-        this.overlaySvg?.remove();
-        this.overlayElement?.remove();
-        this.overlayElement = null;
-        this.overlaySvg = null;
         this.cursorStates.clear();
 
         this.previewElement?.removeEventListener(
