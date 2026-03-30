@@ -139,6 +139,33 @@ For production websocket services, use build/start scripts:
 - Add optional cleanup strategy for stale preview files.
 - Continue performance testing on large multi-page Typst documents.
 
+## sync-and-lsp.ts notes
+
+// Initial state of the file comes from db to both front and back ends
+// If newer version is cached for preview, this version is used
+// Subsequent changes are synced via incremental updates with version tracking
+// On page load first ws connection verifies if front and back ends have the same version
+
+// sent: verify versions -> server verifies and responds with current version or requests full sync
+// sent: (gets from editor) {full sync, forceReset -?} -> server applies full content (version N)
+// sent: initial request for full semanticTokens -> server -> LSP -> server -> tokens
+// sent: editor {change increment} -> server updates file (if version is > server version)
+// sent: request for semanticTokens delta -> server -> LSP -> server -> tokens delta
+
+// receive: "ack" acknowledged token on update or file changes
+// receive: server {full sync to version N} (if server version > client version) -> here -> editor applies full content
+// receive: LSP pushes diagnostics when file updates -> server -> here -> diagnostics.ts
+// receive: encoded semanticTokens here -> semantic_tokens.ts -> editor applies tokens
+// receive: semanticTokens delta here -> semantic_tokens.ts -> editor applies token edits
+// receive: Error, see list below
+
+// Errors:
+// page mismatch
+// version mismatch
+// can not apply change (most likely cursor drift)
+// failed to write the file
+// LSP request failed
+
 ## Cursor path notes
 
 ```js

@@ -2,6 +2,7 @@ export {
     tmEvents,
     TinymistConsoleLocation,
     SemanticTokensDeltaEdit,
+    DiagnosticsPayload,
 } from "./constants/custom-events";
 
 export {

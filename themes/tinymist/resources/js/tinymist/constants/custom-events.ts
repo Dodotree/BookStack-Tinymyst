@@ -78,6 +78,18 @@ export type SemanticTokensDeltaEdit = {
     data?: number[];
 };
 
+export type DiagnosticsPayload =         {
+        range: { start: { line: number, character: number }, end: { line: number, character: number } }
+        severity?: 1|2|3|4 // (Error/Warning/Info/Hint)
+        code?: number|string
+        codeDescription?: { href: string }
+        source?: string
+        message: string
+        tags?: number[] // (1=Unnecessary, 2=Deprecated)
+        relatedInformation?: [{ location: { uri: string, range: { start: { line: number, character: number }, end: { line: number, character: number } } }, message: string }]
+        data?: any
+    }[];
+
 export type TinymistEventPayloads = {
     [tmEvents.ActiveFileChange]: { fileName: string; url: string };
     [tmEvents.AllDisconnect]: undefined;
@@ -91,7 +103,7 @@ export type TinymistEventPayloads = {
     [tmEvents.DataCursorPaths]: unknown;
     [tmEvents.DataCursorShow]: undefined;
     [tmEvents.Destroy]: undefined;
-    [tmEvents.Diagnostics]: { fileName?: string; diagnostics: any[]; docVersion?: number };
+    [tmEvents.Diagnostics]: { fileName?: string; diagnostics: DiagnosticsPayload; docVersion?: number };
     [tmEvents.FallbackCompile]: { docVersion: number; content: string };
     [tmEvents.FallbackCompiledSvg]: { svg: string; docVersion?: number | string };
     [tmEvents.FallbackEnable]: boolean;

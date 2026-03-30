@@ -7,7 +7,7 @@
 import { EditorView } from "@codemirror/view";
 import { Diagnostic, setDiagnostics } from "@codemirror/lint";
 import { ChangeSet } from "@codemirror/state";
-import { ENTRY_FILE_NAME, tmEvents, TinymistConsoleLocation } from "../constants";
+import { ENTRY_FILE_NAME, tmEvents, TinymistConsoleLocation, DiagnosticsPayload } from "../constants";
 
 type DiagnosticLocationMap = Map<number, TinymistConsoleLocation>;
 
@@ -73,7 +73,7 @@ export class DiagnosticsProcessor {
     }
 
     private mapDiagnosticsToCurrent = (payload: {
-        diagnostics: any[];
+        diagnostics: DiagnosticsPayload;
         docVersion?: number;
         fileName?: string;
     }) => {
