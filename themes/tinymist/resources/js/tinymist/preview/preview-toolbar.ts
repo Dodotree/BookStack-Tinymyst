@@ -11,7 +11,6 @@ import {
  * PDF is a static simple frame
  */
 export class PreviewToolbar {
-    private previewElement: HTMLElement;
     private pageId: number;
     private activeFileName = ENTRY_FILE_NAME;
 
@@ -48,8 +47,8 @@ export class PreviewToolbar {
     private currentZoomValueSelector = `${tmSelectors.Root} .tinymist-preview-settings-overlay [data-tm-preview-setting="current-zoom"]`;
 
 
-    constructor(previewElement: HTMLElement, pageId: number) {
-        this.previewElement = previewElement;
+    constructor(pageId: number) {
+
         this.pageId = pageId;
 
         this.handleZoomIn = this.handleZoomIn.bind(this);
@@ -135,12 +134,16 @@ export class PreviewToolbar {
             .querySelector(this.paneSelector)
             ?.[method]("change", this.handlePreviewPaneChange);
 
-        this.previewElement[method]("mousedown", this.handlePanMouseDown);
-        this.previewElement[method]("mousemove", this.handlePanMouseMove);
-        this.previewElement[method]("mouseup", this.handlePanMouseUp);
-        this.previewElement[method]("mouseleave", this.handlePanMouseUp);
-        this.previewElement[method]("mouseenter", this.handlePreviewMouseEnter);
-        this.previewElement[method]("mouseleave", this.handlePreviewMouseLeave);
+        const previewElement = document.querySelector(
+            `${tmSelectors.Root} ${tmSelectors.PreviewContent}`,
+        ) as HTMLElement;
+
+        previewElement[method]("mousedown", this.handlePanMouseDown);
+        previewElement[method]("mousemove", this.handlePanMouseMove);
+        previewElement[method]("mouseup", this.handlePanMouseUp);
+        previewElement[method]("mouseleave", this.handlePanMouseUp);
+        previewElement[method]("mouseenter", this.handlePreviewMouseEnter);
+        previewElement[method]("mouseleave", this.handlePreviewMouseLeave);
 
         if (adding) {
             window.addEventListener("keydown", this.handleGlobalKeyDown);
@@ -167,13 +170,17 @@ export class PreviewToolbar {
     }
 
     private setLivePreviewVisibility(visible: boolean): void {
-        const svgHost = this.previewElement.querySelector(
+        const previewElement = document.querySelector(
+            `${tmSelectors.Root} ${tmSelectors.PreviewContent}`,
+        ) as HTMLElement;
+
+        const svgHost = previewElement.querySelector(
             tmSelectors.PreviewDocumentHost,
         ) as HTMLElement | null;
-        const muted = this.previewElement.querySelector(
+        const muted = previewElement.querySelector(
             tmSelectors.PreviewMutedMessage,
         ) as HTMLElement | null;
-        const error = this.previewElement.querySelector(
+        const error = previewElement.querySelector(
             tmSelectors.PreviewError,
         ) as HTMLElement | null;
 
@@ -355,7 +362,10 @@ export class PreviewToolbar {
     }
 
     private applyPanInteractionState(): void {
-        this.previewElement.classList.toggle(
+        const previewElement = document.querySelector(
+            `${tmSelectors.Root} ${tmSelectors.PreviewContent}`,
+        ) as HTMLElement;
+        previewElement.classList.toggle(
             tmClassNames.PreviewPanEnabled,
             this.isPanInteractionEnabled(),
         );
@@ -702,8 +712,15 @@ export class PreviewToolbar {
         width: number,
         height: number,
     ): void {
-        const viewportWidth = this.previewElement.clientWidth;
-        const viewportHeight = this.previewElement.clientHeight;
+        const previewElement = document.querySelector(
+            `${tmSelectors.Root} ${tmSelectors.PreviewContent}`,
+        ) as HTMLElement;
+
+        const viewportWidth = previewElement.clientWidth;
+        const viewportHeight = previewElement.clientHeight;
+        const scrollLeft = previewElement.scrollLeft;
+        const scrollTop = previewElement.scrollTop;
+
         if (viewportWidth <= 0 || viewportHeight <= 0) {
             return;
         }
@@ -711,20 +728,18 @@ export class PreviewToolbar {
         const marginX = Math.max(24, Math.min(120, viewportWidth * 0.1));
         const marginY = Math.max(24, Math.min(120, viewportHeight * 0.1));
 
-        const minVisibleX = this.previewElement.scrollLeft + marginX;
-        const maxVisibleX =
-            this.previewElement.scrollLeft + viewportWidth - marginX;
-        const minVisibleY = this.previewElement.scrollTop + marginY;
-        const maxVisibleY =
-            this.previewElement.scrollTop + viewportHeight - marginY;
+        const minVisibleX = scrollLeft + marginX;
+        const maxVisibleX = scrollLeft + viewportWidth - marginX;
+        const minVisibleY = scrollTop + marginY;
+        const maxVisibleY = scrollTop + viewportHeight - marginY;
 
         const cursorLeft = contentX - width / 2;
         const cursorRight = contentX + width / 2;
         const cursorTop = contentY - height / 2;
         const cursorBottom = contentY + height / 2;
 
-        let nextScrollLeft = this.previewElement.scrollLeft;
-        let nextScrollTop = this.previewElement.scrollTop;
+        let nextScrollLeft = scrollLeft;
+        let nextScrollTop = scrollTop;
 
         if (cursorLeft < minVisibleX) {
             nextScrollLeft = cursorLeft - marginX;
@@ -742,13 +757,13 @@ export class PreviewToolbar {
         nextScrollTop = Math.max(0, nextScrollTop);
 
         if (
-            Math.abs(nextScrollLeft - this.previewElement.scrollLeft) < 1 &&
-            Math.abs(nextScrollTop - this.previewElement.scrollTop) < 1
+            Math.abs(nextScrollLeft - scrollLeft) < 1 &&
+            Math.abs(nextScrollTop - scrollTop) < 1
         ) {
             return;
         }
 
-        this.previewElement.scrollTo({
+        previewElement.scrollTo({
             left: nextScrollLeft,
             top: nextScrollTop,
             behavior: "smooth",
@@ -775,7 +790,7 @@ export class PreviewToolbar {
     }
 
     private applyZoomToSvg(): void {
-        const svg = this.previewElement.querySelector(
+        const svg = document.querySelector(
             `${tmSelectors.PreviewDocumentHost} > svg`,
         ) as SVGElement | null;
         if (!svg) {
@@ -806,9 +821,13 @@ export class PreviewToolbar {
         this.isPanning = true;
         this.panStartX = mouseEvent.clientX;
         this.panStartY = mouseEvent.clientY;
-        this.panStartScrollLeft = this.previewElement.scrollLeft;
-        this.panStartScrollTop = this.previewElement.scrollTop;
-        this.previewElement.classList.add(tmClassNames.PreviewPanning);
+
+        const previewElement = document.querySelector(
+            `${tmSelectors.Root} ${tmSelectors.PreviewContent}`,
+        ) as HTMLElement;
+        this.panStartScrollLeft = previewElement.scrollLeft;
+        this.panStartScrollTop = previewElement.scrollTop;
+        previewElement.classList.add(tmClassNames.PreviewPanning);
         event.preventDefault();
     }
 
@@ -820,8 +839,12 @@ export class PreviewToolbar {
         const mouseEvent = event as MouseEvent;
         const dx = mouseEvent.clientX - this.panStartX;
         const dy = mouseEvent.clientY - this.panStartY;
-        this.previewElement.scrollLeft = this.panStartScrollLeft - dx;
-        this.previewElement.scrollTop = this.panStartScrollTop - dy;
+
+        const previewElement = document.querySelector(
+            `${tmSelectors.Root} ${tmSelectors.PreviewContent}`,
+        ) as HTMLElement;
+        previewElement.scrollLeft = this.panStartScrollLeft - dx;
+        previewElement.scrollTop = this.panStartScrollTop - dy;
 
         event.preventDefault();
     }
@@ -836,12 +859,14 @@ export class PreviewToolbar {
 
     private stopPanning(): void {
         this.isPanning = false;
-        this.previewElement.classList.remove(tmClassNames.PreviewPanning);
+        const previewElement = document.querySelector(
+            `${tmSelectors.Root} ${tmSelectors.PreviewContent}`,
+        ) as HTMLElement;
+        previewElement.classList.remove(tmClassNames.PreviewPanning);
     }
 
     destroy() {
         this.closePreviewSettings();
         this.addRemoveListeners(false);
-        this.previewElement = null as any;
     }
 }

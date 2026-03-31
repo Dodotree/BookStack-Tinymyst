@@ -8,7 +8,7 @@
 // appends cursor circles to those elements
 // keeps the state so that svg re-renders can re-apply the cursor positions
 
-import { tmClassNames, tmEvents } from "../constants";
+import { tmClassNames, tmEvents, tmSelectors } from "../constants";
 
 type CursorParams = {
     textSelector: string;
@@ -37,23 +37,20 @@ const REMOTE_CURSOR_COLORS = [
 ];
 
 export class PreviewCursor {
-    private previewElement: HTMLElement;
     private readonly uniqueTabId: string;
+    private spotlightEnabled: boolean = true;
 
     private latestCursorRequesterTabId: string = "";
     private cursorStates = new Map<string, CursorState>();
 
-    private onViewportChange: () => void;
-    private spotlightEnabled: boolean = true;
-
-    constructor(previewElement: HTMLElement, uniqueTabId?: string) {
-        this.previewElement = previewElement;
+    constructor(uniqueTabId?: string) {
         this.uniqueTabId = uniqueTabId || "";
 
         this.destroy = this.destroy.bind(this);
         this.pathToSelector = this.pathToSelector.bind(this);
-        this.showCursor = this.showCursor.bind(this);
-        this.onViewportChange = this.showCursorWithoutEmit.bind(this);
+        this.showCursors = this.showCursors.bind(this);
+        this.showCursorsWithoutEmit = this.showCursorsWithoutEmit.bind(this);
+
         window.$tmEventBus.listen(
             tmEvents.DataCursorPaths,
             this.pathToSelector,
@@ -65,7 +62,7 @@ export class PreviewCursor {
             },
         );
 
-        window.$tmEventBus.listen(tmEvents.DataCursorShow, this.showCursor);
+        window.$tmEventBus.listen(tmEvents.DataCursorShow, this.showCursors);
         window.$tmEventBus.listen(
             tmEvents.CursorSpotlightToggle,
             ({ enabled }: { enabled?: boolean }) => {
@@ -73,31 +70,37 @@ export class PreviewCursor {
                 if (!this.spotlightEnabled) {
                     this.hideCursor();
                 } else {
-                    this.onViewportChange();
+                    this.showCursorsWithoutEmit();
                 }
             },
         );
         window.$tmEventBus.listen(tmEvents.Destroy, this.destroy);
 
-        this.previewElement.addEventListener("scroll", this.onViewportChange, {
+        const previewElement = document.querySelector(
+            `${tmSelectors.Root} ${tmSelectors.PreviewContent}`,
+        ) as HTMLElement;
+        previewElement.addEventListener("scroll", this.showCursorsWithoutEmit, {
             passive: true,
         });
-        window.addEventListener("resize", this.onViewportChange, {
+        window.addEventListener("resize", this.showCursorsWithoutEmit, {
             passive: true,
         });
     }
 
     private ensureOverlay(): SVGSVGElement | null {
-        let overlaySvg = this.previewElement.querySelector(
-            `.${tmClassNames.PreviewCursorOverlay} > svg`,
+        const previewElement = document.querySelector(
+            `${tmSelectors.Root} ${tmSelectors.PreviewContent}`,
+        ) as HTMLElement;
+        let overlaySvg = previewElement.querySelector(
+            `${tmSelectors.PreviewCursorOverlay} > svg`,
         ) as SVGSVGElement | null;
 
         if (overlaySvg) {
             return overlaySvg;
         }
 
-        if (getComputedStyle(this.previewElement).position === "static") {
-            this.previewElement.style.position = "relative";
+        if (getComputedStyle(previewElement).position === "static") {
+            previewElement.style.position = "relative";
         }
 
         const overlayElement = document.createElement("div");
@@ -118,7 +121,7 @@ export class PreviewCursor {
         overlaySvg.style.overflow = "visible";
 
         overlayElement.appendChild(overlaySvg);
-        this.previewElement.appendChild(overlayElement);
+        previewElement.appendChild(overlayElement);
         return overlaySvg;
     }
 
@@ -283,14 +286,11 @@ export class PreviewCursor {
         this.showAllCursors(this.isOwnerTab(tabKey));
     }
 
-    private showCursorWithoutEmit(): void {
+    private showCursorsWithoutEmit(): void {
         this.showAllCursors(false);
     }
 
-    /**
-     * Show cursor circle at the specified glyph position
-     */
-    private showCursor(emitPosition: boolean = true): void {
+    private showCursors(emitPosition: boolean = true): void {
         this.showAllCursors(emitPosition);
     }
 
@@ -306,6 +306,14 @@ export class PreviewCursor {
         }
 
         this.pruneStaleCursors();
+        const overlayRect = overlaySvg.getBoundingClientRect();
+
+        const previewElement = document.querySelector(
+            `${tmSelectors.Root} ${tmSelectors.PreviewContent}`,
+        ) as HTMLElement;
+        const previewRect = previewElement.getBoundingClientRect();
+        const scrollLeft = previewElement.scrollLeft;
+        const scrollTop = previewElement.scrollTop;
 
         for (const [tabKey, state] of this.cursorStates) {
             const textNode = document.querySelector(state.params.textSelector);
@@ -326,9 +334,6 @@ export class PreviewCursor {
             }
 
             const glyphRect = glyphNode.getBoundingClientRect();
-            const overlayRect = overlaySvg.getBoundingClientRect();
-            const previewRect = this.previewElement.getBoundingClientRect();
-
             const cx = glyphRect.left - overlayRect.left + glyphRect.width / 2;
             const cy = glyphRect.top - overlayRect.top + glyphRect.height / 2;
             const r = Math.min(
@@ -347,12 +352,12 @@ export class PreviewCursor {
             const contentX =
                 glyphRect.left -
                 previewRect.left +
-                this.previewElement.scrollLeft +
+                scrollLeft +
                 glyphRect.width / 2;
             const contentY =
                 glyphRect.top -
                 previewRect.top +
-                this.previewElement.scrollTop +
+                scrollTop +
                 glyphRect.height / 2;
             window.$tmEventBus.emit(tmEvents.PreviewCursorPosition, {
                 contentX,
@@ -381,11 +386,14 @@ export class PreviewCursor {
         }
         this.cursorStates.clear();
 
-        this.previewElement?.removeEventListener(
+        const previewElement = document.querySelector(
+            `${tmSelectors.Root} ${tmSelectors.PreviewContent}`,
+        ) as HTMLElement;
+        previewElement?.removeEventListener(
             "scroll",
-            this.onViewportChange,
+            this.showCursorsWithoutEmit
         );
-        this.previewElement = null as any;
-        window.removeEventListener("resize", this.onViewportChange);
+
+        window.removeEventListener("resize", this.showCursorsWithoutEmit);
     }
 }

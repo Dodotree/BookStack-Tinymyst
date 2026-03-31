@@ -53,8 +53,8 @@ export class PreviewRenderer {
         ) as HTMLElement;
         this.debugLog = this.debugOn ? console.debug : () => {};
 
-        new PreviewToolbar(this.previewElement, this.pageId);
-        new PreviewCursor(this.previewElement, uniqueTabId);
+        new PreviewToolbar(this.pageId);
+        new PreviewCursor(uniqueTabId);
 
         this.handleSyncInit = this.handleSyncInit.bind(this);
         this.dispose = this.dispose.bind(this);

@@ -27,9 +27,10 @@ type PendingCursorRequest = {
 };
 
 export class PreviewControlPlane {
-    private static readonly FILEPATH_PLACEHOLDER = "__TINYMIST_FILE__";
-    private static readonly maxWaitForRenderMs = 60_000; // 1 minute
     private cursorSpotlightEnabled = true;
+    private static readonly FILEPATH_PLACEHOLDER = "__TINYMIST_FILE__";
+
+    private static readonly maxWaitForRenderMs = 60_000; // 1 minute
     private pendingRenders: RenderVersion[] = [];
     private currentRender: RenderVersion | null = null;
     private confirmedRenderVersion : RenderVersion | null = null;
