@@ -67,7 +67,7 @@ const searchMatchHighlightField = StateField.define<DecorationSet>({
 });
 
 export class TinymistSearchReplace {
-    private readonly getEditorView: () => EditorView | null;
+    private getEditorView: () => EditorView | null;
     private panelHidden: boolean = true;
     private query: string = "";
     private matchCount: HTMLElement | null = null;
@@ -110,12 +110,17 @@ export class TinymistSearchReplace {
 
         const replaceInput = document.querySelector<HTMLInputElement>(`${tmSelectors.Root} ${tmSelectors.SearchReplaceInput}`);
         replaceInput?.[method]("keydown", this.onReplaceInputKeyDown);
+
+        const busEventMethod = adding ? "listen" : "remove";
+        window.$tmEventBus[busEventMethod](tmEvents.SearchReplaceOpen, this.open);
+        window.$tmEventBus[busEventMethod](tmEvents.SearchReplaceClose, this.close);
+        window.$tmEventBus[busEventMethod](tmEvents.Destroy, this.destroy);
     }
 
     destroy(): void {
         this.clearSearchHighlights();
         this.addRemoveListeners(false);
-        this.matchCount = null;
+        this.getEditorView = () => null;
     }
 
     open(showReplace = false): void {

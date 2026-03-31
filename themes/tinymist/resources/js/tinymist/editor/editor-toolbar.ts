@@ -111,10 +111,8 @@ export class EditorToolbar {
     private activeFileName: string = ENTRY_FILE_NAME;
     private isOffline: boolean = !navigator.onLine;
 
-    private readonly getEditorView: () => EditorView | null;
-    private readonly getTextarea: () => HTMLTextAreaElement;
-
-    private readonly searchReplace: TinymistSearchReplace;
+    private getEditorView: () => EditorView | null;
+    private getTextarea: () => HTMLTextAreaElement;
 
     private imageViewSelector: string;
     private imageSelector: string;
@@ -132,10 +130,11 @@ export class EditorToolbar {
         this.setActiveFile = this.setActiveFile.bind(this);
         this.insertFromEditorEvent = this.insertFromEditorEvent.bind(this);
         this.buttonsListener = this.buttonsListener.bind(this);
+        this.destroy = this.destroy.bind(this);
 
         new TinymistThemeSettings();
         new TinymistFileDropdown(`${tmSelectors.Root} ${tmSelectors.FileDropDown}`);
-        this.searchReplace = new TinymistSearchReplace(getEditorView);
+        new TinymistSearchReplace(getEditorView);
 
         this.setupListeners();
     }
@@ -155,12 +154,16 @@ export class EditorToolbar {
             ?.addEventListener("click", this.buttonsListener);
 
         window.$tmEventBus.listen(tmEvents.Insert, this.insertFromEditorEvent);
+        window.$tmEventBus.listen(tmEvents.Destroy, this.destroy);
     }
 
     removeListeners() {
         this.getTextarea()
             .closest(tmSelectors.EditorPane)
             ?.removeEventListener("click", this.buttonsListener);
+
+        window.removeEventListener("online", this.onBrowserOnline);
+        window.removeEventListener("offline", this.onBrowserOffline);
     }
 
     buttonsListener(event: Event) {
@@ -195,7 +198,7 @@ export class EditorToolbar {
                 window.$tmEventBus.emit(tmEvents.ThemeSettingsOpen);
                 break;
             case "openSearchReplace":
-                this.searchReplace.open(false);
+                window.$tmEventBus.emit(tmEvents.SearchReplaceOpen, false /* showReplace */);
                 break;
             default:
                 console.warn(`[Editor]Unknown button action: ${action}`);
@@ -209,7 +212,7 @@ export class EditorToolbar {
         }
 
         this.activeFileName = fileName;
-        this.searchReplace.close();
+        window.$tmEventBus.emit(tmEvents.SearchReplaceClose);
 
         if (isImageFile(fileName)) {
             this.showImagePreview(fileName, url);
@@ -506,10 +509,9 @@ export class EditorToolbar {
     }
 
     destroy() {
-        window.removeEventListener("online", this.onBrowserOnline);
-        window.removeEventListener("offline", this.onBrowserOffline);
-
         this.removeListeners();
-        this.searchReplace.destroy();
+
+        this.getEditorView = () => null;
+        this.getTextarea = () => document.createElement("textarea");
     }
 }

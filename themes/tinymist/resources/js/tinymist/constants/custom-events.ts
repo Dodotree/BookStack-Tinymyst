@@ -40,6 +40,8 @@ export const tmEvents = {
     ReconnectAllowed: "reconnect-allowed",
     RenderVersion: "render-version",
     ResetFile: "reset-file",
+    SearchReplaceOpen: "search-replace-open",
+    SearchReplaceClose: "search-replace-close",
     SyncRemoteChanges: "sync-remote-changes",
     Status: "status",
     SyncConnect: "sync-connect",
@@ -130,6 +132,8 @@ export type TinymistEventPayloads = {
     [tmEvents.ReconnectAllowed]: undefined;
     [tmEvents.RenderVersion]: {type: string;timestamp: number;fileName: string;docVersion: number;};
     [tmEvents.ResetFile]: { fileName?: string };
+    [tmEvents.SearchReplaceOpen]: boolean;
+    [tmEvents.SearchReplaceClose]: undefined;
     // It's a ChangeSet from another tab
     [tmEvents.SyncRemoteChanges]: { timestamp: number; fileName: string; docVersion: number; changes: ChangeSet };
     [tmEvents.Status]: { what: string; connected: boolean };

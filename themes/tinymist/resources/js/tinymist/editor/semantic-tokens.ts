@@ -138,10 +138,9 @@ export const highlightField = StateField.define<DecorationSet>({
 });
 
 export class SemanticTokenProcessor {
-    private readonly getEditorView: () => EditorView | null;
+    private getEditorView: () => EditorView | null;
     private activeFileName: string = ENTRY_FILE_NAME;
 
-    private pendingSemanticHighlights: HighlightRegion[] | null = null;
     private encodedTokens: number[] | null = null;
     private lineSignatures: Map<number, string> = new Map();
     private currentResultId: string | null = null;
@@ -193,9 +192,9 @@ export class SemanticTokenProcessor {
                 snapshot: "Destroyed",
                 changeSet: ChangeSet.empty(0),
             });
+            this.getEditorView = () => null;
             this.encodedTokens = null;
             this.lineSignatures.clear();
-            this.pendingSemanticHighlights = null;
         });
     }
 
@@ -288,10 +287,8 @@ export class SemanticTokenProcessor {
             : (payload.resultId ?? null);
 
         if (!editorView) {
-            this.pendingSemanticHighlights = highlights;
             return;
         }
-        this.pendingSemanticHighlights = null;
         if (!highlights.length) {
             // Not sure if we should remove all highlights if semantic tokens come back empty
             // editorView.dispatch({

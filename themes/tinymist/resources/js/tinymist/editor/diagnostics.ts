@@ -13,8 +13,8 @@ type DiagnosticLocationMap = Map<number, TinymistConsoleLocation>;
 
 export class DiagnosticsProcessor {
     private activeFileName: string = ENTRY_FILE_NAME;
-    private readonly getEditorView: () => EditorView | null;
 
+    private getEditorView: () => EditorView | null;
     private getSnapshotContext: (
         docVersion: number,
         fileName: string,
@@ -52,6 +52,7 @@ export class DiagnosticsProcessor {
                 snapshot: "Destroyed",
                 changeSet: ChangeSet.empty(0),
             });
+            this.getEditorView = () => null;
         });
     }
 
