@@ -91,22 +91,30 @@ export class TinymistEditorUI {
             this.resetAttachmentFileFromServer.bind(this);
         this.pruneSnapshots = this.pruneSnapshots.bind(this);
 
+        this.getEditorView = this.getEditorView.bind(this);
+        this.getTextarea = this.getTextarea.bind(this);
+
         this.destroy = this.destroy.bind(this);
 
         this.setupCodeMirror();
         this.setupListeners();
 
-        new EditorToolbar(this.editor, this.editorView!);
-
-        new DiagnosticsProcessor(this.editorView!, this.getSnapshotContext);
-
-        new SemanticTokenProcessor(this.editorView!, this.getSnapshotContext);
+        new EditorToolbar(this.getEditorView, this.getTextarea);
+        new DiagnosticsProcessor(this.getEditorView, this.getSnapshotContext);
+        new SemanticTokenProcessor(this.getEditorView, this.getSnapshotContext);
 
         this.resetSyncStateForFile({
             fileName: ENTRY_FILE_NAME,
             docVersion: 1,
             content: this.getCurrentEditorText(),
         });
+    }
+
+    private getEditorView(): EditorView | null {
+        return this.editorView;
+    }
+    private getTextarea(): HTMLTextAreaElement {
+        return this.editor;
     }
 
     private reconfigureEditorForFile(fileName: string): void {

@@ -108,10 +108,11 @@ export function getHighlightExtension(isDarkMode: boolean): Extension {
 }
 
 export class EditorToolbar {
-    editor: HTMLTextAreaElement;
-    editorView: EditorView | null = null;
     private activeFileName: string = ENTRY_FILE_NAME;
     private isOffline: boolean = !navigator.onLine;
+
+    private readonly getEditorView: () => EditorView | null;
+    private readonly getTextarea: () => HTMLTextAreaElement;
 
     private readonly searchReplace: TinymistSearchReplace;
 
@@ -120,9 +121,9 @@ export class EditorToolbar {
     private imageMessageSelector: string;
 
 
-    constructor(editor: HTMLTextAreaElement, editorView: EditorView) {
-        this.editor = editor;
-        this.editorView = editorView;
+    constructor(getEditorView: () => EditorView | null, getTextarea: () => HTMLTextAreaElement) {
+        this.getEditorView = getEditorView;
+        this.getTextarea = getTextarea;
 
         this.imageViewSelector = `${tmSelectors.Root} ${tmSelectors.ImageView}`;
         this.imageSelector = `${tmSelectors.Root} ${tmSelectors.Image}`;
@@ -134,7 +135,7 @@ export class EditorToolbar {
 
         new TinymistThemeSettings();
         new TinymistFileDropdown(`${tmSelectors.Root} ${tmSelectors.FileDropDown}`);
-        this.searchReplace = new TinymistSearchReplace(() => this.editorView);
+        this.searchReplace = new TinymistSearchReplace(getEditorView);
 
         this.setupListeners();
     }
@@ -149,7 +150,7 @@ export class EditorToolbar {
         );
 
         // Button actions, it counts on event bubbling to the container
-        this.editor
+        this.getTextarea()
             .closest(tmSelectors.EditorPane)
             ?.addEventListener("click", this.buttonsListener);
 
@@ -157,7 +158,7 @@ export class EditorToolbar {
     }
 
     removeListeners() {
-        this.editor
+        this.getTextarea()
             .closest(tmSelectors.EditorPane)
             ?.removeEventListener("click", this.buttonsListener);
     }
@@ -230,16 +231,17 @@ export class EditorToolbar {
         ) {
             return;
         }
-
         imageViewContainer.hidden = false;
-        if (this.editorView) {
-            this.editorView.dom.style.setProperty(
+
+        const editorView = this.getEditorView();
+        if (editorView) {
+            editorView.dom.style.setProperty(
                 "display",
                 "none",
                 "important",
             );
         }
-        this.editor.style.display = "none";
+        this.getTextarea().style.display = "none";
 
         if (!url) {
             imageViewElement.hidden = true;
@@ -268,11 +270,12 @@ export class EditorToolbar {
         if (imageViewMessage) {
             imageViewMessage.hidden = true;
         }
-        if (this.editorView) {
-            this.editorView.dom.style.display = "";
+        const editorView = this.getEditorView();
+        if (editorView) {
+            editorView.dom.style.display = "";
             return;
         }
-        this.editor.style.display = "block";
+        this.getTextarea().style.display = "block";
     }
 
     private getSelectionInfo(): {
@@ -280,10 +283,11 @@ export class EditorToolbar {
         from: number;
         to: number;
     } {
-        if (this.editorView) {
-            const selection = this.editorView.state.selection.main;
+        const editorView = this.getEditorView();
+        if (editorView) {
+            const selection = editorView.state.selection.main;
             return {
-                selectedText: this.editorView.state.doc.sliceString(
+                selectedText: editorView.state.doc.sliceString(
                     selection.from,
                     selection.to,
                 ),
@@ -292,20 +296,22 @@ export class EditorToolbar {
             };
         }
 
+        const editor = this.getTextarea();
         return {
-            selectedText: this.editor.value.substring(
-                this.editor.selectionStart,
-                this.editor.selectionEnd,
+            selectedText: editor.value.substring(
+                editor.selectionStart,
+                editor.selectionEnd,
             ),
-            from: this.editor.selectionStart,
-            to: this.editor.selectionEnd,
+            from: editor.selectionStart,
+            to: editor.selectionEnd,
         };
     }
 
     private replaceSelection(replacement: string): void {
-        if (this.editorView) {
-            const selection = this.editorView.state.selection.main;
-            this.editorView.dispatch({
+        const editorView = this.getEditorView();
+        if (editorView) {
+            const selection = editorView.state.selection.main;
+            editorView.dispatch({
                 changes: {
                     from: selection.from,
                     to: selection.to,
@@ -315,17 +321,18 @@ export class EditorToolbar {
                     anchor: selection.from + replacement.length,
                 },
             });
-            this.editorView.focus();
+            editorView.focus();
             return;
         }
 
-        this.editor.setRangeText(
+        const editor = this.getTextarea();
+        editor.setRangeText(
             replacement,
-            this.editor.selectionStart,
-            this.editor.selectionEnd,
+            editor.selectionStart,
+            editor.selectionEnd,
             "end",
         );
-        this.editor.focus();
+        editor.focus();
     }
 
     private escapeTypstString(value: string): string {
@@ -336,8 +343,9 @@ export class EditorToolbar {
      * Insert markup around selected text or at cursor position.
      */
     insertMarkup(before: string, after: string) {
-        if (this.editorView) {
-            const state = this.editorView.state;
+        const editorView = this.getEditorView();
+        if (editorView) {
+            const state = editorView.state;
             const selection = state.selection.main;
             const selectedText = state.doc.sliceString(
                 selection.from,
@@ -345,7 +353,7 @@ export class EditorToolbar {
             );
             const replacement = before + selectedText + after;
 
-            this.editorView.dispatch({
+            editorView.dispatch({
                 changes: {
                     from: selection.from,
                     to: selection.to,
@@ -356,25 +364,32 @@ export class EditorToolbar {
                     head: selection.from + before.length + selectedText.length,
                 },
             });
-            this.editorView.focus();
+            editorView.focus();
             return;
         }
 
-        const start = this.editor.selectionStart;
-        const end = this.editor.selectionEnd;
-        const selectedText = this.editor.value.substring(start, end);
-        const replacement = before + selectedText + after;
+        const editor = this.getTextarea();
+        const selectedText = editor.value.substring(
+            editor.selectionStart,
+            editor.selectionEnd
+        );
 
-        this.editor.setRangeText(replacement, start, end, "select");
-        this.editor.focus();
+        editor.setRangeText(
+            before + selectedText + after,
+            editor.selectionStart,
+            editor.selectionEnd,
+            "select"
+        );
+        editor.focus();
     }
 
     /**
      * Insert heading at cursor position.
      */
     insertHeading() {
-        if (this.editorView) {
-            const state = this.editorView.state;
+        const editorView = this.getEditorView();
+        if (editorView) {
+            const state = editorView.state;
             const selection = state.selection.main;
             const before = state.doc.sliceString(0, selection.from);
             const heading =
@@ -382,26 +397,27 @@ export class EditorToolbar {
                     ? "= Heading\n"
                     : "\n= Heading\n";
 
-            this.editorView.dispatch({
+            editorView.dispatch({
                 changes: { from: selection.from, insert: heading },
                 selection: { anchor: selection.from + heading.length - 1 },
             });
-            this.editorView.focus();
+            editorView.focus();
             return;
         }
 
-        const start = this.editor.selectionStart;
-        const before = this.editor.value.substring(0, start);
-        const after = this.editor.value.substring(start);
+        const editor = this.getTextarea();
+        const start = editor.selectionStart;
+        const before = editor.value.substring(0, start);
+        const after = editor.value.substring(start);
 
         const heading =
             before.endsWith("\n") || before === ""
                 ? "= Heading\n"
                 : "\n= Heading\n";
-        this.editor.value = before + heading + after;
-        this.editor.selectionStart = this.editor.selectionEnd =
+        editor.value = before + heading + after;
+        editor.selectionStart = editor.selectionEnd =
             start + heading.length - 1;
-        this.editor.focus();
+        editor.focus();
     }
 
     private insertImage(): void {
@@ -462,9 +478,10 @@ export class EditorToolbar {
             return;
         }
 
-        if (this.editorView) {
-            const selection = this.editorView.state.selection.main;
-            this.editorView.dispatch({
+        const editorView = this.getEditorView();
+        if (editorView) {
+            const selection = editorView.state.selection.main;
+            editorView.dispatch({
                 changes: {
                     from: selection.from,
                     to: selection.to,
@@ -474,14 +491,18 @@ export class EditorToolbar {
                     anchor: selection.from + insertText.length,
                 },
             });
-            this.editorView.focus();
+            editorView.focus();
             return;
         }
 
-        const start = this.editor.selectionStart;
-        const end = this.editor.selectionEnd;
-        this.editor.setRangeText(insertText, start, end, "end");
-        this.editor.focus();
+        const editor = this.getTextarea();
+        editor.setRangeText(
+            insertText,
+            editor.selectionStart,
+            editor.selectionEnd,
+            "end"
+        );
+        editor.focus();
     }
 
     destroy() {
@@ -490,9 +511,5 @@ export class EditorToolbar {
 
         this.removeListeners();
         this.searchReplace.destroy();
-
-        // dereference editor to release DOM reference, but don't remove
-        this.editorView = null;
-        this.editor = null as any;
     }
 }

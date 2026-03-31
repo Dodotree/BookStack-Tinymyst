@@ -12,20 +12,20 @@ import { ENTRY_FILE_NAME, tmEvents, TinymistConsoleLocation, DiagnosticsPayload 
 type DiagnosticLocationMap = Map<number, TinymistConsoleLocation>;
 
 export class DiagnosticsProcessor {
-    private editorView: EditorView | null;
     private activeFileName: string = ENTRY_FILE_NAME;
+    private readonly getEditorView: () => EditorView | null;
 
     private getSnapshotContext: (
         docVersion: number,
         fileName: string,
     ) => { snapshot: string; changeSet: ChangeSet };
 
-    constructor(editorView: EditorView, getSnapshotContext: (
+    constructor(getEditorView: () => EditorView | null, getSnapshotContext: (
         docVersion: number,
         fileName: string,
     ) => { snapshot: string; changeSet: ChangeSet }) {
 
-        this.editorView = editorView;
+        this.getEditorView = getEditorView;
         this.getSnapshotContext = getSnapshotContext;
 
         this.mapDiagnosticsToCurrent = this.mapDiagnosticsToCurrent.bind(this);
@@ -48,7 +48,6 @@ export class DiagnosticsProcessor {
             },
         );
         window.$tmEventBus.listen(tmEvents.Destroy, () => {
-            this.editorView = null;
             this.getSnapshotContext = () => ({
                 snapshot: "Destroyed",
                 changeSet: ChangeSet.empty(0),
@@ -77,10 +76,11 @@ export class DiagnosticsProcessor {
         docVersion?: number;
         fileName?: string;
     }) => {
+        const editorView = this.getEditorView();
         if (
             !payload ||
             !Array.isArray(payload.diagnostics) ||
-            !this.editorView ||
+            !editorView ||
             typeof payload.docVersion !== "number"
         ) {
             return;
@@ -101,7 +101,7 @@ export class DiagnosticsProcessor {
             return acc;
         }, [] as number[]);
 
-        const currentDoc = this.editorView.state.doc;
+        const currentDoc = editorView.state.doc;
 
         const mappedDiagnostics: Diagnostic[] = [];
         const diagnosticLocations: DiagnosticLocationMap = new Map();
@@ -172,9 +172,10 @@ export class DiagnosticsProcessor {
         newDiagnostics: Diagnostic[],
         diagnosticLocations?: DiagnosticLocationMap,
     ): void {
-        if (this.editorView) {
-            this.editorView.dispatch(
-                setDiagnostics(this.editorView.state, newDiagnostics),
+        const editorView = this.getEditorView();
+        if (editorView) {
+            editorView.dispatch(
+                setDiagnostics(editorView.state, newDiagnostics),
             );
         }
         this.logToConsole(newDiagnostics, diagnosticLocations);

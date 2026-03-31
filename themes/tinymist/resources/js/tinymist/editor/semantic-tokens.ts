@@ -138,7 +138,7 @@ export const highlightField = StateField.define<DecorationSet>({
 });
 
 export class SemanticTokenProcessor {
-    private editorView: EditorView | null;
+    private readonly getEditorView: () => EditorView | null;
     private activeFileName: string = ENTRY_FILE_NAME;
 
     private pendingSemanticHighlights: HighlightRegion[] | null = null;
@@ -150,12 +150,12 @@ export class SemanticTokenProcessor {
         fileName: string,
     ) => { snapshot: string; changeSet: ChangeSet };
 
-    constructor(editorView: EditorView, getSnapshotContext: (
+    constructor(getEditorView: () => EditorView | null, getSnapshotContext: (
         docVersion: number,
         fileName: string,
     ) => { snapshot: string; changeSet: ChangeSet }) {
 
-        this.editorView = editorView;
+        this.getEditorView = getEditorView;
         this.getSnapshotContext = getSnapshotContext;
 
         this.processSemanticTokens = this.processSemanticTokens.bind(this);
@@ -173,7 +173,8 @@ export class SemanticTokenProcessor {
             tmEvents.ActiveFileChange,
             (payload: { fileName: string; url: string }) => {
                 this.activeFileName = payload.fileName;
-                this.editorView?.dispatch({
+                const editorView = this.getEditorView();
+                editorView?.dispatch({
                     effects: clearHighlightsEffect.of(null),
                 });
             },
@@ -181,13 +182,13 @@ export class SemanticTokenProcessor {
         window.$tmEventBus.listen(
             tmEvents.ResetFile,
             (_payload: { fileName?: string }) => {
-                this.editorView?.dispatch({
+                const editorView = this.getEditorView();
+                editorView?.dispatch({
                     effects: clearHighlightsEffect.of(null),
                 });
             },
         );
         window.$tmEventBus.listen(tmEvents.Destroy, () => {
-            this.editorView = null;
             this.getSnapshotContext = () => ({
                 snapshot: "Destroyed",
                 changeSet: ChangeSet.empty(0),
@@ -209,7 +210,8 @@ export class SemanticTokenProcessor {
         baseText: string,
         changeSet: ChangeSet,
     ) {
-        if (!this.editorView) {
+        const editorView = this.getEditorView();
+        if (!editorView) {
             return regions;
         }
         const snapshotLineLen = baseText
@@ -219,7 +221,7 @@ export class SemanticTokenProcessor {
             acc[idx] = (acc[idx - 1] || 0) + len;
             return acc;
         }, [] as number[]);
-        const currentDoc = this.editorView.state.doc;
+        const currentDoc = editorView.state.doc;
 
         return regions.map((region) => {
             const lineIndex = Math.max(0, region.line - 1);
@@ -264,7 +266,8 @@ export class SemanticTokenProcessor {
             return;
         }
         const tokens = Array.isArray(payload) ? payload : payload.tokens;
-        if (!Array.isArray(tokens) || !this.editorView) {
+        const editorView = this.getEditorView();
+        if (!Array.isArray(tokens) || !editorView) {
             return;
         }
         const highlights = this.buildHighlights(tokens);
@@ -283,23 +286,24 @@ export class SemanticTokenProcessor {
         this.currentResultId = Array.isArray(payload)
             ? null
             : (payload.resultId ?? null);
-        this.renderSemanticHighlights(mappedHighlights);
-    }
 
-    private renderSemanticHighlights(highlights: HighlightRegion[]): void {
-        if (!this.editorView) {
+        if (!editorView) {
             this.pendingSemanticHighlights = highlights;
             return;
         }
         this.pendingSemanticHighlights = null;
         if (!highlights.length) {
             // Not sure if we should remove all highlights if semantic tokens come back empty
-            // this.editorView.dispatch({
+            // editorView.dispatch({
             //     effects: clearHighlightsEffect.of(null),
             // });
             return;
         }
-        this.addHighlights(highlights);
+
+        // addHighlights[{line: 17, start: 0, len: 10, type: "math"}]
+        editorView.dispatch({
+            effects: addHighlightsEffect.of(highlights),
+        });
     }
 
     processSemanticTokensDelta(payload: {
@@ -312,11 +316,12 @@ export class SemanticTokenProcessor {
         if (payload.fileName !== this.activeFileName) {
             return;
         }
+        const editorView = this.getEditorView();
         if (
             !payload ||
             !Array.isArray(payload.edits) ||
             !this.encodedTokens ||
-            !this.editorView
+            !editorView
         ) {
             return;
         }
@@ -343,7 +348,6 @@ export class SemanticTokenProcessor {
         // It looks like updated tokes are already in the current document coordinates for deltas,
         // Or getting there, while mapping updatedTokens throws RangeError (as if attempting to remove already removed position)
         // so no need to map them back from snapshot to current document
-        // TODO: create encodedTokens snapshot to go with resultId and docVersion, so we can validate and map deltas properly
 
         const nextSignatures = this.buildLineSignatures(highlights);
         const changedLines = this.getChangedLines(
@@ -359,33 +363,7 @@ export class SemanticTokenProcessor {
             return;
         }
 
-        this.replaceHighlightsForLines(highlights, changedLines);
-    }
-
-    /**
-     * Add highlights to the editor
-     * @param regions Array of highlight regions
-     * Example: addHighlights([{line: 17, start: 0, len: 10, type: "math"}])
-     */
-    addHighlights(regions: HighlightRegion[]) {
-        if (!this.editorView) {
-            return;
-        }
-        this.editorView.dispatch({
-            effects: addHighlightsEffect.of(regions),
-        });
-    }
-
-    private replaceHighlightsForLines(
-        highlights: HighlightRegion[],
-        lines: number[],
-    ): void {
-        if (!this.editorView) {
-            this.pendingSemanticHighlights = highlights;
-            return;
-        }
-
-        const doc = this.editorView.state.doc;
+        const doc = editorView.state.doc;
         const regionsByLine = this.groupRegionsByLine(highlights);
 
         const flushRange = (startLine: number, endLine: number) => {
@@ -393,7 +371,7 @@ export class SemanticTokenProcessor {
                 { length: endLine - startLine + 1 },
                 (_, index) => regionsByLine.get(startLine + index) ?? [],
             ).flat();
-            this.editorView?.dispatch({
+            editorView.dispatch({
                 effects: replaceHighlightsEffect.of({
                     from: doc.line(startLine).from,
                     to: doc.line(endLine).to,
@@ -402,10 +380,10 @@ export class SemanticTokenProcessor {
             });
         };
 
-        let rangeStart = lines[0];
-        let prev = lines[0];
-        for (let i = 1; i < lines.length; i++) {
-            const line = lines[i];
+        let rangeStart = changedLines[0];
+        let prev = changedLines[0];
+        for (let i = 1; i < changedLines.length; i++) {
+            const line = changedLines[i];
             if (line === prev + 1) {
                 prev = line;
                 continue;

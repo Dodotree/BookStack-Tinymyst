@@ -68,13 +68,10 @@ const searchMatchHighlightField = StateField.define<DecorationSet>({
 
 export class TinymistSearchReplace {
     private readonly getEditorView: () => EditorView | null;
-    private root: HTMLElement | null = null;
-    private panel: HTMLElement | null = null;
-    private searchInput: HTMLInputElement | null = null;
-    private replaceInput: HTMLInputElement | null = null;
+    private panelHidden: boolean = true;
+    private query: string = "";
     private matchCount: HTMLElement | null = null;
-    private replaceRow: HTMLElement | null = null;
-    private toggleReplaceButton: HTMLButtonElement | null = null;
+    private replaceHidden: boolean = true;
 
     constructor(getEditorView: () => EditorView | null) {
         this.getEditorView = getEditorView;
@@ -85,99 +82,84 @@ export class TinymistSearchReplace {
         this.refreshMatchCount = this.refreshMatchCount.bind(this);
 
         this.onDocumentKeyDown = this.onDocumentKeyDown.bind(this);
+        this.onEditorKeyDown = this.onEditorKeyDown.bind(this);
         this.onSearchInput = this.onSearchInput.bind(this);
         this.onSearchInputKeyDown = this.onSearchInputKeyDown.bind(this);
         this.onReplaceInputKeyDown = this.onReplaceInputKeyDown.bind(this);
         this.onPanelClick = this.onPanelClick.bind(this);
 
-        this.cacheNodes();
+        this.matchCount = document.querySelector<HTMLElement>(`${tmSelectors.Root} ${tmSelectors.SearchMatchCount}`);
         this.addRemoveListeners(true);
     }
 
-    private cacheNodes(): void {
-        this.root = document.querySelector<HTMLElement>(tmSelectors.Root);
-        this.panel = this.root?.querySelector<HTMLElement>(
-            tmSelectors.SearchPanel,
-        ) ?? null;
-        this.searchInput = this.root?.querySelector<HTMLInputElement>(
-            tmSelectors.SearchInput,
-        ) ?? null;
-        this.replaceInput = this.root?.querySelector<HTMLInputElement>(
-            tmSelectors.SearchReplaceInput,
-        ) ?? null;
-        this.matchCount = this.root?.querySelector<HTMLElement>(
-            tmSelectors.SearchMatchCount,
-        ) ?? null;
-        this.replaceRow = this.root?.querySelector<HTMLElement>(
-            tmSelectors.SearchReplaceRow,
-        ) ?? null;
-        this.toggleReplaceButton = this.root?.querySelector<HTMLButtonElement>(
-            tmSelectors.SearchReplaceToggle,
-        ) ?? null;
-    }
-
     private addRemoveListeners(adding: boolean): void {
-        if (!this.root || !this.panel) {
+        const panel = document.querySelector<HTMLElement>(`${tmSelectors.Root} ${tmSelectors.SearchPanel}`);
+        if (!panel) {
             return;
         }
 
         const method = adding ? "addEventListener" : "removeEventListener";
-        document[method]("keydown", this.onDocumentKeyDown);
-        this.panel[method]("click", this.onPanelClick);
-        this.searchInput?.[method]("input", this.onSearchInput);
-        this.searchInput?.[method]("keydown", this.onSearchInputKeyDown);
-        this.replaceInput?.[method]("keydown", this.onReplaceInputKeyDown);
 
-        const busMethod = adding ? "listen" : "remove";
-        window.$tmEventBus[busMethod](tmEvents.TextModified, this.refreshMatchCount);
+        document[method]("keydown", this.onDocumentKeyDown);
+        panel[method]("keydown", this.onEditorKeyDown);
+        panel[method]("click", this.onPanelClick);
+
+        const searchInput = document.querySelector<HTMLInputElement>(`${tmSelectors.Root} ${tmSelectors.SearchInput}`);
+        searchInput?.[method]("input", this.onSearchInput);
+        searchInput?.[method]("keydown", this.onSearchInputKeyDown);
+
+        const replaceInput = document.querySelector<HTMLInputElement>(`${tmSelectors.Root} ${tmSelectors.SearchReplaceInput}`);
+        replaceInput?.[method]("keydown", this.onReplaceInputKeyDown);
     }
 
     destroy(): void {
         this.clearSearchHighlights();
         this.addRemoveListeners(false);
-        this.root = null;
-        this.panel = null;
-        this.searchInput = null;
-        this.replaceInput = null;
         this.matchCount = null;
-        this.replaceRow = null;
-        this.toggleReplaceButton = null;
     }
 
     open(showReplace = false): void {
-        if (!this.panel) {
+        const panel = document.querySelector<HTMLElement>(`${tmSelectors.Root} ${tmSelectors.SearchPanel}`);
+        if (!panel) {
             return;
         }
+        const searchInput = document.querySelector<HTMLInputElement>(`${tmSelectors.Root} ${tmSelectors.SearchInput}`);
 
-        this.panel.hidden = false;
-        this.panel.classList.add(tmClassNames.SearchVisible);
+        this.panelHidden = false;
+        panel.hidden = false;
+        panel.classList.add(tmClassNames.SearchVisible);
 
-        if (showReplace) {
-            this.setReplaceExpanded(true);
-        }
-
+        this.toggleReplaceRow(showReplace);
         this.prefillSearchFromSelection();
         this.refreshMatchCount();
-        this.searchInput?.focus();
-        this.searchInput?.select();
+        searchInput?.focus();
+        searchInput?.select();
+
+        window.$tmEventBus.listen(tmEvents.TextModified, this.refreshMatchCount);
     }
 
     close(): void {
-        if (!this.panel) {
+        const panel = document.querySelector<HTMLElement>(`${tmSelectors.Root} ${tmSelectors.SearchPanel}`);
+        if (!panel) {
             return;
         }
 
-        this.panel.classList.remove(tmClassNames.SearchVisible);
-        this.panel.hidden = true;
-        this.setReplaceExpanded(false);
+        panel.classList.remove(tmClassNames.SearchVisible);
+        panel.hidden = true;
+        this.panelHidden = true;
         this.clearSearchHighlights();
+
+        window.$tmEventBus.remove(tmEvents.TextModified, this.refreshMatchCount);
     }
 
     refreshMatchCount(): void {
-        const query = this.getQuery();
+        if (this.panelHidden) {
+            return;
+        }
+
         const view = this.getEditorView();
 
-        if (!this.matchCount || !view || query.length === 0) {
+        if (!this.matchCount || !view || this.query.length === 0) {
             this.clearSearchHighlights();
             if (this.matchCount) {
                 this.matchCount.textContent = "0 / 0";
@@ -186,7 +168,7 @@ export class TinymistSearchReplace {
         }
 
         const text = view.state.doc.toString();
-        const matches = this.collectMatches(text, query);
+        const matches = this.collectMatches(text, this.query);
         const selected = view.state.selection.main;
         const selectedIndex = matches.findIndex(
             (match) =>
@@ -201,54 +183,46 @@ export class TinymistSearchReplace {
                 : `${selectedIndex >= 0 ? selectedIndex + 1 : 0} / ${matches.length}`;
     }
 
-        private onDocumentKeyDown(event: Event): void {
+    private onDocumentKeyDown(event: Event): void {
         const keyboardEvent = event as KeyboardEvent;
-        const target = keyboardEvent.target as Node | null;
-        const focusInTinymist = Boolean(target && this.root?.contains(target));
 
-        const usesMeta = keyboardEvent.ctrlKey || keyboardEvent.metaKey;
-        const key = keyboardEvent.key.toLowerCase();
-
-        if (usesMeta && key === "f" && focusInTinymist) {
-            keyboardEvent.preventDefault();
-            this.open(false);
-            return;
-        }
-
-        if (usesMeta && key === "h" && focusInTinymist) {
-            keyboardEvent.preventDefault();
-            this.open(true);
-            return;
-        }
-
-        if (keyboardEvent.key === "Escape" && this.panel && !this.panel.hidden) {
+        if (keyboardEvent.key === "Escape" && !this.panelHidden) {
             keyboardEvent.preventDefault();
             this.close();
             this.getEditorView()?.focus();
         }
     }
 
-    private onSearchInput(): void {
+    private onEditorKeyDown(event: Event): void {
+        const keyboardEvent = event as KeyboardEvent;
+        const usesMeta = keyboardEvent.ctrlKey || keyboardEvent.metaKey;
+        const key = keyboardEvent.key.toLowerCase();
+
+        if (usesMeta && (key === "f" || key === "h")) {
+            keyboardEvent.preventDefault();
+            this.open(Boolean(key === "h"));
+        }
+    }
+
+    private onSearchInput(event: Event): void {
+        this.query = (event.target as HTMLInputElement)?.value ?? "";
         this.refreshMatchCount();
     }
 
     private onSearchInputKeyDown(event: Event): void {
         const keyboardEvent = event as KeyboardEvent;
-
-        // That is problematic. You press enter to see the next match
-        // And second enter will erase the match instead of going to the next one
-
+        const input = event.target as HTMLInputElement;
         if (keyboardEvent.key !== "Enter") {
             return;
         }
         keyboardEvent.preventDefault();
         if (keyboardEvent.shiftKey) {
             this.previousMatch();
-            this.searchInput?.focus();
+            input.focus();
             return;
         }
         this.nextMatch();
-        this.searchInput?.focus();
+        input.focus();
     }
 
     private onReplaceInputKeyDown(event: Event): void {
@@ -280,7 +254,7 @@ export class TinymistSearchReplace {
                 this.previousMatch();
                 break;
             case "toggleReplace":
-                this.setReplaceExpanded(this.replaceRow?.hidden ?? true);
+                this.toggleReplaceRow();
                 break;
             case "replace":
                 this.replaceNext();
@@ -295,12 +269,11 @@ export class TinymistSearchReplace {
 
     nextMatch(): void {
         const view = this.getEditorView();
-        const query = this.getQuery();
-        if (!view || query.length === 0) {
+        if (!view || this.query.length === 0) {
             return;
         }
 
-        const matches = this.collectMatches(view.state.doc.toString(), query);
+        const matches = this.collectMatches(view.state.doc.toString(), this.query);
         if (matches.length === 0) {
             this.refreshMatchCount();
             return;
@@ -314,12 +287,11 @@ export class TinymistSearchReplace {
 
     previousMatch(): void {
         const view = this.getEditorView();
-        const query = this.getQuery();
-        if (!view || query.length === 0) {
+        if (!view || this.query.length === 0) {
             return;
         }
 
-        const matches = this.collectMatches(view.state.doc.toString(), query);
+        const matches = this.collectMatches(view.state.doc.toString(), this.query);
         if (matches.length === 0) {
             this.refreshMatchCount();
             return;
@@ -339,13 +311,12 @@ export class TinymistSearchReplace {
 
     replaceNext(): void {
         const view = this.getEditorView();
-        const query = this.getQuery();
-        if (!view || query.length === 0) {
+        if (!view || this.query.length === 0) {
             return;
         }
-
-        const replacement = this.replaceInput?.value ?? "";
-        const matches = this.collectMatches(view.state.doc.toString(), query);
+        const replaceInput = document.querySelector<HTMLInputElement>(`${tmSelectors.Root} ${tmSelectors.SearchReplaceInput}`);
+        const replacement = replaceInput?.value ?? "";
+        const matches = this.collectMatches(view.state.doc.toString(), this.query);
         if (matches.length === 0) {
             this.refreshMatchCount();
             return;
@@ -383,13 +354,13 @@ export class TinymistSearchReplace {
 
     replaceAll(): void {
         const view = this.getEditorView();
-        const query = this.getQuery();
-        if (!view || query.length === 0) {
+        if (!view || this.query.length === 0) {
             return;
         }
 
-        const replacement = this.replaceInput?.value ?? "";
-        const matches = this.collectMatches(view.state.doc.toString(), query);
+        const replaceInput = document.querySelector<HTMLInputElement>(`${tmSelectors.Root} ${tmSelectors.SearchReplaceInput}`);
+        const replacement = replaceInput?.value ?? "";
+        const matches = this.collectMatches(view.state.doc.toString(), this.query);
         if (matches.length === 0) {
             this.refreshMatchCount();
             return;
@@ -409,25 +380,34 @@ export class TinymistSearchReplace {
         this.refreshMatchCount();
     }
 
-    private setReplaceExpanded(expanded: boolean): void {
-        if (!this.replaceRow || !this.toggleReplaceButton) {
+    private toggleReplaceRow(expanded?: boolean): void {
+        const replaceRow = document.querySelector<HTMLElement>(`${tmSelectors.Root} ${tmSelectors.SearchReplaceRow}`);
+        const toggleReplaceButton = document.querySelector<HTMLButtonElement>(`${tmSelectors.Root} ${tmSelectors.SearchReplaceToggle}`);
+
+        if (!replaceRow || !toggleReplaceButton) {
             return;
         }
 
-        this.replaceRow.hidden = !expanded;
-        this.toggleReplaceButton.setAttribute("aria-expanded", expanded ? "true" : "false");
+        if (expanded !== undefined) {
+            this.replaceHidden = !expanded;
+        } else {
+            this.replaceHidden = !this.replaceHidden;
+        }
+        replaceRow.hidden = this.replaceHidden;
+        toggleReplaceButton.setAttribute("aria-expanded", String(!this.replaceHidden));
     }
 
     private prefillSearchFromSelection(): void {
         const view = this.getEditorView();
-        if (!view || !this.searchInput) {
+        const searchInput = document.querySelector<HTMLInputElement>(`${tmSelectors.Root} ${tmSelectors.SearchInput}`);
+        if (!view || !searchInput) {
             return;
         }
 
         const selected = view.state.selection.main;
         const selectedText = view.state.doc.sliceString(selected.from, selected.to).trim();
         if (selectedText.length > 0) {
-            this.searchInput.value = selectedText;
+            searchInput.value = selectedText;
         }
     }
 
@@ -467,10 +447,6 @@ export class TinymistSearchReplace {
         });
         view.focus();
         this.refreshMatchCount();
-    }
-
-    private getQuery(): string {
-        return this.searchInput?.value ?? "";
     }
 
     private ensureSearchHighlightExtension(view: EditorView): void {
