@@ -14,9 +14,12 @@ import { FALLBACK_COMPILE_URL, tmEvents } from "../constants";
 export class TinymistFallbackCompiler {
     private enabled: boolean = false;
     private pageId: number = 0;
+    private httpService: any;
 
-    constructor(pageId: number) {
+    constructor(pageId: number, httpService: any) {
         this.pageId = pageId;
+        this.httpService = httpService;
+
         this.compile = this.compile.bind(this);
         this.destroy = this.destroy.bind(this);
         window.$tmEventBus.listen(
@@ -55,7 +58,7 @@ export class TinymistFallbackCompiler {
         });
 
         try {
-            const response = await window.$http.post(FALLBACK_COMPILE_URL, {
+            const response = await this.httpService.post(FALLBACK_COMPILE_URL, {
                 content,
                 docVersion,
                 pageId: this.pageId,
@@ -150,5 +153,6 @@ export class TinymistFallbackCompiler {
 
     destroy(): void {
         this.enabled = false;
+        this.httpService = null;
     }
 }

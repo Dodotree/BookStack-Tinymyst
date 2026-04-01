@@ -130,8 +130,13 @@ Only `localStorage` is used (no `sessionStorage`, IndexedDB, cookies directly in
 - Preview settings writes happen when initial zoom input changes.
 
 
-
 - `window.$http` (HTTP client abstraction)
 
-- A hidden textarea (`#tinymist-editor-input`) inside a host form for save integration
-
+            const response = await window.$http.post(FALLBACK_COMPILE_URL, {
+                content,
+                docVersion,
+                pageId: this.pageId,
+            });
+            const response = (await window.$http.post(AUTH_TOKEN_RENEWAL_URL, {
+                page_id: this.pageId,
+            })) as any;

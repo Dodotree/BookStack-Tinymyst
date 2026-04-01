@@ -7,26 +7,29 @@
 import { AUTH_TOKEN_RENEWAL_URL, tmEvents } from "../constants";
 
 export class TinymistTokenManager {
+    private pageId: number = 0;
     private token: string | null = null;
     private tokenExpiry: number = 0; // Unix timestamp in ms
-    private pageId: number = 0;
+    private httpService: any;
 
     private tokenRenewalTimeout: ReturnType<typeof setTimeout> | null = null;
 
     private debugOn = false;
     private debugLog: (...args: any[]) => void;
 
-    constructor(pageId: number, token?: string) {
+    constructor(pageId: number, token?: string, httpService?: any) {
         this.token = token ?? null;
         this.pageId = pageId;
+        this.httpService = httpService;
 
         this.debugLog = this.debugOn ? console.debug : () => {};
 
-        this.disconnect = this.disconnect.bind(this);
         this.renewToken = this.renewToken.bind(this);
-        window.$tmEventBus.listen(tmEvents.AllDisconnect, this.disconnect);
+        this.disconnect = this.disconnect.bind(this);
+        this.destroy = this.destroy.bind(this);
         window.$tmEventBus.listen(tmEvents.InvalidToken, this.renewToken);
-        window.$tmEventBus.listen(tmEvents.Destroy, this.disconnect);
+        window.$tmEventBus.listen(tmEvents.AllDisconnect, this.disconnect);
+        window.$tmEventBus.listen(tmEvents.Destroy, this.destroy);
 
         if (token) {
             this.decodeAndStoreTokenExpiry(token);
@@ -109,7 +112,7 @@ export class TinymistTokenManager {
     private async renewToken(): Promise<void> {
         try {
             this.debugLog("[Auth Token] Renewing WebSocket token...");
-            const response = (await window.$http.post(AUTH_TOKEN_RENEWAL_URL, {
+            const response = (await this.httpService.post(AUTH_TOKEN_RENEWAL_URL, {
                 page_id: this.pageId,
             })) as any;
 
@@ -161,5 +164,10 @@ export class TinymistTokenManager {
         this.clearTokenRenewalTimeout();
         this.token = null;
         this.tokenExpiry = 0;
+    }
+
+    destroy(): void {
+        this.disconnect();
+        this.httpService = null;
     }
 }

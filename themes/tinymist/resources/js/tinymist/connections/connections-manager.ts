@@ -1,14 +1,16 @@
 import { TinymistTokenManager } from "./token-manager";
 import { TinymistFileSyncClient } from "./sync-and-lsp";
 import { PreviewBridgeClient } from "./preview-ws";
+import { TinymistFallbackCompiler } from "./fallback";
 import { PreviewControlPlane } from "../preview/control-plane";
 import { PreviewDataPlane } from "../preview/data-plane";
 import { tmEvents } from "../constants";
 
 export type TinymistConnectionsManagerOptions = {
     pageId: number;
-    wsToken?: string;
     uniqueTabId: string;
+    wsToken?: string;
+    httpService: any;
 };
 
 export class TinymistConnectionsManager {
@@ -44,7 +46,8 @@ export class TinymistConnectionsManager {
         );
         window.$tmEventBus.listen(tmEvents.Destroy, this.destroy);
 
-        new TinymistTokenManager(this.pageId, this.wsToken);
+        new TinymistFallbackCompiler(this.pageId, options.httpService);
+        new TinymistTokenManager(this.pageId, this.wsToken, options.httpService);
     }
 
     start(): void {

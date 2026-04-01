@@ -51,7 +51,7 @@ export class TinymistEditor extends Component {
 
     setup(): void {
         this.app = new TinymistApp(this.$opts);
-        this.app.setup();
+        this.app.setup(window.$http);
         this.removeEventBridge = this.setupEventBridge();
     }
 

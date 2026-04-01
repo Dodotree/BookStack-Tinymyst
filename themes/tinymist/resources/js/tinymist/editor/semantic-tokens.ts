@@ -368,13 +368,24 @@ export class SemanticTokenProcessor {
                 { length: endLine - startLine + 1 },
                 (_, index) => regionsByLine.get(startLine + index) ?? [],
             ).flat();
-            editorView.dispatch({
-                effects: replaceHighlightsEffect.of({
-                    from: doc.line(startLine).from,
-                    to: doc.line(endLine).to,
+
+            try {
+                editorView.dispatch({
+                    effects: replaceHighlightsEffect.of({
+                        from: doc.line(startLine).from,
+                        to: doc.line(endLine).to,
+                        regions,
+                    }),
+                });
+            } catch (e) {
+                console.warn("[Semantic Tokens] Failed to apply highlight delta:", {
+                    fileName: payload.fileName,
+                    startLine,
+                    endLine,
                     regions,
-                }),
-            });
+                    error: e,
+                });
+            }
         };
 
         let rangeStart = changedLines[0];
