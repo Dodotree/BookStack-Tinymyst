@@ -41,6 +41,7 @@ export const tmSelectors: Record<string, string> = {
 	PreviewModeSelect: 'select[data-action="previewModeSelect"]',
 	PreviewPdfFrame: '.tinymist-preview-pdf-frame',
 	PreviewPan: 'button[data-action="previewPanToggle"]',
+    PreviewCursorOverlay: ".tinymist-cursor-overlay",
 	PreviewCursorSpotlight:
 		'button[data-action="previewCursorSpotlightToggle"]',
 	PreviewScrollIntoView:
