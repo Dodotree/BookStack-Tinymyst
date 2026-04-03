@@ -145,7 +145,14 @@ export abstract class TinymistWebSocketClient {
                         event.data.length === this.pongLength &&
                         event.data.includes('"type":"pong"')
                     ) {
-                        // console.log(`[${this.config.name}] Received pong`);
+                        return;
+                    }
+                    if (typeof event.data === "string" && event.data.includes('"type":"error"')) {
+                        console.error(
+                            `[${this.config.name}] WebSocket error:`,
+                            event,
+                        );
+                        this.onError(event);
                         return;
                     }
                     this.handleMessage(event.data);

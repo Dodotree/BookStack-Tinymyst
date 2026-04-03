@@ -78,7 +78,7 @@ export class PreviewBridgeClient extends TinymistWebSocketClient {
         } else if (typeof data === "string") {
             forwardControl(data);
         } else {
-            console.warn("[Preview WS] Message unknown type:", data);
+            console.warn("[Preview WS] Message unknown data type:", data);
         }
     }
 }

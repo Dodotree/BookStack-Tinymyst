@@ -54,7 +54,7 @@ export class TinymistEditorUI {
     editorView: EditorView | null = null;
     private activeFileName: string = ENTRY_FILE_NAME;
     private fallbackEnabled: boolean = false;
-    private isOffline: boolean = !navigator.onLine;
+    private isOnline: boolean = navigator.onLine;
 
     private readonly languageCompartment = new Compartment();
     private readonly highlightCompartment = new Compartment();
@@ -181,8 +181,12 @@ export class TinymistEditorUI {
     }
 
     setupListeners() {
-        window.addEventListener("online", this.onBrowserOnline);
-        window.addEventListener("offline", this.onBrowserOffline);
+        window.$tmEventBus.listen(tmEvents.OnlineStatus, (isOnline: boolean) => {
+            this.isOnline = isOnline;
+            if (isOnline) {
+                this.flushAllPendingChanges();
+            }
+        });
 
         window.$tmEventBus.listen(
             tmEvents.SyncFullState,
@@ -296,7 +300,7 @@ export class TinymistEditorUI {
                 };
 
         // Since diffs are debounced it doesn't make sense to ram the server with cursor updates on every keystroke
-        if (!state.pendingSendTimer && !this.isOffline) {
+        if (!state.pendingSendTimer && this.isOnline) {
             window.$tmEventBus.emit(tmEvents.VersionedCursorRequest, {
                 docVersion: state.docVersion,
                 timestamp: Date.now(),
@@ -399,7 +403,7 @@ export class TinymistEditorUI {
             return;
         }
 
-        if (this.isOffline) {
+        if (!this.isOnline) {
             return;
         }
 
@@ -737,14 +741,6 @@ export class TinymistEditorUI {
         return created;
     }
 
-    private readonly onBrowserOnline = () => {
-        this.isOffline = false;
-        this.flushAllPendingChanges();
-    };
-    private readonly onBrowserOffline = () => {
-        this.isOffline = true;
-    };
-
     private getCurrentEditorText(): string {
         if (this.editorView) {
             return this.editorView.state.doc.toString();
@@ -769,8 +765,6 @@ export class TinymistEditorUI {
 
     removeListeners() {
         // event bus removes them automatically on destroy, but we need to remove browser events
-         window.removeEventListener("online", this.onBrowserOnline);
-         window.removeEventListener("offline", this.onBrowserOffline);
     }
 
     destroy() {

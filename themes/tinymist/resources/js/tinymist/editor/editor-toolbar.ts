@@ -109,7 +109,6 @@ export function getHighlightExtension(isDarkMode: boolean): Extension {
 
 export class EditorToolbar {
     private activeFileName: string = ENTRY_FILE_NAME;
-    private isOffline: boolean = !navigator.onLine;
 
     private getEditorView: () => EditorView | null;
     private getTextarea: () => HTMLTextAreaElement;
@@ -140,8 +139,6 @@ export class EditorToolbar {
     }
 
     setupListeners() {
-        window.addEventListener("online", this.onBrowserOnline);
-        window.addEventListener("offline", this.onBrowserOffline);
 
         window.$tmEventBus.listen(
             tmEvents.ActiveFileChange,
@@ -161,9 +158,6 @@ export class EditorToolbar {
         this.getTextarea()
             .closest(tmSelectors.EditorPane)
             ?.removeEventListener("click", this.buttonsListener);
-
-        window.removeEventListener("online", this.onBrowserOnline);
-        window.removeEventListener("offline", this.onBrowserOffline);
     }
 
     buttonsListener(event: Event) {
@@ -451,13 +445,6 @@ export class EditorToolbar {
         }
         this.replaceSelection("```python\n\n```");
     }
-
-    private readonly onBrowserOnline = () => {
-        this.isOffline = false;
-    };
-    private readonly onBrowserOffline = () => {
-        this.isOffline = true;
-    };
 
     private insertFromEditorEvent(eventContent: {
         typst?: string;

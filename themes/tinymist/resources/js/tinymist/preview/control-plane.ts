@@ -239,9 +239,6 @@ export class PreviewControlPlane {
         );
         try {
             const msg = JSON.parse(raw);
-            if (msg.type === "pong" || msg.type === "tokenUpdated") {
-                return;
-            }
 
             if (msg.event === "compileStatus") {
                 this.onCompileStatus(msg.kind, msg);

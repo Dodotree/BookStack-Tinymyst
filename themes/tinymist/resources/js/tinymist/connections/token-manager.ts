@@ -12,6 +12,7 @@ export class TinymistTokenManager {
     private tokenExpiry: number = 0; // Unix timestamp in ms
     private httpService: any;
 
+    private isOnline: boolean = navigator.onLine;
     private tokenRenewalTimeout: ReturnType<typeof setTimeout> | null = null;
 
     private debugOn = false;
@@ -30,6 +31,10 @@ export class TinymistTokenManager {
         window.$tmEventBus.listen(tmEvents.InvalidToken, this.renewToken);
         window.$tmEventBus.listen(tmEvents.AllDisconnect, this.disconnect);
         window.$tmEventBus.listen(tmEvents.Destroy, this.destroy);
+
+        window.$tmEventBus.listen(tmEvents.OnlineStatus, (isOnline: boolean) => {
+            this.isOnline = isOnline;
+        });
 
         if (token) {
             this.decodeAndStoreTokenExpiry(token);
@@ -110,6 +115,16 @@ export class TinymistTokenManager {
     }
 
     private async renewToken(): Promise<void> {
+
+        if (!this.isOnline) {
+            this.debugLog("[Auth Token] Offline, rescheduling token renewal");
+            this.clearTokenRenewalTimeout();
+            this.tokenRenewalTimeout = setTimeout(() => {
+                this.renewToken();
+            }, 2000);
+            return;
+        }
+
         try {
             this.debugLog("[Auth Token] Renewing WebSocket token...");
             const response = (await this.httpService.post(AUTH_TOKEN_RENEWAL_URL, {

@@ -25,6 +25,7 @@ export const tmEvents = {
     InvalidToken: "invalid-token",
     LspSemanticTokens: "lsp-semantic-tokens",
     LspSemanticTokensDelta: "lsp-semantic-tokens-delta",
+    OnlineStatus: "online-status",
     PreviewConnect: "preview-connect",
     PreviewConnectionState: "preview-connection-state",
     PreviewConnectionToggle: "preview-connection-toggle",
@@ -118,6 +119,7 @@ export type TinymistEventPayloads = {
     [tmEvents.LspSemanticTokens]: { fileName: string; tokens: number[]; resultId?: string; docVersion: number };
     [tmEvents.PreviewDocumentUpdated]: { pdfPagesCount: number };
     [tmEvents.LspSemanticTokensDelta]: { fileName: string; edits: SemanticTokensDeltaEdit[]; resultId?: string; previousResultId?: string; docVersion: number };
+    [tmEvents.OnlineStatus]: boolean;
     [tmEvents.PreviewConnect]: undefined;
     [tmEvents.PreviewConnectionState]: { label: "paused" | "running" | "connecting" };
     [tmEvents.PreviewConnectionToggle]: undefined;

@@ -22,6 +22,8 @@ export class TinymistConnectionsManager {
     private previewBridgeClient: PreviewBridgeClient | null = null;
     private previewControlPlane: PreviewControlPlane | null = null;
 
+    private isOnline: boolean = true;
+
     private bridgeConnected: boolean = false;
     private fileSyncConnected: boolean = false;
     private fallbackMode: boolean = false;
@@ -33,11 +35,14 @@ export class TinymistConnectionsManager {
         this.wsToken = options.wsToken;
         this.uniqueTabId = options.uniqueTabId;
 
+        this.onBrowserOffline = this.onBrowserOffline.bind(this);
+        this.onBrowserOnline = this.onBrowserOnline.bind(this);
         this.updateStatus = this.updateStatus.bind(this);
         this.updateToken = this.updateToken.bind(this);
         this.handlePreviewConnectionToggle =
             this.handlePreviewConnectionToggle.bind(this);
         this.destroy = this.destroy.bind(this);
+
         window.$tmEventBus.listen(tmEvents.Status, this.updateStatus);
         window.$tmEventBus.listen(tmEvents.TokenRenewed, this.updateToken);
         window.$tmEventBus.listen(
@@ -45,6 +50,9 @@ export class TinymistConnectionsManager {
             this.handlePreviewConnectionToggle,
         );
         window.$tmEventBus.listen(tmEvents.Destroy, this.destroy);
+
+        window.addEventListener("online", this.onBrowserOnline);
+        window.addEventListener("offline", this.onBrowserOffline);
 
         new TinymistFallbackCompiler(this.pageId, options.httpService);
         new TinymistTokenManager(this.pageId, this.wsToken, options.httpService);
@@ -58,6 +66,15 @@ export class TinymistConnectionsManager {
         this.setupPreviewSockets();
         this.setupFileSyncLSP();
     }
+
+    private readonly onBrowserOnline = () => {
+        this.isOnline = true;
+        window.$tmEventBus.emit(tmEvents.OnlineStatus, true);
+    };
+    private readonly onBrowserOffline = () => {
+        this.isOnline = false;
+        window.$tmEventBus.emit(tmEvents.OnlineStatus, false);
+    };
 
     updateToken(newToken: string): void {
         this.wsToken = newToken;
@@ -186,5 +203,8 @@ export class TinymistConnectionsManager {
         this.fileSyncClient = null;
         this.previewBridgeClient = null;
         this.previewControlPlane = null;
+
+        window.removeEventListener("online", this.onBrowserOnline);
+        window.removeEventListener("offline", this.onBrowserOffline);
     }
 }
