@@ -211,6 +211,7 @@ export class PreviewControlPlane {
         ) {
             return;
         }
+        // Insert full sync version if it was missing
         this.pendingRenders[this.pendingRenders.length - 1].docVersion =
             payload.docVersion;
     }
@@ -223,7 +224,7 @@ export class PreviewControlPlane {
             `\x1b[31m[Preview Control:clarify]\x1b[0m "${payload.fileName}" docVersion: \x1b[94m${payload.docVersion}\x1b[0m`,
             this.pendingRenders,
         );
-        // docVersion comes from ack or remote sync
+        // docVersion comes from file sync ack or remote file sync
         this.pendingRenders.push({
             type: "merge",
             timestamp: Date.now(),
@@ -304,10 +305,11 @@ export class PreviewControlPlane {
                 type: "success",
                 message: `[Preview Control:in] Compilation successful for "${this.currentRender?.fileName}" docVersion: ${this.currentRender?.docVersion}. Pending ${this.pendingRenders.length} render(s) in queue.`,
             });
-            if (this.pendingRenders.length !== 0) {
+            // 1 pending is expected to be cleared right away as soon as data arrives
+            if (this.pendingRenders.length > 1) {
                 console.warn(
                     "[Preview Control:in] Received CompileSuccess but there are still pending renders in the queue.",
-                    this.pendingRenders,
+                    JSON.stringify(this.pendingRenders, null, 2),
                 );
             }
         } else if (kind === "CompileError") {
