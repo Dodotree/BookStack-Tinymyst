@@ -186,7 +186,9 @@ export abstract class TinymistWebSocketClient {
                         1000: "Normal closure",
                         1001: "Going away",
                         1006: "Abnormal closure (no close frame)",
+                        1008: "Policy violation",
                         1011: "Internal server error",
+                        4401: "Unauthorized (custom code)",
                     };
 
                     if (event.reason === "INVALID_TOKEN") {

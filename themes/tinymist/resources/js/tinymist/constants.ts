@@ -1,5 +1,5 @@
-export {
-    tmEvents,
+export { tmEvents } from "./constants/custom-events";
+export type {
     TinymistConsoleLocation,
     SemanticTokensDeltaEdit,
     DiagnosticsPayload,
@@ -14,6 +14,12 @@ export {
     THEME_COLOR_INPUT_DEFAULT,
     THEME_FONT_PREVIEW_TEXT,
     THEME_FONT_STATUS_EMPTY_HINT,
+    LIGHT_OWNER_CURSOR_COLOR,
+    LIGHT_UNKNOWN_CURSOR_COLOR,
+    LIGHT_REMOTE_CURSOR_COLORS,
+    DARK_OWNER_CURSOR_COLOR,
+    DARK_UNKNOWN_CURSOR_COLOR,
+    DARK_REMOTE_CURSOR_COLORS,
 } from "./constants/theme-settings";
 
 export {

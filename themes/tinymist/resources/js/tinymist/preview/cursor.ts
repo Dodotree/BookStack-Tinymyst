@@ -8,7 +8,15 @@
 // appends cursor circles to those elements
 // keeps the state so that svg re-renders can re-apply the cursor positions
 
-import { tmClassNames, tmEvents, tmSelectors } from "../constants";
+import {
+    tmClassNames, tmEvents, tmSelectors,
+    LIGHT_OWNER_CURSOR_COLOR,
+    LIGHT_UNKNOWN_CURSOR_COLOR,
+    LIGHT_REMOTE_CURSOR_COLORS,
+    DARK_OWNER_CURSOR_COLOR,
+    DARK_UNKNOWN_CURSOR_COLOR,
+    DARK_REMOTE_CURSOR_COLORS,
+} from "../constants";
 
 type CursorParams = {
     textSelector: string;
@@ -23,18 +31,6 @@ type CursorState = {
 
 const CURSOR_STALE_MS = 60_000;
 const UNKNOWN_TAB_KEY = "__unknown__";
-const OWNER_CURSOR_COLOR = "#66bab7";
-const UNKNOWN_CURSOR_COLOR = "#9ca3af";
-const REMOTE_CURSOR_COLORS = [
-    "#60a5fa",
-    "#f59e0b",
-    "#a78bfa",
-    "#f472b6",
-    "#34d399",
-    "#f87171",
-    "#06b6d4",
-    "#eab308",
-];
 
 export class PreviewCursor {
     private readonly uniqueTabId: string;
@@ -140,18 +136,36 @@ export class PreviewCursor {
     }
 
     private getCursorColor(tabKey: string): string {
+        const darkMode = this.isDarkMode();
+        const ownerColor = darkMode
+            ? DARK_OWNER_CURSOR_COLOR
+            : LIGHT_OWNER_CURSOR_COLOR;
+        const unknownColor = darkMode
+            ? DARK_UNKNOWN_CURSOR_COLOR
+            : LIGHT_UNKNOWN_CURSOR_COLOR;
+        const remotePalette = darkMode
+            ? DARK_REMOTE_CURSOR_COLORS
+            : LIGHT_REMOTE_CURSOR_COLORS;
+
         if (tabKey === UNKNOWN_TAB_KEY) {
-            return UNKNOWN_CURSOR_COLOR;
+            return unknownColor;
         }
         if (this.isOwnerTab(tabKey)) {
-            return OWNER_CURSOR_COLOR;
+            return ownerColor;
         }
 
         let hash = 0;
         for (let index = 0; index < tabKey.length; index++) {
             hash = (hash * 31 + tabKey.charCodeAt(index)) >>> 0;
         }
-        return REMOTE_CURSOR_COLORS[hash % REMOTE_CURSOR_COLORS.length];
+        return remotePalette[hash % remotePalette.length];
+    }
+
+    private isDarkMode(): boolean {
+        if (document.documentElement.classList.contains("dark-mode")) {
+            return true;
+        }
+        return window.matchMedia("(prefers-color-scheme: dark)").matches;
     }
 
     private createCursorCircle(color: string): SVGCircleElement {

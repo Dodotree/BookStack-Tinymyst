@@ -33,3 +33,28 @@ export const THEME_FONT_PREVIEW_TEXT = {
 };
 
 export const THEME_FONT_STATUS_EMPTY_HINT = "Type a font name or stack (for example: Inter, Segoe UI, sans-serif).";
+
+export const LIGHT_OWNER_CURSOR_COLOR = "#66bab7";
+export const LIGHT_UNKNOWN_CURSOR_COLOR = "#9ca3af";
+export const LIGHT_REMOTE_CURSOR_COLORS = [
+    "#60a5fa",
+    "#f59e0b",
+    "#a78bfa",
+    "#f472b6",
+    "#34d399",
+    "#f87171",
+    "#06b6d4",
+    "#eab308",
+];
+export const DARK_OWNER_CURSOR_COLOR = "#7dd3fc";
+export const DARK_UNKNOWN_CURSOR_COLOR = "#9ca3af";
+export const DARK_REMOTE_CURSOR_COLORS = [
+    "#93c5fd",
+    "#fbbf24",
+    "#c4b5fd",
+    "#f9a8d4",
+    "#6ee7b7",
+    "#fca5a5",
+    "#67e8f9",
+    "#fde047",
+];

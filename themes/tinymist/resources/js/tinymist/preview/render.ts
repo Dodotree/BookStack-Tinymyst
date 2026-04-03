@@ -614,7 +614,7 @@ export class PreviewRenderer {
                                     p.trail[p.trail.length - 1] < paths[j].next,
                             )
                             .toSorted(
-                                (a, b) => b?.trail.length - a?.trail.length,
+                                (a: { next: number; trail: number[] }, b: { next: number; trail: number[] }) => b?.trail.length - a?.trail.length,
                             )[0]?.trail || [];
                     paths[j].trail = Array.from(trl); // clone, not to tint the source trail
                 }
