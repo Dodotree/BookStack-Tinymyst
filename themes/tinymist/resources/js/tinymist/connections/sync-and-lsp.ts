@@ -92,14 +92,12 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
             switch (msg.type) {
 
                 case "ack":
-                    // For tokens and successful file updates
-                    if (fileName != 'authTokenAck') {
-                        window.$tmEventBus.emit(tmEvents.FileSyncAck, {
-                            timestamp: Date.now(),
-                            fileName: fileName!,
-                            docVersion: docVersion!,
-                        });
-                    }
+                    // fileName === 'authTokenAck' should not fall through to this point
+                    window.$tmEventBus.emit(tmEvents.FileSyncAck, {
+                        timestamp: Date.now(),
+                        fileName: fileName!,
+                        docVersion: docVersion!,
+                    });
                     break;
 
                 case "fullState":

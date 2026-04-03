@@ -586,7 +586,12 @@ async function bootstrap() {
                             if (payload.type === "updateToken") {
                                 const refreshed = verifyNewToken(payload.token, pageId);
                                 client.authToken = refreshed;
-                                socket.send(JSON.stringify({ type: "tokenUpdated", exp: refreshed.exp }));
+                                socket.send(JSON.stringify({
+                                    type: "ack",
+                                    pageId: pageId,
+                                    fileName: "authTokenAck",
+                                    docVersion: 1,
+                                }));
                                 return;
                             }
                         }

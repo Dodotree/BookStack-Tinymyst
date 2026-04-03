@@ -304,6 +304,12 @@ export class PreviewControlPlane {
                 type: "success",
                 message: `[Preview Control:in] Compilation successful for "${this.currentRender?.fileName}" docVersion: ${this.currentRender?.docVersion}. Pending ${this.pendingRenders.length} render(s) in queue.`,
             });
+            if (this.pendingRenders.length !== 0) {
+                console.warn(
+                    "[Preview Control:in] Received CompileSuccess but there are still pending renders in the queue.",
+                    this.pendingRenders,
+                );
+            }
         } else if (kind === "CompileError") {
             this.shiftFailedRender();
             window.$tmEventBus.emit(tmEvents.ConsoleLog, {
