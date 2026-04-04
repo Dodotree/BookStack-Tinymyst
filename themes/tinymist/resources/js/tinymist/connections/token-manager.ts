@@ -7,7 +7,7 @@
 import { AUTH_TOKEN_RENEWAL_URL, tmEvents } from "../constants";
 
 export class TinymistTokenManager {
-    private pageId: number = 0;
+    private pageId: number|string = "";
     private token: string | null = null;
     private tokenExpiry: number = 0; // Unix timestamp in ms
     private httpService: any;
@@ -18,7 +18,7 @@ export class TinymistTokenManager {
     private debugOn = false;
     private debugLog: (...args: any[]) => void;
 
-    constructor(pageId: number, token?: string, httpService?: any) {
+    constructor(pageId: number|string, token?: string, httpService?: any) {
         this.token = token ?? null;
         this.pageId = pageId;
         this.httpService = httpService;

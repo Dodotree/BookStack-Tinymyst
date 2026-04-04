@@ -10,7 +10,7 @@ export class TinymistFileSyncClient extends TinymistWebSocketClient {
     private debugOn = false;
     private debugLog: (...args: any[]) => void;
 
-    constructor(pageId: number, token: string, uniqueTabId: string) {
+    constructor(pageId: number|string, token: string, uniqueTabId: string) {
         super(pageId, token, uniqueTabId, {
             name: "File Sync / LSP",
             statusKey: SYNC_AND_LSP_STATUS_KEY,

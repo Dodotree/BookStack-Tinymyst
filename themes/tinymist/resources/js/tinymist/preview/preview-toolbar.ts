@@ -11,7 +11,7 @@ import {
  * PDF is a static simple frame
  */
 export class PreviewToolbar {
-    private pageId: number;
+    private pageId: number|string;
     private activeFileName = ENTRY_FILE_NAME;
 
     private liveStatus: "paused" | "running" | "connecting" = "connecting";
@@ -47,7 +47,7 @@ export class PreviewToolbar {
     private currentZoomValueSelector = `${tmSelectors.Root} .tinymist-preview-settings-overlay [data-tm-preview-setting="current-zoom"]`;
 
 
-    constructor(pageId: number) {
+    constructor(pageId: number|string) {
 
         this.pageId = pageId;
 
@@ -107,7 +107,7 @@ export class PreviewToolbar {
         this.addRemoveListeners(true);
 
         const modeSelect = document.querySelector(this.modeSelectSelector) as HTMLSelectElement | null;
-        modeSelect?.toggleAttribute("disabled", this.pageId <= 0);
+        modeSelect?.toggleAttribute("disabled", this.pageId === 0 || this.pageId === "");
     }
 
     private onDocumentUpdate(payload: { pdfPagesCount: number }): void {
@@ -199,7 +199,7 @@ export class PreviewToolbar {
         const pdfFrame = document.querySelector(
             this.pdfFrameSelector,
         ) as HTMLIFrameElement | null;
-        if (!pdfFrame || this.pageId <= 0) {
+        if (!pdfFrame || this.pageId === 0 || this.pageId === "") {
             return;
         }
 
@@ -247,7 +247,7 @@ export class PreviewToolbar {
 
             event.preventDefault();
 
-            if (this.pageId > 0) {
+            if (this.pageId !== 0 && this.pageId !== "") {
                 window.location.assign(
                     `/ajax/tinymist/${this.pageId}/pdf/download-all`,
                 );

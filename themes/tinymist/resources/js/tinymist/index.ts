@@ -10,7 +10,10 @@ import { EventBus } from "./event-bus";
 import { tmSelectors, tmClassNames, tmEvents } from "./constants";
 import type { TinymistEventPayloads } from "./constants/custom-events";
 
-type TinymistOpts = Record<string, string>;
+type TinymistOpts = {
+    pageId: number|string;
+    wsToken?: string;
+} & Record<string, string | number | undefined>;
 
 declare global {
     interface Window {
@@ -22,14 +25,14 @@ export class TinymistApp {
     private opts: TinymistOpts;
 
     private uniqueTabId: string;
-    private pageId: number;
+    private pageId: number|string;
 
     getText: () => string = () => "supposed to be overridden in setup";
     private syncTextGetText: () => string = () => "supposed to be overridden in setup";
 
     constructor(opts: TinymistOpts) {
         this.opts = opts;
-        this.pageId = Number(this.opts.pageId);
+        this.pageId = Number(this.opts.pageId) || this.opts.pageId || "";
         this.uniqueTabId = this.createUniqueTabId(this.pageId);
         this.destroy = this.destroy.bind(this);
     }
@@ -45,10 +48,13 @@ export class TinymistApp {
 
         new TinymistConsole(tmSelectors.ConsolePanel, tmSelectors.ConsoleContent);
 
+        const wsToken =
+            typeof this.opts.wsToken === "string" ? this.opts.wsToken : undefined;
+
         const connectionsManager = new TinymistConnectionsManager({
             pageId: this.pageId,
             uniqueTabId: this.uniqueTabId,
-            wsToken: this.opts.wsToken,
+            wsToken,
             httpService,
         });
         connectionsManager.start();
@@ -86,7 +92,7 @@ export class TinymistApp {
         };
     }
 
-    private createUniqueTabId(pageId: number): string {
+    private createUniqueTabId(pageId: number|string): string {
         const rand = crypto.getRandomValues(new Uint32Array(2));
         return [
             pageId,

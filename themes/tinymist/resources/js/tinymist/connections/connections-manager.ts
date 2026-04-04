@@ -7,7 +7,7 @@ import { PreviewDataPlane } from "../preview/data-plane";
 import { tmEvents } from "../constants";
 
 export type TinymistConnectionsManagerOptions = {
-    pageId: number;
+    pageId: string | number;
     uniqueTabId: string;
     wsToken?: string;
     httpService: any;
@@ -15,7 +15,7 @@ export type TinymistConnectionsManagerOptions = {
 
 export class TinymistConnectionsManager {
     private wsToken?: string;
-    private readonly pageId: number;
+    private readonly pageId: string | number;
     private readonly uniqueTabId: string;
 
     private fileSyncClient: TinymistFileSyncClient | null = null;

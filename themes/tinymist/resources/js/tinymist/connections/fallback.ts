@@ -13,10 +13,10 @@ import { FALLBACK_COMPILE_URL, tmEvents } from "../constants";
 
 export class TinymistFallbackCompiler {
     private enabled: boolean = false;
-    private pageId: number = 0;
+    private pageId: number|string = "";
     private httpService: any;
 
-    constructor(pageId: number, httpService: any) {
+    constructor(pageId: number|string, httpService: any) {
         this.pageId = pageId;
         this.httpService = httpService;
 

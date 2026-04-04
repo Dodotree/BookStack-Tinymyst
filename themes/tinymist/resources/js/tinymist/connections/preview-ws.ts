@@ -10,7 +10,7 @@ import {
 } from "../constants";
 
 export class PreviewBridgeClient extends TinymistWebSocketClient {
-    constructor(pageId: number, token: string, uniqueTabId?: string) {
+    constructor(pageId: number|string, token: string, uniqueTabId?: string) {
         super(pageId, token, uniqueTabId, {
             name: "Preview WS",
             statusKey: PREVIEW_STATUS_KEY,

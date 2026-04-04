@@ -25,7 +25,6 @@ import { PreviewCursor } from "./cursor";
 
 export class PreviewRenderer {
     private previewElement: HTMLElement;
-    private readonly pageId: number;
     private activeFileName = ENTRY_FILE_NAME;
 
     private renderer: TypstRenderer | null = null;
@@ -46,14 +45,13 @@ export class PreviewRenderer {
     private debugLog: (...args: any[]) => void;
 
 
-    constructor(uniqueTabId?: string, pageId: number = 0) {
-        this.pageId = pageId;
+    constructor(uniqueTabId?: string, pageId: number|string = "") {
         this.previewElement = document.querySelector(
             `${tmSelectors.Root} ${tmSelectors.PreviewContent}`,
         ) as HTMLElement;
         this.debugLog = this.debugOn ? console.debug : () => {};
 
-        new PreviewToolbar(this.pageId);
+        new PreviewToolbar(pageId);
         new PreviewCursor(uniqueTabId);
 
         this.handleSyncInit = this.handleSyncInit.bind(this);

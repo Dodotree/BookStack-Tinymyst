@@ -308,7 +308,7 @@ export class PreviewControlPlane {
             // 1 pending is expected to be cleared right away as soon as data arrives
             if (this.pendingRenders.length > 1) {
                 console.warn(
-                    "[Preview Control:in] Received CompileSuccess but there are still pending renders in the queue.",
+                    `[Preview Control:in] Received CompileSuccess but there are still ${this.pendingRenders.length} pending renders in the queue.`,
                     JSON.stringify(this.pendingRenders, null, 2),
                 );
             }

@@ -21,7 +21,7 @@ export abstract class TinymistWebSocketClient {
     protected socket: WebSocket | null = null;
     protected token: string = "";
     protected uniqueTabId: string = "";
-    protected pageId: number;
+    protected pageId: number|string;
     protected config: TinymistWebSocketClientConfig & typeof DEFAULT_WS_TIMINGS;
 
     private pingInterval: ReturnType<typeof setInterval> | null = null;
@@ -34,7 +34,7 @@ export abstract class TinymistWebSocketClient {
     private waitingForTokenRenewal: boolean = false;
 
     constructor(
-        pageId: number,
+        pageId: number|string,
         token: string,
         uniqueTabId: string | undefined,
         config: TinymistWebSocketClientConfig,
@@ -276,10 +276,10 @@ export abstract class TinymistWebSocketClient {
         this.reconnectAttempts++;
         const delay = Math.min(
             this.config.reconnectBaseMs *
-            Math.pow(
-                this.config.reconnectFactor,
-                this.reconnectAttempts - 1,
-            ),
+                Math.pow(
+                    this.config.reconnectFactor,
+                    this.reconnectAttempts - 1,
+                ),
             this.config.reconnectMaxMs,
         );
 
