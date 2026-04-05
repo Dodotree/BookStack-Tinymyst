@@ -40,6 +40,8 @@ export class TinymistAttachmentsBridge {
         this.container?.addEventListener('ajax-delete-row-success', this.reloadAttachmentList);
         window.$events.listen('attachments-file-dirty-state', this.handleAttachmentStateChange);
 
+        this.emitAttachmentsPageUpdated();
+
         void this.refreshDirtyMap();
     }
 
@@ -139,6 +141,7 @@ export class TinymistAttachmentsBridge {
         this.listPanel.innerHTML = String(resp.data || '');
         window.$components.init(this.listPanel);
         this.showSection('list');
+        this.emitAttachmentsPageUpdated();
         this.applyAllDirtyStatesToList();
         await this.refreshDirtyMap();
     }
@@ -279,5 +282,34 @@ export class TinymistAttachmentsBridge {
         this.attachmentSessionDirtyByName.set(normalizedName, false);
         this.applyDirtyStateForFile(normalizedName);
         this.emitDirtyMapUpdated();
+    }
+
+    private emitAttachmentsPageUpdated(): void {
+        window.$events.emit('attachments-page-updated', {
+            files: this.getUpdatedAttachments(),
+        });
+    }
+
+    private getUpdatedAttachments(): Record<string, string> {
+        if (!this.listPanel) {
+            return {};
+        }
+
+        const linkByName: Record<string, string> = {};
+        Array.from(this.listPanel.querySelectorAll("a")).forEach((link) => {
+            const name = (link.textContent || "").trim();
+            if (!name) {
+                return;
+            }
+
+            const href = String(link.getAttribute("href") || "").trim();
+            if (href) {
+                linkByName[name] = href;
+            } else if (!(name in linkByName)) {
+                linkByName[name] = "";
+            }
+        });
+
+        return linkByName;
     }
 }

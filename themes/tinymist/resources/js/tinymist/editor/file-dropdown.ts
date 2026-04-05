@@ -112,38 +112,24 @@ export class TinymistFileDropdown {
         this.applyDirtyCueToDropdown();
     }
 
-    private refreshFileDropdown(data: { html?: string }): void {
-        if (!data) {
-            return;
-        }
+    private refreshFileDropdown(data: { files?: Record<string, string> }): void {
         const fileSelect = document.querySelector(this.dropdownSelector) as HTMLSelectElement;
         if (!fileSelect) {
             return;
         }
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(data.html || "", "text/html");
-        const linkByName = new Map<string, string>();
-        Array.from(doc.querySelectorAll("a")).forEach((link) => {
-            const name = (link.textContent || "").trim();
-            if (!name || name === ENTRY_FILE_NAME) {
-                return;
-            }
-            const href = String(link.getAttribute("href") || "").trim();
-            if (href) {
-                linkByName.set(name, href);
-            } else if (!linkByName.has(name)) {
-                linkByName.set(name, "");
-            }
-        });
 
-        const attachmentNames = Array.from(linkByName.keys());
+        const files =
+            data?.files && typeof data.files === "object" ? data.files : {};
+        const attachmentNames = Object.keys(files).filter(
+            (name) => String(name || "").trim() !== "" && name !== ENTRY_FILE_NAME,
+        );
         const selectedValue = fileSelect.value || ENTRY_FILE_NAME;
 
         fileSelect.innerHTML = "";
         fileSelect.add(new Option(ENTRY_FILE_NAME, ENTRY_FILE_NAME));
         attachmentNames.forEach((name) => {
             const option = new Option(name, name);
-            option.dataset.fileUrl = linkByName.get(name) || "";
+            option.dataset.fileUrl = String(files[name] || "").trim();
             fileSelect?.add(option);
         });
 

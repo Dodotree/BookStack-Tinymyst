@@ -113,7 +113,7 @@ export type TinymistEventPayloads = {
     [tmEvents.FileSyncAck]: { timestamp: number; fileName: string; docVersion: number };
     [tmEvents.FileDirtyState]: { fileName: string; isDirty: boolean };
     [tmEvents.FilesDirtyUpdated]: { dirtyMap?: Record<string, boolean> };
-    [tmEvents.FilesUpdated]: { html?: string };
+    [tmEvents.FilesUpdated]: { files?: Record<string, string> };
     [tmEvents.Insert]: { typst?: string; markdown?: string; html?: string };
     [tmEvents.InvalidToken]: undefined;
     [tmEvents.LspSemanticTokens]: { fileName: string; tokens: number[]; resultId?: string; docVersion: number };
